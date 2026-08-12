@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: remote-codex-relay
+    runtime: node
+    plan: free
+    buildCommand: npm ci && npm run build
+    startCommand: npm run relay
+    healthCheckPath: /healthz
+    envVars:
+      - key: RELAY_AGENT_TOKEN_SHA256
+        sync: false
+      - key: SITE_DIR
+        value: site

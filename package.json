@@ -1,0 +1,28 @@
+{
+  "name": "remote-codex-app-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Revocable remote access relay for a central Codex app-server.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test dist/test/access-store.test.js dist/test/relay.test.js dist/test/host-agent.test.js",
+    "relay": "node dist/src/relay-main.js",
+    "host": "node dist/src/host-agent.js",
+    "access": "node dist/src/access-cli.js",
+    "dev:relay": "tsx server/src/relay-main.ts",
+    "dev:host": "tsx server/src/host-agent.ts"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "@types/ws": "^8.5.14",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.3"
+  }
+}

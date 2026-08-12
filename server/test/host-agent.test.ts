@@ -1,0 +1,118 @@
+import assert from "node:assert/strict";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import test from "node:test";
+
+import { WebSocket, WebSocketServer } from "ws";
+import type { RawData } from "ws";
+
+import { AccessStore } from "../src/access-store.js";
+import { hashToken } from "../src/crypto.js";
+import { HostAgent, hostConfigFromEnvironment } from "../src/host-agent.js";
+import { RelayServer } from "../src/relay.js";
+
+const agentToken = "agent-secret-for-host-test";
+
+function open(url: string, headers: Record<string, string> = {}): Promise<WebSocket> {
+  return new Promise((resolve, reject) => {
+    const socket = new WebSocket(url, { headers });
+    socket.once("open", () => resolve(socket));
+    socket.once("error", reject);
+  });
+}
+
+function nextFrame(socket: WebSocket): Promise<{ text: string; binary: boolean }> {
+  return new Promise((resolve, reject) => {
+    const onError = (error: Error) => reject(error);
+    socket.once("error", onError);
+    socket.once("message", (raw: RawData, binary: boolean) => {
+      socket.off("error", onError);
+      const buffer = Buffer.isBuffer(raw) ? raw : Array.isArray(raw) ? Buffer.concat(raw) : Buffer.from(raw as ArrayBuffer);
+      resolve({ text: buffer.toString("utf8"), binary });
+    });
+  });
+}
+
+function listeningPort(server: WebSocketServer): number {
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  return address.port;
+}
+
+function waitForReady(relay: RelayServer): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const started = Date.now();
+    const poll = () => {
+      if (relay.status().ready) {
+        resolve();
+        return;
+      }
+      if (Date.now() - started > 5_000) {
+        reject(new Error("Host agent did not synchronize with relay"));
+        return;
+      }
+      setTimeout(poll, 20);
+    };
+    poll();
+  });
+}
+
+test("host agent connects the relay to a local app-server without exposing the local token", async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "remote-codex-host-"));
+  const codexHome = path.join(directory, "codex-home");
+  const store = new AccessStore(path.join(codexHome, "remote-access.json"));
+  const issued = await store.issue("host-test-client", 60 * 60_000);
+  const fakeAppServer = new WebSocketServer({ port: 0 });
+  fakeAppServer.on("connection", (socket) => {
+    socket.on("message", (raw, binary) => socket.send(raw, { binary }));
+  });
+  await new Promise<void>((resolve) => fakeAppServer.once("listening", () => resolve()));
+
+  const relay = new RelayServer({
+    agentTokenHash: hashToken(agentToken),
+    host: "127.0.0.1",
+    port: 0,
+    siteDir: "site",
+    heartbeatTimeoutMs: 5_000,
+  });
+  await relay.listen();
+  const relayAddress = relay.address();
+  assert.ok(relayAddress && typeof relayAddress === "object");
+
+  let agent: HostAgent | undefined;
+  let client: WebSocket | undefined;
+  try {
+    const config = hostConfigFromEnvironment({
+      ...process.env,
+      CODEX_HOME: codexHome,
+      RELAY_URL: `ws://127.0.0.1:${relayAddress.port}`,
+      RELAY_AGENT_TOKEN: agentToken,
+      RELAY_HOST_ID: "host-test",
+      APP_SERVER_PORT: String(listeningPort(fakeAppServer)),
+      CODEX_APP_SERVER_TOKEN_FILE: path.join(codexHome, "app-server.token"),
+      HOST_SKIP_APP_SERVER: "1",
+      ACCESS_SYNC_INTERVAL_MS: "50",
+      RELAY_HEARTBEAT_INTERVAL_MS: "50",
+    });
+    agent = new HostAgent(config, store);
+    await agent.start();
+    await waitForReady(relay);
+
+    client = await open(`ws://127.0.0.1:${relayAddress.port}/codex`, {
+      Authorization: `Bearer ${issued.token}`,
+    });
+    client.send("host roundtrip");
+    const response = await nextFrame(client);
+    assert.equal(response.text, "host roundtrip");
+    assert.equal(response.binary, false);
+
+    await fs.access(path.join(codexHome, "app-server.token"));
+  } finally {
+    client?.terminate();
+    await agent?.stop();
+    await relay.close();
+    await new Promise<void>((resolve) => fakeAppServer.close(() => resolve()));
+    await fs.rm(directory, { recursive: true, force: true });
+  }
+});

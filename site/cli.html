@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Codex CLI remoto · Remote Codex</title><link rel="stylesheet" href="/styles.css"></head>
+  <body>
+    <header class="site-header"><a class="brand" href="/">Remote Codex</a><nav aria-label="Navegação principal"><a class="active" href="/cli">Codex CLI</a><a href="/app">App experimental</a><a href="/opencode">OpenCode</a><a href="/access">Acessos</a><a href="/deploy">Deploy</a></nav></header>
+    <main class="shell narrow">
+      <p class="eyebrow">Página 01 · Codex CLI</p><h1>Conectar um PC remoto</h1>
+      <p class="lede">O CLI remoto usa o app-server da máquina central através do relay. Não execute <code>codex login</code> no PC remoto.</p>
+      <h2>1. No host central</h2>
+      <pre><code>codex login
+$env:RELAY_URL = "wss://SEU_RELAY.onrender.com"
+$env:RELAY_AGENT_TOKEN = "SEGREDO_DO_TUNEL"
+npm.cmd run host</code></pre>
+      <p>O host agent inicia o app-server local em <code>127.0.0.1:4500</code>, abre o túnel de saída e sincroniza os hashes dos dispositivos. O segredo do túnel fica somente no host.</p>
+      <h2>2. Emitir o token do dispositivo</h2>
+      <pre><code>npm.cmd run access -- issue --label pc-notebook --ttl 30d</code></pre>
+      <p>Copie o token exibido uma vez. O arquivo local de acesso guarda apenas o hash; não há comando para recuperar o token depois.</p>
+      <h2>3. No PC remoto</h2>
+      <pre><code>$env:CODEX_REMOTE_TOKEN = "TOKEN_DO_DISPOSITIVO"
+codex --remote wss://SEU_RELAY.onrender.com/codex --remote-auth-token-env CODEX_REMOTE_TOKEN</code></pre>
+      <div class="notice"><strong>Importante:</strong> o token acima autoriza o relay, não autentica na OpenAI. Ainda assim, trate-o como segredo e não o coloque em scripts públicos, URL ou logs.</div>
+      <h2>Diagnóstico</h2>
+      <ul><li><code>/healthz</code> deve responder 200 quando o relay está vivo.</li><li><code>/readyz</code> responde 200 somente depois do host registrar e sincronizar.</li><li>Se o host parar, o relay encerra a sessão e novas conexões retornam 503.</li></ul>
+    </main>
+    <footer class="site-footer"><span>Use TLS: <code>wss://</code></span><a href="/">Início</a></footer><script src="/site.js" defer></script>
+  </body>
+</html>

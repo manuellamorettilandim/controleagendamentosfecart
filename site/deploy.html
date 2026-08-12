@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Deploy · Remote Codex</title><link rel="stylesheet" href="/styles.css"></head>
+  <body>
+    <header class="site-header"><a class="brand" href="/">Remote Codex</a><nav aria-label="Navegação principal"><a href="/cli">Codex CLI</a><a href="/app">App experimental</a><a href="/opencode">OpenCode</a><a href="/access">Acessos</a><a class="active" href="/deploy">Deploy</a></nav></header>
+    <main class="shell narrow">
+      <p class="eyebrow">Página 05 · Operação</p><h1>Render + host central</h1>
+      <h2>Relay público</h2><ol><li>Crie um Web Service no Render a partir deste repositório.</li><li>Use o <code>render.yaml</code>; o build é <code>npm ci &amp;&amp; npm run build</code> e o start é <code>npm run relay</code>.</li><li>Gere um segredo forte para o túnel. No Render, configure somente <code>RELAY_AGENT_TOKEN_SHA256</code>, o SHA-256 desse segredo.</li><li>Após o deploy, teste <code>https://SEU_HOST/healthz</code>. O <code>/readyz</code> ficará 503 até o host conectar.</li></ol>
+      <h2>Host central</h2><pre><code>codex login
+$env:RELAY_URL = "wss://SEU_HOST.onrender.com"
+$env:RELAY_AGENT_TOKEN = "O_MESMO_SEGREDO_USADO_NO_HASH"
+npm.cmd run host</code></pre><p>Deixe essa máquina ligada. O host agent reconecta após reinícios do relay e ressincroniza os dispositivos ativos.</p>
+      <h2>Render Free</h2><p>O plano Free pode dormir após inatividade e usa filesystem efêmero. O relay não guarda a fonte de verdade; por isso a lista volta do host central depois da reconexão. Conexões WebSocket também podem cair quando uma instância é substituída.</p>
+      <h2>Checklist</h2><ul><li>URL pública usa <code>https://</code>/<code>wss://</code>.</li><li>O hash do segredo está no Render; o segredo bruto está somente no host.</li><li>Não há <code>CODEX_HOME</code>, <code>auth.json</code> ou API key em variáveis do Render.</li><li>O host responde 200 em <code>/readyz</code> antes de testar o CLI.</li><li>Existe um procedimento local para parar o host e revogar tokens.</li></ul>
+      <p>Referências: <a href="https://render.com/docs/free">Render Free</a>, <a href="https://render.com/docs/websocket">Render WebSockets</a> e <a href="https://learn.chatgpt.com/docs/app-server">OpenAI App Server</a>.</p>
+    </main>
+    <footer class="site-footer"><span>Use Free apenas para experimento</span><a href="/">Início</a></footer><script src="/site.js" defer></script>
+  </body>
+</html>

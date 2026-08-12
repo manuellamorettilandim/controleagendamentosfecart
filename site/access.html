@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Acessos · Remote Codex</title><link rel="stylesheet" href="/styles.css"></head>
+  <body>
+    <header class="site-header"><a class="brand" href="/">Remote Codex</a><nav aria-label="Navegação principal"><a href="/cli">Codex CLI</a><a href="/app">App experimental</a><a href="/opencode">OpenCode</a><a class="active" href="/access">Acessos</a><a href="/deploy">Deploy</a></nav></header>
+    <main class="shell narrow">
+      <p class="eyebrow">Página 04 · Controle central</p><h1>Emitir e cortar dispositivos</h1>
+      <p>O registro fica na máquina central, por padrão em <code>$CODEX_HOME/remote-access.json</code>. Ele contém <code>deviceId</code>, label, hash do token, datas de criação/expiração, revogação e último acesso.</p>
+      <h2>Emitir</h2><pre><code>npm.cmd run access -- issue --label pc-notebook --ttl 30d</code></pre><p>O token bruto aparece somente nesta saída. Salve-o no gerenciador de segredos ou diretamente como variável de ambiente no PC remoto.</p>
+      <h2>Listar</h2><pre><code>npm.cmd run access -- list</code></pre><p>O status pode ser <code>active</code>, <code>expired</code> ou <code>revoked</code>. A sincronização do host remove acessos expirados do conjunto aceito pelo relay.</p>
+      <h2>Revogar</h2><pre><code>npm.cmd run access -- revoke device-XXXXXXXX
+npm.cmd run access -- revoke-all</code></pre><p>O host agent detecta a alteração, envia a nova sincronização e o relay fecha a sessão do dispositivo afetado. Com <code>revoke-all</code>, todos os clientes são cortados.</p>
+      <div class="notice"><strong>Não há painel público:</strong> isso é intencional. A emissão e a revogação exigem acesso local à máquina que mantém a autenticação.</div>
+    </main>
+    <footer class="site-footer"><span>Fonte de verdade: host central</span><a href="/">Início</a></footer><script src="/site.js" defer></script>
+  </body>
+</html>
