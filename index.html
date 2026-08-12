@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Portal de Acesso | Fecart</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css">
+  <link rel="stylesheet" href="style.css">
+  <!-- SDK do Supabase JS -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+  <!-- Ambient background glow effects -->
+  <div class="ambient-glow glow-1"></div>
+  <div class="ambient-glow glow-2"></div>
+  <div class="grid-overlay"></div>
+
+  <main class="app-container" id="app-container">
+    <!-- LOGIN CARD -->
+    <section id="login-card" class="card login-card active">
+      <div class="card-header">
+        <div class="logo-badge">
+          <i class="ri-shield-keyhole-line"></i>
+        </div>
+        <h1>Portal de Acesso</h1>
+        <p class="subtitle">Insira suas credenciais para continuar</p>
+      </div>
+
+      <!-- Alert Notification Banner -->
+      <div id="alert-banner" class="alert-banner hidden" role="alert">
+        <i class="ri-error-warning-line alert-icon"></i>
+        <span id="alert-message">Usuário ou senha incorretos.</span>
+      </div>
+
+      <form id="login-form" novalidate autocomplete="off">
+        <div class="form-group">
+          <label for="username">Usuário</label>
+          <div class="input-wrapper">
+            <i class="ri-user-3-line input-icon"></i>
+            <input 
+              type="text" 
+              id="username" 
+              name="username" 
+              placeholder="Digite seu usuário" 
+              required
+              autofocus
+            >
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="password">Senha</label>
+          <div class="input-wrapper">
+            <i class="ri-lock-2-line input-icon"></i>
+            <input 
+              type="password" 
+              id="password" 
+              name="password" 
+              placeholder="Digite sua senha" 
+              required
+            >
+            <button type="button" id="toggle-password" class="toggle-password-btn" aria-label="Mostrar ou ocultar senha">
+              <i class="ri-eye-line" id="eye-icon"></i>
+            </button>
+          </div>
+        </div>
+
+        <button type="submit" id="btn-login" class="btn btn-primary">
+          <span>Entrar no Sistema</span>
+          <i class="ri-arrow-right-line"></i>
+        </button>
+      </form>
+
+      <div class="card-footer">
+        <p><i class="ri-lock-line"></i> Conexão Segura e Autenticada</p>
+      </div>
+    </section>
+
+    <!-- DASHBOARD / LOGGED AREA -->
+    <section id="dashboard-card" class="card dashboard-card hidden">
+      <div class="dashboard-header">
+        <h2 class="welcome-msg">Bem-vindo(a), <strong id="logged-username-display">---</strong></h2>
+
+        <button type="button" id="btn-logout" class="btn btn-secondary btn-logout-top">
+          <i class="ri-logout-box-r-line"></i>
+          <span>Sair</span>
+        </button>
+      </div>
+
+      <!-- PAINEL DE METRICAS, CRONÔMETRO E TOKENS DA RESERVA -->
+      <section class="reservation-dashboard-section" id="reservation-timer-card">
+        <!-- CRONÔMETRO DA RESERVA EM TEMPO REAL -->
+        <div class="timer-card">
+          <div class="timer-header">
+            <span class="timer-title"><i class="ri-timer-flash-line"></i> Cronômetro da Reserva</span>
+            <span id="timer-status-badge" class="timer-badge badge-pending">Sem Reserva Ativa</span>
+          </div>
+
+          <div class="timer-display-container">
+            <div id="countdown-timer-display" class="countdown-timer">00:00:00</div>
+            <p id="countdown-subtext" class="countdown-subtext">Nenhum agendamento ativo no momento.</p>
+          </div>
+
+          <div class="progress-bar-track">
+            <div id="timer-progress-fill" class="progress-bar-fill" style="width: 0%;"></div>
+          </div>
+        </div>
+
+        <!-- MÉTROS DE LIMITE (%) E USO DE TOKENS -->
+        <div class="metrics-grid">
+          <!-- CARD 1: LIMITE RESTANTE DE USO (%) -->
+          <div class="metric-card">
+            <div class="metric-header">
+              <span class="metric-label"><i class="ri-pie-chart-line"></i> Limite Restante</span>
+              <span id="limit-percent-badge" class="metric-badge">100%</span>
+            </div>
+            <div class="meter-bar-track">
+              <div id="limit-meter-fill" class="meter-bar-fill green-fill" style="width: 100%;"></div>
+            </div>
+            <p class="metric-footnote">Limite de acesso individual da conta.</p>
+          </div>
+
+          <!-- CARD 2: USO DE TOKENS -->
+          <div class="metric-card">
+            <div class="metric-header">
+              <span class="metric-label"><i class="ri-cpu-line"></i> Uso de Tokens</span>
+              <span id="token-usage-counter" class="metric-value">0 / 10.000</span>
+            </div>
+            <div class="meter-bar-track">
+              <div id="token-meter-fill" class="meter-bar-fill purple-fill" style="width: 0%;"></div>
+            </div>
+            <p class="metric-footnote">Tokens de IA consumidos durante a sessão.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- PAINEL DE AÇÕES DE AGENDAMENTO -->
+      <section class="user-actions-section">
+        <div class="action-cards-grid">
+          <!-- BOTÃO 1: NOVO AGENDAMENTO -->
+          <div class="action-card" id="btn-open-schedule-modal">
+            <div class="action-icon bg-purple">
+              <i class="ri-calendar-add-line"></i>
+            </div>
+            <div class="action-content">
+              <h4>Fazer Agendamento</h4>
+              <p>Escolha a data e o horário no calendário para reservar.</p>
+            </div>
+            <i class="ri-arrow-right-s-line action-arrow"></i>
+          </div>
+
+          <!-- BOTÃO 2: VER DIAS AGENDADOS / CALENDÁRIO -->
+          <div class="action-card" id="btn-open-view-appointments">
+            <div class="action-icon bg-cyan">
+              <i class="ri-calendar-check-line"></i>
+            </div>
+            <div class="action-content">
+              <h4>Ver Calendário / Dias Agendados</h4>
+              <p>Consulte as datas agendadas e ocupadas no sistema.</p>
+            </div>
+            <i class="ri-arrow-right-s-line action-arrow"></i>
+          </div>
+        </div>
+      </section>
+
+      <!-- ADMIN CONTROL PANEL (APENAS PARA ADMIN) -->
+      <section id="admin-panel" class="admin-panel hidden">
+        <div class="admin-tabs">
+          <button type="button" class="tab-btn active" id="tab-btn-users">
+            <i class="ri-group-line"></i> Usuários
+          </button>
+          <button type="button" class="tab-btn" id="tab-btn-appointments">
+            <i class="ri-calendar-event-line"></i> Agendamentos no Supabase (<span id="admin-appointment-count">0</span>)
+          </button>
+          <button type="button" class="tab-btn tab-btn-config" id="tab-btn-supabase-config">
+            <i class="ri-database-2-line"></i> Supabase
+          </button>
+        </div>
+
+        <!-- ABA USUÁRIOS -->
+        <div id="tab-content-users" class="tab-content active">
+          <div class="admin-panel-header">
+            <div class="admin-title">
+              <i class="ri-user-settings-line"></i>
+              <h3>Gerenciamento de Usuários</h3>
+            </div>
+            <button type="button" id="btn-add-user" class="btn btn-primary btn-sm">
+              <i class="ri-user-add-line"></i>
+              <span>Novo Usuário</span>
+            </button>
+          </div>
+
+          <div class="admin-search-bar">
+            <i class="ri-search-line search-icon"></i>
+            <input type="text" id="admin-search-input" placeholder="Buscar por usuário ou turma...">
+          </div>
+
+          <div class="table-container">
+            <table class="user-table">
+              <thead>
+                <tr>
+                  <th>Usuário</th>
+                  <th>Senha</th>
+                  <th>Turma</th>
+                  <th class="text-right">Ações</th>
+                </tr>
+              </thead>
+              <tbody id="user-table-body">
+                <!-- Linhas dinâmicas -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- ABA AGENDAMENTOS E AUDITORIA (ADMIN) -->
+        <div id="tab-content-appointments" class="tab-content hidden">
+          <div class="admin-panel-header">
+            <div class="admin-title">
+              <i class="ri-shield-check-line"></i>
+              <h3>Base de Agendamentos Autenticados</h3>
+            </div>
+            <div class="db-status-badge" id="db-status-badge">
+              <i class="ri-database-2-fill"></i> <span id="db-status-text">Base Local</span>
+            </div>
+          </div>
+
+          <div class="table-container">
+            <table class="user-table">
+              <thead>
+                <tr>
+                  <th>Data & Horário</th>
+                  <th>Usuário</th>
+                  <th>Turma</th>
+                  <th>Limite (%)</th>
+                  <th>Tokens</th>
+                  <th>Token de Segurança</th>
+                  <th class="text-right">Ações</th>
+                </tr>
+              </thead>
+              <tbody id="admin-appointments-table-body">
+                <!-- Agendamentos dinâmicos -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <!-- MODAL 1: FAZER AGENDAMENTO (CALENDÁRIO E HORÁRIO) -->
+  <div id="schedule-modal" class="modal-overlay hidden">
+    <div class="modal-card modal-lg">
+      <div class="modal-header">
+        <h3><i class="ri-calendar-event-line"></i> Selecione Data e Horário para Agendar</h3>
+        <button type="button" class="btn-close" id="btn-close-schedule-modal">
+          <i class="ri-close-line"></i>
+        </button>
+      </div>
+
+      <div class="modal-body">
+        <div class="calendar-wrapper">
+          <div class="calendar-header">
+            <button type="button" id="cal-prev-month" class="btn-icon"><i class="ri-arrow-left-s-line"></i></button>
+            <h4 id="cal-month-year-display">Agosto 2026</h4>
+            <button type="button" id="cal-next-month" class="btn-icon"><i class="ri-arrow-right-s-line"></i></button>
+          </div>
+
+          <div class="calendar-weekdays">
+            <span>Dom</span><span>Seg</span><span>Ter</span><span>Qua</span><span>Qui</span><span>Sex</span><span>Sáb</span>
+          </div>
+
+          <div class="calendar-days-grid" id="cal-days-grid">
+            <!-- Gerado dinamicamente -->
+          </div>
+
+          <div class="calendar-legend">
+            <span class="legend-item"><span class="dot available"></span> Disponível</span>
+            <span class="legend-item"><span class="dot booked"></span> Ocupado (1/1)</span>
+            <span class="legend-item"><span class="dot selected"></span> Selecionado</span>
+          </div>
+        </div>
+
+        <!-- SELETOR DE HORÁRIO INTERATIVO (RELÓGIO) -->
+        <div class="clock-picker-wrapper">
+          <div class="clock-picker-header">
+            <span class="clock-title"><i class="ri-time-line"></i> Selecione o Horário no Relógio</span>
+            <div class="digital-time-badge" title="Clique para digitar o horário manualmente">
+              <input type="text" id="input-manual-hours" class="manual-time-input" maxlength="2" value="14" aria-label="Digitar Hora">:
+              <input type="text" id="input-manual-minutes" class="manual-time-input" maxlength="2" value="00" aria-label="Digitar Minutos">
+              <i class="ri-edit-2-line edit-icon-indicator"></i>
+            </div>
+          </div>
+
+          <div class="clock-picker-body">
+            <!-- MOSTRADOR DO RELÓGIO ANALÓGICO -->
+            <div class="analog-clock" id="analog-clock-dial">
+              <div class="clock-center-dot"></div>
+              <div class="clock-hand hour-hand" id="clock-hour-hand"></div>
+              <div class="clock-hand minute-hand" id="clock-minute-hand"></div>
+              
+              <!-- Números das Horas no Mostrador -->
+              <span class="clock-num num-12" data-hour="12">12</span>
+              <span class="clock-num num-1" data-hour="1">1</span>
+              <span class="clock-num num-2" data-hour="2">2</span>
+              <span class="clock-num num-3" data-hour="3">3</span>
+              <span class="clock-num num-4" data-hour="4">4</span>
+              <span class="clock-num num-5" data-hour="5">5</span>
+              <span class="clock-num num-6" data-hour="6">6</span>
+              <span class="clock-num num-7" data-hour="7">7</span>
+              <span class="clock-num num-8" data-hour="8">8</span>
+              <span class="clock-num num-9" data-hour="9">9</span>
+              <span class="clock-num num-10" data-hour="10">10</span>
+              <span class="clock-num num-11" data-hour="11">11</span>
+            </div>
+
+            <!-- PAINEL DE AJUSTE RÁPIDO DO RELÓGIO -->
+            <div class="clock-controls">
+              <div class="period-toggle">
+                <button type="button" id="btn-period-am" class="period-btn">Manhã (AM)</button>
+                <button type="button" id="btn-period-pm" class="period-btn active">Tarde/Noite (PM)</button>
+              </div>
+
+              <div class="time-adjusters">
+                <div class="adjust-group">
+                  <label>Ajuste de Hora</label>
+                  <div class="adjust-btns">
+                    <button type="button" id="btn-hour-minus" class="btn-icon-sm"><i class="ri-subtract-line"></i></button>
+                    <span id="adjust-hour-val" class="adjust-val">14h</span>
+                    <button type="button" id="btn-hour-plus" class="btn-icon-sm"><i class="ri-add-line"></i></button>
+                  </div>
+                </div>
+
+                <div class="adjust-group">
+                  <label>Ajuste de Minutos</label>
+                  <div class="adjust-btns">
+                    <button type="button" id="btn-min-minus" class="btn-icon-sm"><i class="ri-subtract-line"></i></button>
+                    <span id="adjust-min-val" class="adjust-val">00m</span>
+                    <button type="button" id="btn-min-plus" class="btn-icon-sm"><i class="ri-add-line"></i></button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="duration-info-notice">
+            <i class="ri-information-fill notice-icon"></i>
+            <div class="notice-content">
+              <strong>Duração da Reserva: 3 Horas</strong>
+              <p>O agendamento terá duração padrão fixa de 3 horas a partir do horário selecionado no relógio.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="selected-date-info">
+          <p id="selected-date-text">Nenhuma data selecionada.</p>
+          <button type="button" id="btn-confirm-schedule" class="btn btn-primary" disabled>
+            <span>Confirmar Agendamento</span>
+            <i class="ri-check-line"></i>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 2: VER DIAS AGENDADOS -->
+  <div id="view-appointments-modal" class="modal-overlay hidden">
+    <div class="modal-card modal-lg">
+      <div class="modal-header">
+        <h3><i class="ri-calendar-check-line"></i> Dias Agendados no Sistema</h3>
+        <button type="button" class="btn-close" id="btn-close-view-modal">
+          <i class="ri-close-line"></i>
+        </button>
+      </div>
+
+      <div class="modal-body">
+        <div class="calendar-wrapper">
+          <div class="calendar-header">
+            <button type="button" id="view-cal-prev" class="btn-icon"><i class="ri-arrow-left-s-line"></i></button>
+            <h4 id="view-cal-month-year">Agosto 2026</h4>
+            <button type="button" id="view-cal-next" class="btn-icon"><i class="ri-arrow-right-s-line"></i></button>
+          </div>
+
+          <div class="calendar-weekdays">
+            <span>Dom</span><span>Seg</span><span>Ter</span><span>Qua</span><span>Qui</span><span>Sex</span><span>Sáb</span>
+          </div>
+
+          <div class="calendar-days-grid" id="view-cal-days-grid">
+            <!-- Gerado dinamicamente -->
+          </div>
+        </div>
+
+        <div class="booked-list-container">
+          <h4>Lista de Dias Ocupados & Horários:</h4>
+          <div id="booked-dates-list" class="booked-dates-list">
+            <!-- Lista dinâmica -->
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 3: ADICIONAR / EDITAR USUÁRIO (ADMIN) -->
+  <div id="user-modal" class="modal-overlay hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="modal-title">Adicionar Usuário</h3>
+        <button type="button" id="btn-close-user-modal" class="btn-close">
+          <i class="ri-close-line"></i>
+        </button>
+      </div>
+      
+      <form id="user-modal-form">
+        <input type="hidden" id="edit-user-index" value="-1">
+
+        <div class="form-group">
+          <label for="modal-username">Usuário</label>
+          <div class="input-wrapper">
+            <i class="ri-user-line input-icon"></i>
+            <input type="text" id="modal-username" placeholder="Nome de usuário" required>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="modal-password">Senha (ou senhas separadas por vírgula)</label>
+          <div class="input-wrapper">
+            <i class="ri-key-2-line input-icon"></i>
+            <input type="text" id="modal-password" placeholder="Digite a senha" required>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="modal-turma">Turma / Categoria</label>
+          <div class="input-wrapper">
+            <i class="ri-group-line input-icon"></i>
+            <input type="text" id="modal-turma" placeholder="Ex: 1IA - A, 2IA - B" required>
+          </div>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" id="btn-cancel-modal" class="btn btn-secondary">Cancelar</button>
+          <button type="submit" id="btn-save-user" class="btn btn-primary">Salvar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL 4: CONFIGURAÇÕES DO SUPABASE -->
+  <div id="supabase-modal" class="modal-overlay hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3><i class="ri-database-2-line"></i> Conectar ao Banco Supabase</h3>
+        <button type="button" id="btn-close-supabase-modal" class="btn-close">
+          <i class="ri-close-line"></i>
+        </button>
+      </div>
+
+      <form id="supabase-config-form">
+        <p class="modal-description">Insira a URL e a chave pública (Anon Key) do seu projeto Supabase para sincronização direta em nuvem.</p>
+        
+        <div class="form-group">
+          <label for="supabase-url">Supabase URL</label>
+          <div class="input-wrapper">
+            <i class="ri-link input-icon"></i>
+            <input type="url" id="supabase-url" placeholder="https://xyz.supabase.co">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="supabase-key">Supabase Anon Key</label>
+          <div class="input-wrapper">
+            <i class="ri-key-fill input-icon"></i>
+            <input type="password" id="supabase-key" placeholder="eyJhbGciOiJIUzI1NiI...">
+          </div>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" id="btn-test-supabase" class="btn btn-secondary">Testar Conexão</button>
+          <button type="submit" class="btn btn-primary">Salvar e Conectar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL 5: DETALHES DA AUDITORIA DO AGENDAMENTO -->
+  <div id="audit-modal" class="modal-overlay hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3><i class="ri-shield-keyhole-line"></i> Registro de Autenticação</h3>
+        <button type="button" id="btn-close-audit-modal" class="btn-close">
+          <i class="ri-close-line"></i>
+        </button>
+      </div>
+
+      <div class="audit-details-body" id="audit-details-content">
+        <!-- Preenchido pelo JS -->
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
