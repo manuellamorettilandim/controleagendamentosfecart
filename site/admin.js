@@ -172,10 +172,10 @@
     }
     grid.innerHTML = state.accounts.map((account) => {
       const limits = Object.values(account.rateLimits || {});
-      const limitMarkup = limits.length ? limits.flatMap((limit) => [["principal", limit.primary], ["secundária", limit.secondary]]).filter(([, window]) => window).map(([windowLabel, window]) => {
+      const limitMarkup = limits.length ? limits.flatMap((rateLimit) => [[rateLimit, "principal", rateLimit.primary], [rateLimit, "secundária", rateLimit.secondary]]).filter(([, , window]) => window).map(([rateLimit, windowLabel, window]) => {
         const percent = window.usedPercent === null || window.usedPercent === undefined ? null : Math.max(0, Math.min(100, Number(window.usedPercent)));
         const credits = window.credits && Object.keys(window.credits).length ? ` · créditos ${Object.values(window.credits).map((value) => String(value)).join("/")}` : "";
-        return `<div class="limit-row"><div><strong>${escapeHtml(limit.limitName || limit.limitId)} · ${escapeHtml(windowLabel)}</strong><span>${percent === null ? "indisponível" : `${percent}% usado`}</span></div><div class="limit-track"><i style="width:${percent === null ? 0 : percent}%"></i></div><small>${window.windowDurationMins ? `${window.windowDurationMins} min · ` : ""}${formatReset(window.resetsAt)}${escapeHtml(credits)}</small></div>`;
+        return `<div class="limit-row"><div><strong>${escapeHtml(rateLimit.limitName || rateLimit.limitId)} · ${escapeHtml(windowLabel)}</strong><span>${percent === null ? "indisponível" : `${percent}% usado`}</span></div><div class="limit-track"><i style="width:${percent === null ? 0 : percent}%"></i></div><small>${window.windowDurationMins ? `${window.windowDurationMins} min · ` : ""}${formatReset(window.resetsAt)}${escapeHtml(credits)}</small></div>`;
       }).join("") : `<p class="admin-muted">Limites não retornados pelo app-server.</p>`;
       const usage = account.usage?.dailyUsageBuckets?.slice(-7) || [];
       const usageText = usage.length ? `${usage.length} dias observados · ${usage.reduce((total, bucket) => total + Number(bucket.tokens || 0), 0).toLocaleString("pt-BR")} tokens` : "uso diário indisponível";
