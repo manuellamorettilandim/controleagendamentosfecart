@@ -359,6 +359,12 @@ test("health and readiness endpoints expose no secret material", async () => {
     const admin = await fetch(`http://127.0.0.1:${port}/admin`);
     assert.equal(admin.status, 200);
     assert.match(await admin.text(), /Painel|Controle/);
+    const login = await fetch(`http://127.0.0.1:${port}/login`);
+    assert.equal(login.status, 200);
+    assert.match(await login.text(), /login-form|Entrar/);
+    const authScript = await fetch(`http://127.0.0.1:${port}/auth.js`);
+    assert.equal(authScript.status, 200);
+    assert.match(await authScript.text(), /RemoteCodexAuth/);
     const adminConfig = await fetch(`http://127.0.0.1:${port}/api/admin/config`);
     assert.equal(adminConfig.status, 503);
   } finally {

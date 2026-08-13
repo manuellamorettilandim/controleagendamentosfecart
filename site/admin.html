@@ -4,46 +4,44 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="description" content="Painel administrativo do Remote Codex.">
-    <title>Admin · Remote Codex</title>
+    <title>Painel · Remote Codex</title>
     <link rel="stylesheet" href="/styles.css">
   </head>
   <body class="admin-page">
-    <main class="admin-shell">
-      <section id="login-view" class="admin-login">
-        <div class="admin-brand-mark">RC</div>
-        <p class="admin-eyebrow">REMOTE CODEX · ADMIN</p>
-        <h1>Controle central.</h1>
-        <p class="admin-muted">Entre com um usuário autorizado do Supabase. O login do ChatGPT continua apenas na máquina central.</p>
-        <form id="login-form" class="admin-form">
-          <label>Email<input id="login-email" type="email" autocomplete="username" required></label>
-          <label>Senha<input id="login-password" type="password" autocomplete="current-password" required></label>
-          <button class="admin-button primary" type="submit">Entrar</button>
-          <p id="login-error" class="admin-error" role="alert"></p>
-        </form>
-      </section>
-
-      <section id="app-view" class="admin-app" hidden>
-        <header class="admin-topbar">
-          <div>
-            <p class="admin-eyebrow">REMOTE CODEX · ADMIN</p>
-            <h1>Painel</h1>
-          </div>
-          <div class="admin-session"><span id="session-email"></span><span id="session-role" class="admin-badge"></span><button id="logout-button" class="admin-button ghost">Sair</button></div>
-        </header>
-        <div id="global-status" class="admin-status" role="status"></div>
-        <nav class="admin-tabs" aria-label="Áreas administrativas">
-          <button class="active" data-tab="accounts">Contas</button>
-          <button data-tab="devices">Dispositivos</button>
-          <button data-tab="admins" id="admins-tab">Administradores</button>
+    <main id="app-view" class="admin-app">
+      <aside class="admin-sidebar">
+        <a class="admin-sidebar-brand" href="/admin" aria-label="Remote Codex, início do painel">
+          <span class="admin-brand-mark">RC</span>
+          <span><strong>Remote Codex</strong><small>Controle central</small></span>
+        </a>
+        <div class="admin-sidebar-label">Painel</div>
+        <nav class="admin-sidebar-nav" aria-label="Áreas administrativas">
+          <button class="active" data-tab="accounts" type="button"><span aria-hidden="true">⌂</span> Visão geral</button>
+          <button data-tab="devices" type="button"><span aria-hidden="true">⌁</span> Dispositivos</button>
+          <button data-tab="admins" id="admins-tab" type="button"><span aria-hidden="true">♙</span> Administradores</button>
         </nav>
+        <div class="admin-sidebar-spacer"></div>
+        <div class="admin-sidebar-note"><strong>Segurança primeiro</strong><span>O login OpenAI nunca sai do host central.</span></div>
+        <div class="admin-sidebar-user">
+          <div class="admin-user-avatar">R</div>
+          <div class="admin-user-copy"><strong id="session-email">usuário autorizado</strong><span id="session-role" class="admin-badge"></span></div>
+          <button id="logout-button" class="icon-button" type="button" title="Sair">↪</button>
+        </div>
+      </aside>
+
+      <section class="admin-main">
+        <header class="admin-topbar">
+          <div><p class="admin-eyebrow">REMOTE CODEX · ADMIN</p><h1>Controle central.</h1></div>
+          <div id="global-status" class="admin-status" role="status"></div>
+        </header>
 
         <section id="tab-accounts" class="admin-tab-panel">
-          <div class="admin-section-head"><div><p class="admin-eyebrow">ACCOUNTS</p><h2>Contas ChatGPT</h2><p class="admin-muted">Cada conta usa um <code>CODEX_HOME</code> isolado no host central. A troca do padrão só afeta novas sessões não vinculadas.</p></div><div class="admin-actions"><button id="refresh-accounts" class="admin-button ghost">Atualizar</button><button id="add-account" class="admin-button primary">Adicionar conta</button></div></div>
+          <div class="admin-section-head"><div><p class="admin-eyebrow">OVERVIEW</p><h2>Contas ChatGPT</h2><p class="admin-muted">Cada conta usa um <code>CODEX_HOME</code> isolado no host central. A troca do padrão só afeta novas sessões não vinculadas.</p></div><div class="admin-actions"><button id="refresh-accounts" class="admin-button ghost">Atualizar</button><button id="add-account" class="admin-button primary">Adicionar conta</button></div></div>
           <div id="accounts-grid" class="admin-card-grid"></div>
         </section>
 
         <section id="tab-devices" class="admin-tab-panel" hidden>
-          <div class="admin-section-head"><div><p class="admin-eyebrow">DEVICES</p><h2>Dispositivos autorizados</h2><p class="admin-muted">Cada conta pode ter um token não revogado. O token bruto fica disponível apenas no modal de emissão; depois, apenas fingerprint, política e uso observado permanecem.</p></div><div class="admin-actions"><button id="refresh-devices" class="admin-button ghost">Atualizar</button><button id="issue-device" class="admin-button primary">Emitir token</button></div></div>
+          <div class="admin-section-head"><div><p class="admin-eyebrow">ACCESS TOKENS</p><h2>Dispositivos autorizados</h2><p class="admin-muted">Cada conta pode ter um token não revogado. O token bruto fica disponível apenas no modal de emissão; depois, apenas fingerprint, política e uso observado permanecem.</p></div><div class="admin-actions"><button id="refresh-devices" class="admin-button ghost">Atualizar</button><button id="issue-device" class="admin-button primary">Emitir token</button></div></div>
           <div id="devices-note" class="admin-status"></div>
           <div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Dispositivo</th><th>Conta</th><th>Política</th><th>Uso observado</th><th>Status</th><th>Ações</th></tr></thead><tbody id="devices-body"></tbody></table></div>
         </section>
@@ -121,6 +119,7 @@
         <div class="admin-actions admin-dialog-actions"><button id="action-cancel" class="admin-button ghost" type="button">Cancelar</button><button id="action-confirm" class="admin-button danger" type="submit">Confirmar</button></div>
       </form>
     </dialog>
+    <script src="/auth.js" defer></script>
     <script src="/admin.js" defer></script>
   </body>
 </html>

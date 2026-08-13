@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Login administrativo do Remote Codex.">
+    <title>Entrar · Remote Codex</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body class="admin-page login-page">
+    <main class="admin-shell">
+      <section class="admin-login">
+        <a class="admin-login-brand" href="/">Remote Codex</a>
+        <div class="admin-brand-mark">RC</div>
+        <p class="admin-eyebrow">REMOTE CODEX · ADMIN</p>
+        <h1>Entrar no controle central.</h1>
+        <p class="admin-muted">Use seu usuário autorizado do Supabase. O login do ChatGPT continua exclusivamente na máquina central.</p>
+        <form id="login-form" class="admin-form">
+          <label>Email<input id="login-email" type="email" autocomplete="username" required></label>
+          <label>Senha<input id="login-password" type="password" autocomplete="current-password" required></label>
+          <button id="login-submit" class="admin-button primary" type="submit">Entrar</button>
+          <p id="login-error" class="admin-error" role="alert"></p>
+        </form>
+        <p id="login-note" class="admin-status"></p>
+      </section>
+    </main>
+    <script src="/auth.js" defer></script>
+    <script src="/login.js" defer></script>
+  </body>
+</html>

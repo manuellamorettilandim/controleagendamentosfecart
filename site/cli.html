@@ -13,7 +13,7 @@ $env:RELAY_AGENT_TOKEN = "SEGREDO_DO_TUNEL"
 npm.cmd run host</code></pre>
       <p>O host agent inicia o app-server local em <code>127.0.0.1:4500</code>, abre o túnel de saída e sincroniza os hashes dos dispositivos. O segredo do túnel fica somente no host.</p>
       <h2>2. Emitir o token do dispositivo</h2>
-      <p>Abra o <a href="/admin">painel administrativo</a>, entre com seu usuário Supabase, clique em <strong>Dispositivos</strong> e use <strong>Emitir token</strong>. Escolha a conta, o teto semanal e a data de expiração. O modal oferece botões para copiar o token, a variável PowerShell ou o comando completo.</p>
+      <p>Abra o <a href="/login">painel administrativo</a>, entre com seu usuário Supabase, clique em <strong>Dispositivos</strong> e use <strong>Emitir token</strong>. Escolha a conta, o teto semanal e a data de expiração. O modal oferece botões para copiar o token, a variável PowerShell ou o comando completo.</p>
       <p>Copie o token enquanto o modal estiver aberto. O arquivo local de acesso guarda apenas o hash; não há comando para recuperar o token depois.</p>
       <p>Fallback local, somente no host central: <code>npm.cmd run access -- issue --label pc-notebook --ttl 30d</code>. Esse caminho não configura a política de conta do painel.</p>
       <h2>3. No PC remoto</h2>

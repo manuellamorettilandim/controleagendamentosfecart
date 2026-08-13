@@ -3,8 +3,7 @@
 
   const state = {
     config: null,
-    accessToken: sessionStorage.getItem("remote_codex_admin_access") || "",
-    user: JSON.parse(sessionStorage.getItem("remote_codex_admin_user") || "null"),
+    user: null,
     role: "",
     accounts: [],
     devices: [],
@@ -16,17 +15,11 @@
   };
 
   const $ = (selector) => document.querySelector(selector);
-  const loginView = $("#login-view");
-  const appView = $("#app-view");
   const statusBox = $("#global-status");
 
   function setStatus(message, kind = "") {
     statusBox.textContent = message || "";
     statusBox.className = `admin-status ${kind}`.trim();
-  }
-
-  function setLoginError(message) {
-    $("#login-error").textContent = message || "";
   }
 
   function escapeHtml(value) {
@@ -108,34 +101,33 @@
     }
   }
 
-  async function loadConfig() {
-    const response = await fetch("/api/admin/config", { cache: "no-store" });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok || !data.supabaseUrl || !data.publishableKey) throw new Error(data.error || "Supabase Auth não está configurado no relay.");
-    state.config = data;
+  function redirectToLogin(expired = false) {
+    window.location.replace(expired ? "/login?expired=1" : "/login");
   }
 
-  async function supabasePasswordLogin(email, password) {
-    const response = await fetch(`${state.config.supabaseUrl}/auth/v1/token?grant_type=password`, {
-      method: "POST",
-      headers: { apikey: state.config.publishableKey, "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok || !data.access_token) throw new Error(data.error_description || data.msg || "Não foi possível entrar.");
-    state.accessToken = data.access_token;
-    state.user = data.user || { email };
-    sessionStorage.setItem("remote_codex_admin_access", state.accessToken);
-    sessionStorage.setItem("remote_codex_admin_user", JSON.stringify(state.user));
-  }
-
-  async function api(path, options = {}) {
-    const headers = { Accept: "application/json", ...(options.body === undefined ? {} : { "Content-Type": "application/json" }), ...(options.headers || {}) };
-    if (state.accessToken) headers.Authorization = `Bearer ${state.accessToken}`;
+  async function api(path, options = {}, allowRefresh = true) {
+    const auth = window.RemoteCodexAuth;
+    let session = auth.getSession();
+    if (!session?.access_token) {
+      redirectToLogin();
+      throw new Error("Sessão administrativa ausente.");
+    }
+    const headers = { Accept: "application/json", ...(options.body === undefined ? {} : { "Content-Type": "application/json" }), ...(options.headers || {}), Authorization: `Bearer ${session.access_token}` };
     const response = await fetch(path, { ...options, headers, cache: "no-store" });
     const data = await response.json().catch(() => ({}));
+    if (response.status === 401 && allowRefresh && session.refresh_token) {
+      try {
+        session = await auth.refreshSession(state.config);
+        return api(path, options, false);
+      } catch {
+        auth.clearSession();
+        redirectToLogin(true);
+        throw new Error("Sua sessão expirou. Entre novamente.");
+      }
+    }
     if (response.status === 401) {
-      logout();
+      auth.clearSession();
+      redirectToLogin(true);
       throw new Error("Sua sessão expirou. Entre novamente.");
     }
     if (response.status === 403) throw new Error(data.error || "Usuário autenticado, mas sem permissão para esta ação.");
@@ -144,8 +136,7 @@
   }
 
   async function showApp() {
-    loginView.hidden = true;
-    appView.hidden = false;
+    state.user = window.RemoteCodexAuth.getSession()?.user || null;
     $("#session-email").textContent = state.user?.email || "usuário autorizado";
     await refreshAll();
   }
@@ -400,15 +391,13 @@
     } catch (error) { $("#invite-form-error").textContent = error.message; }
   }
 
-  function logout() {
-    state.accessToken = ""; state.user = null; state.role = "";
-    sessionStorage.removeItem("remote_codex_admin_access"); sessionStorage.removeItem("remote_codex_admin_user");
-    appView.hidden = true; loginView.hidden = false; setLoginError("");
+  async function logout() {
+    await window.RemoteCodexAuth.signOut(state.config);
+    window.location.replace("/login");
   }
 
   function bind() {
-    $("#login-form").addEventListener("submit", async (event) => { event.preventDefault(); setLoginError(""); try { await supabasePasswordLogin($("#login-email").value, $("#login-password").value); await showApp(); } catch (error) { setLoginError(error.message); } });
-    $("#logout-button").addEventListener("click", logout);
+    $("#logout-button").addEventListener("click", () => void logout());
     $("#refresh-accounts").addEventListener("click", () => refreshAll().catch(() => undefined));
     $("#refresh-devices").addEventListener("click", () => refreshAll().catch(() => undefined));
     $("#add-account").addEventListener("click", openAccountDialog);
@@ -430,8 +419,16 @@
 
   async function init() {
     bind();
-    try { await loadConfig(); } catch (error) { setLoginError(error.message); return; }
-    if (state.accessToken) { try { await showApp(); return; } catch { logout(); } }
+    try {
+      state.config = await window.RemoteCodexAuth.loadConfig();
+      if (!window.RemoteCodexAuth.getSession()?.access_token) {
+        redirectToLogin();
+        return;
+      }
+      await showApp();
+    } catch (error) {
+      setStatus(error.message, "error");
+    }
   }
 
   void init();

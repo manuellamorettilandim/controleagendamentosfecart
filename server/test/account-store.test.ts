@@ -18,6 +18,11 @@ test("AccountStore keeps separate CODEX_HOME paths and switches only the default
     assert.notEqual(primary.appServerPort, secondary.appServerPort);
     assert.equal(await store.defaultId(), "primary");
 
+    const primaryAgain = await store.ensurePrimary({ accountId: "primary", label: "Renamed primary", codeHome: path.join(directory, "other-home"), appServerPort: 4599 });
+    assert.equal(primaryAgain.accountId, "primary");
+    assert.equal((await store.list()).length, 2);
+    assert.equal((await store.get(secondary.accountId))?.label, "Secondary");
+
     await store.setDefault(secondary.accountId);
     assert.equal(await store.defaultId(), secondary.accountId);
     assert.equal((await store.getDefault())?.accountId, secondary.accountId);
