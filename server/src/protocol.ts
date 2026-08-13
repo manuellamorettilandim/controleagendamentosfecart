@@ -17,6 +17,25 @@ export interface RelayDevice {
   revokedAt: string | null;
   disabledAt: string | null;
   lastSeenAt: string | null;
+  /** New devices are pinned to one central account; null keeps v1/v2 compatibility. */
+  accountId?: string | null;
+  /** Absolute ceiling in the account's weekly rate-limit window. */
+  weeklyLimitPercent?: number | null;
+  usage?: DeviceUsageSnapshot | null;
+}
+
+export interface DeviceUsageSnapshot {
+  windowResetsAt: string | null;
+  observedTokens: number;
+  observedInputTokens: number;
+  observedCachedInputTokens: number;
+  observedOutputTokens: number;
+  observedReasoningTokens: number;
+  lastUsageAt: string | null;
+  accountUsedPercent: number | null;
+  accountWindowDurationMins: number | null;
+  accountResetsAt: number | null;
+  usageLimitReachedAt: string | null;
 }
 
 export interface RateLimitWindow {
@@ -81,6 +100,7 @@ export interface AccountsSyncMessage {
 export type ControlCommand =
   | "access.issue"
   | "access.list"
+  | "access.update-policy"
   | "access.disable"
   | "access.enable"
   | "access.revoke"
@@ -216,7 +236,30 @@ function validDevice(value: unknown): value is RelayDevice {
     isString(value.expiresAt) &&
     (value.revokedAt === undefined || isNullableString(value.revokedAt)) &&
     (value.disabledAt === undefined || isNullableString(value.disabledAt)) &&
-    isNullableString(value.lastSeenAt)
+    isNullableString(value.lastSeenAt) &&
+    (value.accountId === undefined || isNullableString(value.accountId)) &&
+    (value.weeklyLimitPercent === undefined || value.weeklyLimitPercent === null || (typeof value.weeklyLimitPercent === "number" && Number.isFinite(value.weeklyLimitPercent) && value.weeklyLimitPercent >= 0 && value.weeklyLimitPercent <= 100)) &&
+    (value.usage === undefined || value.usage === null || validDeviceUsage(value.usage))
+  );
+}
+
+function validDeviceUsage(value: unknown): value is DeviceUsageSnapshot {
+  if (!isRecord(value)) return false;
+  const integerFields = [
+    "observedTokens",
+    "observedInputTokens",
+    "observedCachedInputTokens",
+    "observedOutputTokens",
+    "observedReasoningTokens",
+  ];
+  return (
+    isNullableString(value.windowResetsAt) &&
+    integerFields.every((field) => typeof value[field] === "number" && Number.isSafeInteger(value[field]) && value[field] >= 0) &&
+    isNullableString(value.lastUsageAt) &&
+    (value.accountUsedPercent === null || typeof value.accountUsedPercent === "number") &&
+    (value.accountWindowDurationMins === null || typeof value.accountWindowDurationMins === "number") &&
+    (value.accountResetsAt === null || typeof value.accountResetsAt === "number") &&
+    isNullableString(value.usageLimitReachedAt)
   );
 }
 
@@ -224,6 +267,7 @@ function validControlCommand(value: unknown): value is ControlCommand {
   return (
     value === "access.issue" ||
     value === "access.list" ||
+    value === "access.update-policy" ||
     value === "access.disable" ||
     value === "access.enable" ||
     value === "access.revoke" ||

@@ -225,6 +225,124 @@ test("relay fails closed when the central tunnel disappears and enforces expiry"
   }
 });
 
+test("relay routes a device to its bound account and enforces its observed weekly ceiling", async () => {
+  const relay = new RelayServer({
+    agentTokenHash: hashToken(agentToken),
+    host: "127.0.0.1",
+    port: 0,
+    siteDir: "site",
+    heartbeatTimeoutMs: 5_000,
+  });
+  await relay.listen();
+  const port = addressPort(relay);
+  const base = `ws://127.0.0.1:${port}`;
+  let tunnel: WebSocket | undefined;
+  let client: WebSocket | undefined;
+  try {
+    tunnel = await open(`${base}/tunnel`, { Authorization: `Bearer ${agentToken}` });
+    tunnel.send(encodeMessage({ v: PROTOCOL_VERSION, type: "register", hostId: "bound-account-test" }));
+    const accounts = syncAccounts();
+    if (accounts.type !== "accounts.sync") throw new Error("Expected accounts.sync test message");
+    accounts.accounts.push({
+      accountId: "secondary",
+      label: "Secondary",
+      email: "secondary@example.com",
+      planType: "pro",
+      authMode: "chatgpt",
+      status: "ready",
+      isDefault: false,
+      updatedAt: new Date().toISOString(),
+      rateLimits: {
+        weekly: {
+          limitId: "weekly",
+          limitName: "Weekly",
+          primary: { usedPercent: 50, windowDurationMins: 10_080, resetsAt: 1_900_000_000, credits: null },
+          secondary: null,
+          rateLimitReachedType: null,
+        },
+      },
+      usage: null,
+      error: null,
+    });
+    tunnel.send(encodeMessage(accounts));
+    tunnel.send(encodeMessage({
+      v: PROTOCOL_VERSION,
+      type: "access.sync",
+      devices: [{
+        ...syncDevice(),
+        accountId: "secondary",
+        weeklyLimitPercent: 40,
+        usage: {
+          windowResetsAt: new Date(1_900_000_000_000).toISOString(),
+          observedTokens: 10,
+          observedInputTokens: 8,
+          observedCachedInputTokens: 0,
+          observedOutputTokens: 2,
+          observedReasoningTokens: 0,
+          lastUsageAt: new Date().toISOString(),
+          accountUsedPercent: 50,
+          accountWindowDurationMins: 10_080,
+          accountResetsAt: 1_900_000_000,
+          usageLimitReachedAt: new Date().toISOString(),
+        },
+      }],
+    }));
+    await waitFor(() => relay.status(), (status) => status.ready && status.activeDevices === 0);
+    assert.equal(await rejectedStatus(base, { Authorization: `Bearer ${deviceToken}` }), 401);
+
+    tunnel.send(encodeMessage({
+      v: PROTOCOL_VERSION,
+      type: "accounts.sync",
+      defaultAccountId: "primary",
+      accounts: accounts.accounts.map((account) => account.accountId === "secondary"
+        ? {
+            ...account,
+            rateLimits: {
+              weekly: {
+                limitId: "weekly",
+                limitName: "Weekly",
+                primary: { usedPercent: 20, windowDurationMins: 10_080, resetsAt: 1_900_000_000, credits: null },
+                secondary: null,
+                rateLimitReachedType: null,
+              },
+            },
+          }
+        : account),
+    }));
+    tunnel.send(encodeMessage({
+      v: PROTOCOL_VERSION,
+      type: "access.sync",
+      devices: [{
+        ...syncDevice(),
+        accountId: "secondary",
+        weeklyLimitPercent: 40,
+        usage: {
+          windowResetsAt: new Date(1_900_000_000_000).toISOString(),
+          observedTokens: 10,
+          observedInputTokens: 8,
+          observedCachedInputTokens: 0,
+          observedOutputTokens: 2,
+          observedReasoningTokens: 0,
+          lastUsageAt: new Date().toISOString(),
+          accountUsedPercent: 20,
+          accountWindowDurationMins: 10_080,
+          accountResetsAt: 1_900_000_000,
+          usageLimitReachedAt: null,
+        },
+      }],
+    }));
+    await waitFor(() => relay.status(), (status) => status.ready && status.activeDevices === 1);
+    client = await open(base, { Authorization: `Bearer ${deviceToken}` });
+    const opened = await nextDecodedMessage(tunnel);
+    assert.equal(opened.type, "stream.open");
+    assert.equal(opened.type === "stream.open" ? opened.accountId : null, "secondary");
+  } finally {
+    client?.terminate();
+    tunnel?.terminate();
+    await relay.close();
+  }
+});
+
 test("health and readiness endpoints expose no secret material", async () => {
   const relay = new RelayServer({ agentTokenHash: hashToken(agentToken), host: "127.0.0.1", port: 0, siteDir: "site" });
   await relay.listen();

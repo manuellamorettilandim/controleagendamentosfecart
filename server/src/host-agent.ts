@@ -6,7 +6,13 @@ import { fileURLToPath } from "node:url";
 import { WebSocket } from "ws";
 import type { RawData } from "ws";
 
-import { AccessStore, defaultCodexHome, type DeviceAccess } from "./access-store.js";
+import {
+  AccessStore,
+  defaultCodexHome,
+  type DeviceAccess,
+  type DeviceUsageCounters,
+  type UsageObservation,
+} from "./access-store.js";
 import {
   AccountStore,
   defaultAccountRegistryPath,
@@ -21,7 +27,10 @@ import {
   encodeMessage,
   PROTOCOL_VERSION,
   type AccountSnapshot,
+  type AccountRateLimit,
+  type RateLimitWindow,
   type ControlRequestMessage,
+  type DeviceUsageSnapshot,
   type RelayDevice,
   type StreamDataMessage,
   type StreamOpenMessage,
@@ -65,6 +74,7 @@ interface PendingFrame {
 
 interface LocalStream {
   streamId: string;
+  deviceId: string;
   accountId: string;
   socket: WebSocket;
   pending: PendingFrame[];
@@ -79,8 +89,11 @@ interface PublicDevice {
   revokedAt: string | null;
   disabledAt: string | null;
   lastSeenAt: string | null;
-  status: "active" | "disabled" | "revoked" | "expired";
+  status: "active" | "disabled" | "revoked" | "expired" | "limited";
   fingerprint: string;
+  accountId: string | null;
+  weeklyLimitPercent: number;
+  usage: DeviceUsageSnapshot;
 }
 
 function positiveNumber(value: string | undefined, fallback: number): number {
@@ -129,8 +142,77 @@ function streamClose(streamId: string, code: number, reason: string): WireMessag
   return { v: PROTOCOL_VERSION, type: "stream.close", streamId, code, reason: reason.slice(0, 120) };
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object";
+}
+
+function nonNegativeNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
+}
+
+function usageCounters(value: unknown): DeviceUsageCounters | null {
+  if (!isRecord(value)) return null;
+  const totalTokens = nonNegativeNumber(value.totalTokens);
+  const inputTokens = nonNegativeNumber(value.inputTokens);
+  const cachedInputTokens = nonNegativeNumber(value.cachedInputTokens);
+  const outputTokens = nonNegativeNumber(value.outputTokens);
+  const reasoningOutputTokens = nonNegativeNumber(value.reasoningOutputTokens);
+  if ([totalTokens, inputTokens, cachedInputTokens, outputTokens, reasoningOutputTokens].some((field) => field === null)) return null;
+  return {
+    totalTokens: Math.floor(totalTokens as number),
+    inputTokens: Math.floor(inputTokens as number),
+    cachedInputTokens: Math.floor(cachedInputTokens as number),
+    outputTokens: Math.floor(outputTokens as number),
+    reasoningOutputTokens: Math.floor(reasoningOutputTokens as number),
+  };
+}
+
+function usageObservationFromFrame(raw: RawData, isBinary: boolean): Omit<UsageObservation, "accountUsedPercent" | "accountWindowDurationMins" | "accountResetsAt"> & { threadId: string } | null {
+  if (isBinary) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawToText(raw)) as unknown;
+  } catch {
+    return null;
+  }
+  if (!isRecord(parsed) || parsed.method !== "thread/tokenUsage/updated" || !isRecord(parsed.params)) return null;
+  const params = parsed.params;
+  const threadId = typeof params.threadId === "string" ? params.threadId : null;
+  const tokenUsage = isRecord(params.tokenUsage) ? params.tokenUsage : null;
+  const total = usageCounters(tokenUsage?.total);
+  if (!threadId || !total) return null;
+  return {
+    threadId,
+    total,
+    last: usageCounters(tokenUsage?.last),
+  };
+}
+
+function weeklyRateLimit(snapshot: AccountSnapshot | null | undefined): RateLimitWindow | null {
+  if (!snapshot) return null;
+  const windows: RateLimitWindow[] = [];
+  for (const limit of Object.values(snapshot.rateLimits) as AccountRateLimit[]) {
+    if (limit.primary) windows.push(limit.primary);
+    if (limit.secondary) windows.push(limit.secondary);
+  }
+  return windows.sort((left, right) => (right.windowDurationMins ?? 0) - (left.windowDurationMins ?? 0))[0] ?? null;
+}
+
 function asRelayDevice(device: DeviceAccess): RelayDevice {
-  return { ...device };
+  const { threadTotals: _threadTotals, ...usage } = device.usage;
+  return {
+    deviceId: device.deviceId,
+    label: device.label,
+    tokenHash: device.tokenHash,
+    createdAt: device.createdAt,
+    expiresAt: device.expiresAt,
+    revokedAt: device.revokedAt,
+    disabledAt: device.disabledAt,
+    lastSeenAt: device.lastSeenAt,
+    accountId: device.accountId,
+    weeklyLimitPercent: device.weeklyLimitPercent,
+    usage,
+  };
 }
 
 function publicDevice(device: DeviceAccess): PublicDevice {
@@ -141,7 +223,10 @@ function publicDevice(device: DeviceAccess): PublicDevice {
       ? "disabled"
       : Date.parse(device.expiresAt) <= now
         ? "expired"
+        : device.usage.usageLimitReachedAt !== null
+          ? "limited"
         : "active";
+  const { threadTotals: _threadTotals, ...usage } = device.usage;
   return {
     deviceId: device.deviceId,
     label: device.label,
@@ -152,6 +237,9 @@ function publicDevice(device: DeviceAccess): PublicDevice {
     lastSeenAt: device.lastSeenAt,
     status,
     fingerprint: device.tokenHash.slice(0, 12),
+    accountId: device.accountId,
+    weeklyLimitPercent: device.weeklyLimitPercent,
+    usage,
   };
 }
 
@@ -171,6 +259,22 @@ function requestString(payload: Record<string, unknown>, name: string): string {
   const value = payload[name];
   if (typeof value !== "string" || !value.trim()) throw new Error(`Campo obrigatório: ${name}.`);
   return value.trim();
+}
+
+function requestOptionalString(payload: Record<string, unknown>, name: string): string | null {
+  const value = payload[name];
+  if (value === undefined || value === null || value === "") return null;
+  if (typeof value !== "string" || !value.trim()) throw new Error(`Campo inválido: ${name}.`);
+  return value.trim();
+}
+
+function requestPercent(payload: Record<string, unknown>, name: string, fallback: number): number {
+  const value = payload[name];
+  if (value === undefined) return fallback;
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 100) {
+    throw new Error(`Campo inválido: ${name}. Deve estar entre 0 e 100.`);
+  }
+  return Math.round(value * 100) / 100;
 }
 
 function requestNumber(payload: Record<string, unknown>, name: string, fallback: number): number {
@@ -383,6 +487,15 @@ export class HostAgent {
 
   private async syncAccess(): Promise<void> {
     if (!this.tunnel || this.tunnel.readyState !== WebSocket.OPEN) return;
+    for (const worker of this.workers.values()) {
+      const window = weeklyRateLimit(worker.snapshot);
+      await this.accessStore.updateAccountLimit(
+        worker.account.accountId,
+        window?.usedPercent ?? null,
+        window?.windowDurationMins ?? null,
+        window?.resetsAt ?? null,
+      );
+    }
     const devices = await this.accessStore.active();
     const deviceIds = new Set(devices.map((device) => device.deviceId));
     for (const deviceId of this.lastSyncedDeviceIds) {
@@ -463,14 +576,17 @@ export class HostAgent {
       this.send(streamClose(message.streamId, 1013, "App-server da conta indisponível."));
       return;
     }
-    const stream: LocalStream = { streamId: message.streamId, accountId: message.accountId, socket, pending: [], closed: false };
+    const stream: LocalStream = { streamId: message.streamId, deviceId: message.deviceId, accountId: message.accountId, socket, pending: [], closed: false };
     this.localStreams.set(message.streamId, stream);
 
     socket.on("open", () => {
       for (const frame of stream.pending.splice(0)) socket.send(frame.payload, { binary: frame.binary });
     });
     socket.on("message", (raw, isBinary) => {
-      if (!stream.closed) this.send(streamData(message.streamId, raw, isBinary));
+      if (!stream.closed) {
+        this.recordUsage(stream, raw, isBinary);
+        this.send(streamData(message.streamId, raw, isBinary));
+      }
     });
     socket.on("close", () => {
       if (stream.closed) return;
@@ -479,6 +595,24 @@ export class HostAgent {
       this.send(streamClose(message.streamId, 1011, "App-server local encerrou a sessão"));
     });
     socket.on("error", () => undefined);
+  }
+
+  private recordUsage(stream: LocalStream, raw: RawData, isBinary: boolean): void {
+    const observed = usageObservationFromFrame(raw, isBinary);
+    if (!observed) return;
+    const window = weeklyRateLimit(this.workers.get(stream.accountId)?.snapshot);
+    const observation: UsageObservation = {
+      ...observed,
+      accountUsedPercent: window?.usedPercent ?? null,
+      accountWindowDurationMins: window?.windowDurationMins ?? null,
+      accountResetsAt: window?.resetsAt ?? null,
+    };
+    void this.accessStore.recordUsage(stream.deviceId, observation)
+      .then((device) => {
+        if (!device) return;
+        return this.syncAccess();
+      })
+      .catch((error) => this.logError("usage.record", error));
   }
 
   private forwardDataToLocal(message: Extract<WireMessage, { type: "stream.data" }>): void {
@@ -527,7 +661,16 @@ export class HostAgent {
   private async executeControl(command: ControlRequestMessage["command"], payload: Record<string, unknown>, actorId: string | null): Promise<unknown> {
     switch (command) {
       case "access.issue": {
-        const issued = await this.accessStore.issue(requestString(payload, "label"), requestNumber(payload, "ttlMs", 30 * 24 * 60 * 60_000));
+        const issued = await this.accessStore.issue(
+          requestString(payload, "label"),
+          requestNumber(payload, "ttlMs", 30 * 24 * 60 * 60_000),
+          new Date(),
+          {
+            accountId: requestOptionalString(payload, "accountId"),
+            weeklyLimitPercent: requestPercent(payload, "weeklyLimitPercent", 100),
+            expiresAt: requestOptionalString(payload, "expiresAt"),
+          },
+        );
         await this.syncAccess();
         await this.audit(actorId, command, "device", issued.device.deviceId, { label: issued.device.label });
         return { device: publicDevice(issued.device), token: issued.token };
@@ -535,6 +678,17 @@ export class HostAgent {
       case "access.list": {
         const devices = await this.accessStore.list();
         return { devices: devices.map(publicDevice) };
+      }
+      case "access.update-policy": {
+        const device = await this.accessStore.updatePolicy(requestString(payload, "deviceId"), {
+          accountId: payload.accountId === undefined ? undefined : requestOptionalString(payload, "accountId"),
+          weeklyLimitPercent: payload.weeklyLimitPercent === undefined ? undefined : requestPercent(payload, "weeklyLimitPercent", 100),
+          expiresAt: requestOptionalString(payload, "expiresAt") ?? undefined,
+        });
+        if (!device) throw new Error("Dispositivo não encontrado ou já revogado.");
+        await this.syncAccess();
+        await this.audit(actorId, command, "device", device.deviceId, { weeklyLimitPercent: device.weeklyLimitPercent, expiresAt: device.expiresAt });
+        return { device: publicDevice(device) };
       }
       case "access.disable": {
         const device = await this.accessStore.disable(requestString(payload, "deviceId"));

@@ -5,12 +5,15 @@
     <header class="site-header"><a class="brand" href="/">Remote Codex</a><nav aria-label="Navegação principal"><a href="/cli">Codex CLI</a><a href="/app">App experimental</a><a href="/opencode">OpenCode</a><a class="active" href="/access">Acessos</a><a href="/deploy">Deploy</a></nav></header>
     <main class="shell narrow">
       <p class="eyebrow">Página 04 · Controle central</p><h1>Emitir e cortar dispositivos</h1>
-      <p>O registro fica na máquina central, por padrão em <code>$CODEX_HOME/remote-access.json</code>. Ele contém <code>deviceId</code>, label, hash do token, datas de criação/expiração, revogação e último acesso.</p>
-      <h2>Emitir</h2><pre><code>npm.cmd run access -- issue --label pc-notebook --ttl 30d</code></pre><p>O token bruto aparece somente nesta saída. Salve-o no gerenciador de segredos ou diretamente como variável de ambiente no PC remoto.</p>
-      <h2>Listar</h2><pre><code>npm.cmd run access -- list</code></pre><p>O status pode ser <code>active</code>, <code>expired</code> ou <code>revoked</code>. A sincronização do host remove acessos expirados do conjunto aceito pelo relay.</p>
-      <h2>Revogar</h2><pre><code>npm.cmd run access -- revoke device-XXXXXXXX
-npm.cmd run access -- revoke-all</code></pre><p>O host agent detecta a alteração, envia a nova sincronização e o relay fecha a sessão do dispositivo afetado. Com <code>revoke-all</code>, todos os clientes são cortados.</p>
-      <div class="notice"><strong>Painel administrativo:</strong> use <a href="/admin">/admin</a> com Supabase Auth para emitir, desabilitar, reabilitar e revogar dispositivos sem expor o login OpenAI.</div>
+      <p>Prefira o <a href="/admin">painel administrativo</a>. Ele permite escolher a conta, definir o percentual máximo da janela semanal, escolher a expiração e copiar o token ou o comando remoto com um clique.</p>
+      <h2>Política</h2><p>Cada conta pode ter um token não revogado. <code>Desabilitar</code> é temporário. <code>Revogar</code> é permanente: o registro fica no histórico, mas o token não pode ser reabilitado. Emita outro token se ele for perdido ou substituído.</p>
+      <h2>Uso observado</h2><p>O host captura os eventos <code>thread/tokenUsage/updated</code> do app-server e mostra tokens de entrada, cache, saída e raciocínio por dispositivo. O percentual semanal oficial é da conta inteira, não do token; portanto o painel separa o uso observado do token do limite global da conta. Consulte a <a href="https://github.com/openai/codex/blob/main/codex-rs/app-server/README.md" target="_blank" rel="noreferrer">referência oficial do app-server</a>.</p>
+      <h2>Fallback local</h2><p>Se o painel estiver indisponível, os comandos locais continuam existindo:</p><pre><code>npm.cmd run access -- list
+npm.cmd run access -- disable device-XXXXXXXX
+npm.cmd run access -- enable device-XXXXXXXX
+npm.cmd run access -- revoke device-XXXXXXXX
+npm.cmd run access -- revoke-all</code></pre>
+      <div class="notice"><strong>Segurança:</strong> o token bruto não é salvo no Supabase, Render, registro local ou logs. Depois de fechar o modal de emissão, ele só pode ser substituído por uma nova emissão.</div>
     </main>
     <footer class="site-footer"><span>Fonte de verdade: host central</span><a href="/">Início</a></footer><script src="/site.js" defer></script>
   </body>

@@ -148,6 +148,52 @@ function isLiveSocket(socket: WebSocket): boolean {
   return socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING;
 }
 
+function weeklyRateLimitUsedPercent(account: AccountSnapshot | undefined): number | null {
+  if (!account) return null;
+  const windows = Object.values(account.rateLimits).flatMap((limit) => [limit.primary, limit.secondary]).filter((window): window is NonNullable<typeof window> => Boolean(window));
+  return windows.sort((left, right) => (right.windowDurationMins ?? 0) - (left.windowDurationMins ?? 0))[0]?.usedPercent ?? null;
+}
+
+function deviceUsageLimitReached(device: RelayDevice, account: AccountSnapshot | undefined): boolean {
+  if (device.usage?.usageLimitReachedAt) return true;
+  const limit = device.weeklyLimitPercent ?? 100;
+  const usedPercent = weeklyRateLimitUsedPercent(account);
+  return usedPercent !== null && usedPercent >= limit;
+}
+
+function deviceSnapshotFromRow(row: Record<string, unknown>): Record<string, unknown> | null {
+  const deviceId = typeof row.device_id === "string" ? row.device_id : null;
+  const label = typeof row.label === "string" ? row.label : null;
+  if (!deviceId || !label) return null;
+  const numberOr = (value: unknown, fallback: number | null): number | null => typeof value === "number" && Number.isFinite(value) ? value : fallback;
+  return {
+    deviceId,
+    label,
+    accountId: typeof row.account_id === "string" ? row.account_id : null,
+    weeklyLimitPercent: numberOr(row.weekly_limit_percent, 100),
+    createdAt: row.created_at ?? null,
+    expiresAt: row.expires_at ?? null,
+    revokedAt: row.revoked_at ?? null,
+    disabledAt: row.disabled_at ?? null,
+    lastSeenAt: row.last_seen_at ?? null,
+    status: typeof row.status === "string" ? row.status : "active",
+    fingerprint: typeof row.fingerprint === "string" ? row.fingerprint : "indisponível",
+    usage: {
+      windowResetsAt: row.usage_window_resets_at ?? null,
+      observedTokens: numberOr(row.observed_tokens, 0),
+      observedInputTokens: numberOr(row.observed_input_tokens, 0),
+      observedCachedInputTokens: numberOr(row.observed_cached_input_tokens, 0),
+      observedOutputTokens: numberOr(row.observed_output_tokens, 0),
+      observedReasoningTokens: numberOr(row.observed_reasoning_tokens, 0),
+      lastUsageAt: row.usage_last_seen_at ?? null,
+      accountUsedPercent: numberOr(row.account_used_percent, null),
+      accountWindowDurationMins: numberOr(row.account_window_duration_mins, null),
+      accountResetsAt: typeof row.account_resets_at === "string" && Number.isFinite(Date.parse(row.account_resets_at)) ? Math.floor(Date.parse(row.account_resets_at) / 1_000) : null,
+      usageLimitReachedAt: row.usage_limit_reached_at ?? null,
+    },
+  };
+}
+
 export class RelayServer {
   private readonly server: http.Server;
   private readonly webSocketServer: WebSocketServer;
@@ -248,12 +294,13 @@ export class RelayServer {
   public status(): RelayStatus {
     const hostConnected = this.tunnel?.readyState === WebSocket.OPEN;
     const defaultAccount = this.defaultAccountId ? this.accounts.get(this.defaultAccountId) : null;
+    const hasReadyAccount = [...this.accounts.values()].some((account) => account.status === "ready");
     const ready = Boolean(
       hostConnected &&
       this.registered &&
       this.accessSynced &&
       this.accountsSynced &&
-      defaultAccount?.status === "ready" &&
+      (defaultAccount?.status === "ready" || hasReadyAccount) &&
       this.isFresh(),
     );
     return {
@@ -420,6 +467,7 @@ export class RelayServer {
       else if (parts.length === 5 && parts[2] === "accounts" && parts[4] === "logout" && parts[3]) command = "account.logout";
       else if (parts.length === 5 && parts[2] === "accounts" && parts[4] === "default" && parts[3]) command = "account.set-default";
       else if (parts.length === 3 && parts[2] === "devices") command = "access.issue";
+      else if (parts.length === 5 && parts[2] === "devices" && parts[4] === "policy" && parts[3]) command = "access.update-policy";
       else if (parts.length === 5 && parts[2] === "devices" && parts[4] === "disable" && parts[3]) command = "access.disable";
       else if (parts.length === 5 && parts[2] === "devices" && parts[4] === "enable" && parts[3]) command = "access.enable";
       else if (parts.length === 5 && parts[2] === "devices" && parts[4] === "revoke" && parts[3]) command = "access.revoke";
@@ -500,13 +548,13 @@ export class RelayServer {
     }
 
     const rows = await this.authClient?.queryAdmin<Record<string, unknown>>(token, "codex_device_snapshots", {
-      select: "device_id,label,created_at,expires_at,revoked_at,disabled_at,last_seen_at,status,fingerprint,stale_at",
+      select: "device_id,label,account_id,weekly_limit_percent,created_at,expires_at,revoked_at,disabled_at,last_seen_at,status,fingerprint,usage_window_resets_at,observed_tokens,observed_input_tokens,observed_cached_input_tokens,observed_output_tokens,observed_reasoning_tokens,account_used_percent,account_window_duration_mins,account_resets_at,usage_limit_reached_at,usage_last_seen_at,stale_at",
       order: "created_at.desc",
     }) ?? [];
     return {
       hostConnected: status.hostConnected,
       stale: true,
-      devices: rows,
+      devices: rows.map(deviceSnapshotFromRow).filter((device): device is Record<string, unknown> => device !== null),
     };
   }
 
@@ -577,6 +625,9 @@ export class RelayServer {
         continue;
       }
       if (hashesEqual(presentedHash, device.tokenHash)) {
+        const accountId = device.accountId ?? this.defaultAccountId;
+        const account = accountId ? this.accounts.get(accountId) : undefined;
+        if (!account || account.status !== "ready" || deviceUsageLimitReached(device, account)) return null;
         return device;
       }
     }
@@ -692,7 +743,9 @@ export class RelayServer {
     const now = Date.now();
     const next = new Map<string, RelayDevice>();
     for (const device of nextDevices) {
-      if (device.revokedAt !== null || device.disabledAt !== null || Date.parse(device.expiresAt) <= now) {
+      const accountId = device.accountId ?? this.defaultAccountId;
+      const account = accountId ? this.accounts.get(accountId) : undefined;
+      if (device.revokedAt !== null || device.disabledAt !== null || Date.parse(device.expiresAt) <= now || !account || account.status !== "ready" || deviceUsageLimitReached(device, account)) {
         continue;
       }
       next.set(device.deviceId, device);
@@ -714,9 +767,14 @@ export class RelayServer {
 
   private handleClient(webSocket: WebSocket, device: RelayDevice): void {
     const streamId = cryptoRandomId();
-    const accountId = this.defaultAccountId;
-    if (!accountId) {
-      this.closeSocket(webSocket, 1013, "Nenhuma conta padrão disponível");
+    const accountId = device.accountId ?? this.defaultAccountId;
+    const account = accountId ? this.accounts.get(accountId) : undefined;
+    if (!accountId || !account || account.status !== "ready") {
+      this.closeSocket(webSocket, 1013, "A conta vinculada não está disponível");
+      return;
+    }
+    if (deviceUsageLimitReached(device, account)) {
+      this.closeSocket(webSocket, 1008, "Limite semanal deste token atingido");
       return;
     }
     const stream: ClientStream = { streamId, deviceId: device.deviceId, accountId, client: webSocket };

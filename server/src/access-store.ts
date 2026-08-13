@@ -14,6 +14,42 @@ export interface DeviceAccess {
   revokedAt: string | null;
   disabledAt: string | null;
   lastSeenAt: string | null;
+  accountId: string | null;
+  weeklyLimitPercent: number;
+  usage: DeviceUsageState;
+}
+
+export interface DeviceUsageCounters {
+  totalTokens: number;
+  inputTokens: number;
+  cachedInputTokens: number;
+  outputTokens: number;
+  reasoningOutputTokens: number;
+}
+
+export interface DeviceUsageState {
+  /** Internal de-duplication cursors; never exposed to the relay or Supabase. */
+  threadTotals: Record<string, number>;
+  windowResetsAt: string | null;
+  observedTokens: number;
+  observedInputTokens: number;
+  observedCachedInputTokens: number;
+  observedOutputTokens: number;
+  observedReasoningTokens: number;
+  lastUsageAt: string | null;
+  accountUsedPercent: number | null;
+  accountWindowDurationMins: number | null;
+  accountResetsAt: number | null;
+  usageLimitReachedAt: string | null;
+}
+
+export interface UsageObservation {
+  threadId: string;
+  total: DeviceUsageCounters;
+  last: DeviceUsageCounters | null;
+  accountUsedPercent: number | null;
+  accountWindowDurationMins: number | null;
+  accountResetsAt: number | null;
 }
 
 export interface AccessRegistry {
@@ -24,6 +60,18 @@ export interface AccessRegistry {
 export interface IssuedDevice {
   device: DeviceAccess;
   token: string;
+}
+
+export interface IssueDeviceOptions {
+  accountId?: string | null;
+  weeklyLimitPercent?: number;
+  expiresAt?: string | null;
+}
+
+export interface UpdateDevicePolicyOptions {
+  accountId?: string | null;
+  weeklyLimitPercent?: number;
+  expiresAt?: string;
 }
 
 const writeLocks = new Map<string, Promise<void>>();
@@ -107,8 +155,82 @@ function emptyRegistry(): AccessRegistry {
   return { version: 2, devices: [] };
 }
 
+function emptyUsage(): DeviceUsageState {
+  return {
+    threadTotals: {},
+    windowResetsAt: null,
+    observedTokens: 0,
+    observedInputTokens: 0,
+    observedCachedInputTokens: 0,
+    observedOutputTokens: 0,
+    observedReasoningTokens: 0,
+    lastUsageAt: null,
+    accountUsedPercent: null,
+    accountWindowDurationMins: null,
+    accountResetsAt: null,
+    usageLimitReachedAt: null,
+  };
+}
+
 function isString(value: unknown): value is string {
   return typeof value === "string";
+}
+
+function finiteNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function safeNonNegativeInteger(value: unknown, fallback = 0): number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : fallback;
+}
+
+function usageFromValue(value: unknown): DeviceUsageState {
+  if (!value || typeof value !== "object") return emptyUsage();
+  const source = value as Record<string, unknown>;
+  const threadTotals: Record<string, number> = {};
+  if (source.threadTotals && typeof source.threadTotals === "object") {
+    for (const [threadId, total] of Object.entries(source.threadTotals as Record<string, unknown>).slice(-2_048)) {
+      if (threadId.length <= 200 && typeof total === "number" && Number.isSafeInteger(total) && total >= 0) {
+        threadTotals[threadId] = total;
+      }
+    }
+  }
+  return {
+    threadTotals,
+    windowResetsAt: isString(source.windowResetsAt) ? source.windowResetsAt : null,
+    observedTokens: safeNonNegativeInteger(source.observedTokens),
+    observedInputTokens: safeNonNegativeInteger(source.observedInputTokens),
+    observedCachedInputTokens: safeNonNegativeInteger(source.observedCachedInputTokens),
+    observedOutputTokens: safeNonNegativeInteger(source.observedOutputTokens),
+    observedReasoningTokens: safeNonNegativeInteger(source.observedReasoningTokens),
+    lastUsageAt: isString(source.lastUsageAt) ? source.lastUsageAt : null,
+    accountUsedPercent: finiteNumber(source.accountUsedPercent),
+    accountWindowDurationMins: finiteNumber(source.accountWindowDurationMins),
+    accountResetsAt: finiteNumber(source.accountResetsAt),
+    usageLimitReachedAt: isString(source.usageLimitReachedAt) ? source.usageLimitReachedAt : null,
+  };
+}
+
+function validateWeeklyLimitPercent(value: unknown, fallback = 100): number {
+  const percent = finiteNumber(value) ?? fallback;
+  if (percent < 0 || percent > 100) {
+    throw new Error("weeklyLimitPercent deve estar entre 0 e 100.");
+  }
+  return Math.round(percent * 100) / 100;
+}
+
+function resetIsoFromUnixSeconds(value: number | null): string | null {
+  if (value === null || !Number.isFinite(value) || value <= 0) return null;
+  const date = new Date(value * 1_000);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+function positiveDelta(current: number, previous: number): number {
+  return current > previous ? current - previous : 0;
+}
+
+function addSafe(left: number, right: number): number {
+  return Math.min(Number.MAX_SAFE_INTEGER, left + Math.max(0, right));
 }
 
 function validateDevice(value: unknown): DeviceAccess {
@@ -147,6 +269,9 @@ function validateDevice(value: unknown): DeviceAccess {
     revokedAt: (device.revokedAt as string | null | undefined) ?? null,
     disabledAt: (device.disabledAt as string | null | undefined) ?? null,
     lastSeenAt: (device.lastSeenAt as string | null | undefined) ?? null,
+    accountId: isString(device.accountId) && device.accountId.trim() ? device.accountId.trim() : null,
+    weeklyLimitPercent: validateWeeklyLimitPercent(device.weeklyLimitPercent),
+    usage: usageFromValue(device.usage),
   };
 }
 
@@ -228,22 +353,34 @@ export class AccessStore {
     }
   }
 
-  public async issue(label: string, ttlMs: number, now = new Date()): Promise<IssuedDevice> {
+  public async issue(label: string, ttlMs: number, now = new Date(), options: IssueDeviceOptions = {}): Promise<IssuedDevice> {
     const normalizedLabel = assertLabel(label);
-    assertTtl(ttlMs);
+    const expiresAt = options.expiresAt ? new Date(options.expiresAt) : new Date(now.getTime() + ttlMs);
+    if (Number.isNaN(expiresAt.getTime()) || expiresAt.getTime() <= now.getTime()) {
+      throw new Error("expiresAt deve ser uma data futura válida.");
+    }
+    if (!options.expiresAt) assertTtl(ttlMs);
+    const accountId = typeof options.accountId === "string" && options.accountId.trim() ? options.accountId.trim() : null;
+    const weeklyLimitPercent = validateWeeklyLimitPercent(options.weeklyLimitPercent);
 
     return withWriteLock(this.filePath, async () => {
       const registry = await this.read();
+      if (accountId && registry.devices.some((device) => device.accountId === accountId && device.revokedAt === null && Date.parse(device.expiresAt) > now.getTime())) {
+        throw new Error("Já existe um token não revogado para esta conta. Revogue o anterior antes de emitir outro.");
+      }
       const token = createOpaqueToken();
       const device: DeviceAccess = {
         deviceId: `device-${crypto.randomBytes(8).toString("hex")}`,
         label: normalizedLabel,
         tokenHash: hashToken(token),
         createdAt: now.toISOString(),
-        expiresAt: new Date(now.getTime() + ttlMs).toISOString(),
+        expiresAt: expiresAt.toISOString(),
         revokedAt: null,
         disabledAt: null,
         lastSeenAt: null,
+        accountId,
+        weeklyLimitPercent,
+        usage: emptyUsage(),
       };
 
       registry.devices.push(device);
@@ -255,6 +392,36 @@ export class AccessStore {
   public async list(): Promise<DeviceAccess[]> {
     const registry = await this.read();
     return registry.devices;
+  }
+
+  public async updatePolicy(deviceId: string, options: UpdateDevicePolicyOptions, now = new Date()): Promise<DeviceAccess | null> {
+    return withWriteLock(this.filePath, async () => {
+      const registry = await this.read();
+      const device = registry.devices.find((candidate) => candidate.deviceId === deviceId);
+      if (!device || device.revokedAt !== null) return null;
+      if (options.accountId !== undefined) {
+        const accountId = options.accountId && options.accountId.trim() ? options.accountId.trim() : null;
+        if (device.accountId !== null && accountId !== device.accountId) {
+          throw new Error("A conta vinculada de um token existente não pode ser trocada; revogue e emita outro token.");
+        }
+        if (accountId && registry.devices.some((candidate) => candidate.deviceId !== device.deviceId && candidate.accountId === accountId && candidate.revokedAt === null && Date.parse(candidate.expiresAt) > now.getTime())) {
+          throw new Error("Já existe um token não revogado para esta conta.");
+        }
+        device.accountId = accountId;
+      }
+      if (options.weeklyLimitPercent !== undefined) {
+        device.weeklyLimitPercent = validateWeeklyLimitPercent(options.weeklyLimitPercent);
+      }
+      if (options.expiresAt !== undefined) {
+        const expiresAt = new Date(options.expiresAt);
+        if (Number.isNaN(expiresAt.getTime()) || expiresAt.getTime() <= now.getTime()) {
+          throw new Error("expiresAt deve ser uma data futura válida.");
+        }
+        device.expiresAt = expiresAt.toISOString();
+      }
+      await this.write(registry);
+      return device;
+    });
   }
 
   public async active(now = new Date()): Promise<DeviceAccess[]> {
@@ -352,6 +519,125 @@ export class AccessStore {
 
       device.lastSeenAt = now.toISOString();
       await this.write(registry);
+    });
+  }
+
+  public async recordUsage(deviceId: string, observation: UsageObservation, now = new Date()): Promise<DeviceAccess | null> {
+    return withWriteLock(this.filePath, async () => {
+      const registry = await this.read();
+      const device = registry.devices.find((candidate) => candidate.deviceId === deviceId);
+      if (
+        !device ||
+        device.revokedAt !== null ||
+        device.disabledAt !== null ||
+        Date.parse(device.expiresAt) <= now.getTime()
+      ) {
+        return null;
+      }
+
+      const usage = device.usage ?? emptyUsage();
+      const resetIso = resetIsoFromUnixSeconds(observation.accountResetsAt);
+      const windowChanged = Boolean(resetIso && usage.windowResetsAt && resetIso !== usage.windowResetsAt);
+      if (windowChanged) {
+        usage.observedTokens = 0;
+        usage.observedInputTokens = 0;
+        usage.observedCachedInputTokens = 0;
+        usage.observedOutputTokens = 0;
+        usage.observedReasoningTokens = 0;
+        usage.usageLimitReachedAt = null;
+      }
+      if (resetIso) usage.windowResetsAt = resetIso;
+
+      const previousTotal = usage.threadTotals[observation.threadId];
+      const counters = previousTotal === undefined
+        ? (observation.last ?? observation.total)
+        : {
+            totalTokens: positiveDelta(observation.total.totalTokens, previousTotal),
+            inputTokens: positiveDelta(observation.total.inputTokens, 0),
+            cachedInputTokens: positiveDelta(observation.total.cachedInputTokens, 0),
+            outputTokens: positiveDelta(observation.total.outputTokens, 0),
+            reasoningOutputTokens: positiveDelta(observation.total.reasoningOutputTokens, 0),
+          };
+
+      if (previousTotal !== undefined) {
+        const previousCounters = usage.threadTotals[`${observation.threadId}:input`] ?? 0;
+        const previousCached = usage.threadTotals[`${observation.threadId}:cached`] ?? 0;
+        const previousOutput = usage.threadTotals[`${observation.threadId}:output`] ?? 0;
+        const previousReasoning = usage.threadTotals[`${observation.threadId}:reasoning`] ?? 0;
+        counters.inputTokens = positiveDelta(observation.total.inputTokens, previousCounters);
+        counters.cachedInputTokens = positiveDelta(observation.total.cachedInputTokens, previousCached);
+        counters.outputTokens = positiveDelta(observation.total.outputTokens, previousOutput);
+        counters.reasoningOutputTokens = positiveDelta(observation.total.reasoningOutputTokens, previousReasoning);
+      }
+
+      usage.threadTotals[observation.threadId] = Math.max(0, observation.total.totalTokens);
+      usage.threadTotals[`${observation.threadId}:input`] = Math.max(0, observation.total.inputTokens);
+      usage.threadTotals[`${observation.threadId}:cached`] = Math.max(0, observation.total.cachedInputTokens);
+      usage.threadTotals[`${observation.threadId}:output`] = Math.max(0, observation.total.outputTokens);
+      usage.threadTotals[`${observation.threadId}:reasoning`] = Math.max(0, observation.total.reasoningOutputTokens);
+      const threadKeys = Object.keys(usage.threadTotals);
+      if (threadKeys.length > 10_240) {
+        for (const key of threadKeys.slice(0, threadKeys.length - 10_240)) delete usage.threadTotals[key];
+      }
+
+      usage.observedTokens = addSafe(usage.observedTokens, counters.totalTokens);
+      usage.observedInputTokens = addSafe(usage.observedInputTokens, counters.inputTokens);
+      usage.observedCachedInputTokens = addSafe(usage.observedCachedInputTokens, counters.cachedInputTokens);
+      usage.observedOutputTokens = addSafe(usage.observedOutputTokens, counters.outputTokens);
+      usage.observedReasoningTokens = addSafe(usage.observedReasoningTokens, counters.reasoningOutputTokens);
+      usage.lastUsageAt = now.toISOString();
+      usage.accountUsedPercent = finiteNumber(observation.accountUsedPercent);
+      usage.accountWindowDurationMins = finiteNumber(observation.accountWindowDurationMins);
+      usage.accountResetsAt = finiteNumber(observation.accountResetsAt);
+      if (usage.accountUsedPercent !== null && usage.accountUsedPercent >= device.weeklyLimitPercent) {
+        usage.usageLimitReachedAt ??= now.toISOString();
+      } else if (windowChanged || usage.accountUsedPercent === null || usage.accountUsedPercent < device.weeklyLimitPercent) {
+        usage.usageLimitReachedAt = null;
+      }
+      device.usage = usage;
+      await this.write(registry);
+      return device;
+    });
+  }
+
+  public async updateAccountLimit(
+    accountId: string,
+    accountUsedPercent: number | null,
+    accountWindowDurationMins: number | null,
+    accountResetsAt: number | null,
+    now = new Date(),
+  ): Promise<boolean> {
+    return withWriteLock(this.filePath, async () => {
+      const registry = await this.read();
+      let changed = false;
+      const resetIso = resetIsoFromUnixSeconds(accountResetsAt);
+      for (const device of registry.devices) {
+        if (device.accountId !== accountId || device.revokedAt !== null || device.disabledAt !== null) continue;
+        const usage = device.usage ?? emptyUsage();
+        const before = JSON.stringify(usage);
+        const windowChanged = Boolean(resetIso && usage.windowResetsAt && resetIso !== usage.windowResetsAt);
+        if (windowChanged) {
+          usage.observedTokens = 0;
+          usage.observedInputTokens = 0;
+          usage.observedCachedInputTokens = 0;
+          usage.observedOutputTokens = 0;
+          usage.observedReasoningTokens = 0;
+          usage.usageLimitReachedAt = null;
+        }
+        if (resetIso) usage.windowResetsAt = resetIso;
+        usage.accountUsedPercent = accountUsedPercent;
+        usage.accountWindowDurationMins = accountWindowDurationMins;
+        usage.accountResetsAt = accountResetsAt;
+        if (accountUsedPercent !== null && accountUsedPercent >= device.weeklyLimitPercent) {
+          usage.usageLimitReachedAt ??= now.toISOString();
+        } else if (windowChanged || accountUsedPercent === null || accountUsedPercent < device.weeklyLimitPercent) {
+          usage.usageLimitReachedAt = null;
+        }
+        device.usage = usage;
+        changed ||= before !== JSON.stringify(usage);
+      }
+      if (changed) await this.write(registry);
+      return changed;
     });
   }
 }

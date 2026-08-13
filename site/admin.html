@@ -38,14 +38,14 @@
         </nav>
 
         <section id="tab-accounts" class="admin-tab-panel">
-          <div class="admin-section-head"><div><p class="admin-eyebrow">ACCOUNTS</p><h2>Contas ChatGPT</h2><p class="admin-muted">Cada conta usa um <code>CODEX_HOME</code> isolado no host central. A troca do padrão só afeta novas sessões.</p></div><div class="admin-actions"><button id="refresh-accounts" class="admin-button ghost">Atualizar</button><button id="add-account" class="admin-button primary">Adicionar conta</button></div></div>
+          <div class="admin-section-head"><div><p class="admin-eyebrow">ACCOUNTS</p><h2>Contas ChatGPT</h2><p class="admin-muted">Cada conta usa um <code>CODEX_HOME</code> isolado no host central. A troca do padrão só afeta novas sessões não vinculadas.</p></div><div class="admin-actions"><button id="refresh-accounts" class="admin-button ghost">Atualizar</button><button id="add-account" class="admin-button primary">Adicionar conta</button></div></div>
           <div id="accounts-grid" class="admin-card-grid"></div>
         </section>
 
         <section id="tab-devices" class="admin-tab-panel" hidden>
-          <div class="admin-section-head"><div><p class="admin-eyebrow">DEVICES</p><h2>Dispositivos autorizados</h2><p class="admin-muted">O token bruto aparece somente uma vez. Depois, apenas fingerprint e status ficam disponíveis.</p></div><div class="admin-actions"><button id="refresh-devices" class="admin-button ghost">Atualizar</button><button id="issue-device" class="admin-button primary">Emitir token</button></div></div>
+          <div class="admin-section-head"><div><p class="admin-eyebrow">DEVICES</p><h2>Dispositivos autorizados</h2><p class="admin-muted">Cada conta pode ter um token não revogado. O token bruto fica disponível apenas no modal de emissão; depois, apenas fingerprint, política e uso observado permanecem.</p></div><div class="admin-actions"><button id="refresh-devices" class="admin-button ghost">Atualizar</button><button id="issue-device" class="admin-button primary">Emitir token</button></div></div>
           <div id="devices-note" class="admin-status"></div>
-          <div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Dispositivo</th><th>Status</th><th>Expiração</th><th>Último acesso</th><th>Ações</th></tr></thead><tbody id="devices-body"></tbody></table></div>
+          <div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Dispositivo</th><th>Conta</th><th>Política</th><th>Uso observado</th><th>Status</th><th>Ações</th></tr></thead><tbody id="devices-body"></tbody></table></div>
         </section>
 
         <section id="tab-admins" class="admin-tab-panel" hidden>
@@ -55,11 +55,29 @@
       </section>
     </main>
 
+    <dialog id="device-dialog" class="admin-dialog">
+      <form id="device-form" class="admin-dialog-card">
+        <p class="admin-eyebrow" id="device-dialog-eyebrow">NOVO DISPOSITIVO</p>
+        <h2 id="device-dialog-title">Emitir token</h2>
+        <p class="admin-muted">O token será vinculado à conta escolhida. Ele será bloqueado pelo primeiro limite atingido: expiração ou teto semanal.</p>
+        <label class="admin-field">Nome do dispositivo<input id="device-label" type="text" maxlength="80" placeholder="pc-notebook" required></label>
+        <label class="admin-field">Conta ChatGPT<select id="device-account" required></select></label>
+        <div class="admin-policy-grid">
+          <label class="admin-field"><span class="admin-label-row">Teto semanal <output id="device-percent-output">100%</output></span><input id="device-weekly-limit" type="range" min="0" max="100" step="1" value="100"><small>Barreira conservadora baseada na quota global retornada para esta conta.</small></label>
+          <label class="admin-field">Expira em<input id="device-expires-at" type="datetime-local" required><small>O token nunca é recuperado após revogação.</small></label>
+        </div>
+        <p id="device-form-error" class="admin-error" role="alert"></p>
+        <div class="admin-actions admin-dialog-actions"><button id="device-cancel" class="admin-button ghost" type="button">Cancelar</button><button id="device-submit" class="admin-button primary" type="submit">Emitir token</button></div>
+      </form>
+    </dialog>
+
     <dialog id="token-dialog" class="admin-dialog">
       <form method="dialog" class="admin-dialog-card">
         <p class="admin-eyebrow">TOKEN EMITIDO</p><h2>Copie agora</h2>
-        <p class="admin-muted">Por segurança, este token não será recuperável depois que esta janela for fechada.</p>
-        <div class="admin-token-row"><code id="issued-token"></code><button id="copy-token" class="admin-button primary" type="button">Copiar</button></div>
+        <p id="issued-token-context" class="admin-muted"></p>
+        <p class="admin-callout">Por segurança, o token não é salvo no navegador, no Supabase, no Render ou no arquivo local. Enquanto esta janela estiver aberta, você pode copiá-lo novamente.</p>
+        <div class="admin-token-row"><textarea id="issued-token" rows="3" readonly spellcheck="false" aria-label="Token emitido"></textarea><button id="copy-token" class="admin-button primary" type="button">Copiar token</button></div>
+        <div class="admin-copy-actions"><button id="copy-command" class="admin-button ghost" type="button">Copiar comando Codex</button><button id="copy-env" class="admin-button ghost" type="button">Copiar variável</button></div>
         <p id="copy-status" class="admin-status"></p>
         <button class="admin-button ghost" value="close">Fechar</button>
       </form>
@@ -73,6 +91,34 @@
         <div class="admin-code" id="login-code"></div>
         <p id="login-dialog-status" class="admin-status"></p>
         <div class="admin-actions"><button id="login-refresh" class="admin-button primary" type="button">Atualizar estado</button><button class="admin-button ghost" value="close">Fechar</button></div>
+      </form>
+    </dialog>
+
+    <dialog id="account-dialog" class="admin-dialog">
+      <form id="account-form" class="admin-dialog-card">
+        <p class="admin-eyebrow">NOVA CONTA</p><h2>Adicionar conta</h2>
+        <p class="admin-muted">O host criará um <code>CODEX_HOME</code> isolado e abrirá o login por device code em seguida.</p>
+        <label class="admin-field">Nome da conta<input id="account-label" type="text" maxlength="80" placeholder="Conta Pro" required></label>
+        <p id="account-form-error" class="admin-error" role="alert"></p>
+        <div class="admin-actions admin-dialog-actions"><button id="account-cancel" class="admin-button ghost" type="button">Cancelar</button><button class="admin-button primary" type="submit">Criar e iniciar login</button></div>
+      </form>
+    </dialog>
+
+    <dialog id="invite-dialog" class="admin-dialog">
+      <form id="invite-form" class="admin-dialog-card">
+        <p class="admin-eyebrow">ACCESS CONTROL</p><h2>Convidar administrador</h2>
+        <p class="admin-muted">O convite será enviado pelo Supabase Auth. O novo usuário só terá acesso após concluir o cadastro.</p>
+        <label class="admin-field">Email<input id="invite-email" type="email" autocomplete="email" required></label>
+        <p id="invite-form-error" class="admin-error" role="alert"></p>
+        <div class="admin-actions admin-dialog-actions"><button id="invite-cancel" class="admin-button ghost" type="button">Cancelar</button><button class="admin-button primary" type="submit">Enviar convite</button></div>
+      </form>
+    </dialog>
+
+    <dialog id="action-dialog" class="admin-dialog">
+      <form id="action-form" class="admin-dialog-card">
+        <p class="admin-eyebrow">CONFIRMAR AÇÃO</p><h2 id="action-dialog-title">Confirmar</h2>
+        <p id="action-dialog-copy" class="admin-muted"></p>
+        <div class="admin-actions admin-dialog-actions"><button id="action-cancel" class="admin-button ghost" type="button">Cancelar</button><button id="action-confirm" class="admin-button danger" type="submit">Confirmar</button></div>
       </form>
     </dialog>
     <script src="/admin.js" defer></script>

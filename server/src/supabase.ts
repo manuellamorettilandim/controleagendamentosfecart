@@ -108,6 +108,8 @@ export class SupabaseAuthClient {
 export interface DeviceSnapshotRow {
   device_id: string;
   label: string;
+  account_id: string | null;
+  weekly_limit_percent: number;
   created_at: string;
   expires_at: string;
   revoked_at: string | null;
@@ -115,6 +117,17 @@ export interface DeviceSnapshotRow {
   last_seen_at: string | null;
   status: string;
   fingerprint: string;
+  usage_window_resets_at: string | null;
+  observed_tokens: number;
+  observed_input_tokens: number;
+  observed_cached_input_tokens: number;
+  observed_output_tokens: number;
+  observed_reasoning_tokens: number;
+  account_used_percent: number | null;
+  account_window_duration_mins: number | null;
+  account_resets_at: string | null;
+  usage_limit_reached_at: string | null;
+  usage_last_seen_at: string | null;
   stale_at: string;
 }
 
@@ -209,13 +222,34 @@ export class SupabaseServiceClient {
     await this.upsert("codex_device_snapshots", devices.map((device) => ({
       device_id: device.deviceId,
       label: device.label,
+      account_id: device.accountId ?? null,
+      weekly_limit_percent: device.weeklyLimitPercent ?? 100,
       created_at: device.createdAt,
       expires_at: device.expiresAt,
       revoked_at: device.revokedAt,
       disabled_at: device.disabledAt,
       last_seen_at: device.lastSeenAt,
-      status: device.revokedAt ? "revoked" : device.disabledAt ? "disabled" : Date.parse(device.expiresAt) <= Date.now() ? "expired" : "active",
+      status: device.revokedAt
+        ? "revoked"
+        : device.disabledAt
+          ? "disabled"
+          : Date.parse(device.expiresAt) <= Date.now()
+            ? "expired"
+            : device.usage?.usageLimitReachedAt
+              ? "limited"
+              : "active",
       fingerprint: device.tokenHash.slice(0, 12),
+      usage_window_resets_at: device.usage?.windowResetsAt ?? null,
+      observed_tokens: device.usage?.observedTokens ?? 0,
+      observed_input_tokens: device.usage?.observedInputTokens ?? 0,
+      observed_cached_input_tokens: device.usage?.observedCachedInputTokens ?? 0,
+      observed_output_tokens: device.usage?.observedOutputTokens ?? 0,
+      observed_reasoning_tokens: device.usage?.observedReasoningTokens ?? 0,
+      account_used_percent: device.usage?.accountUsedPercent ?? null,
+      account_window_duration_mins: device.usage?.accountWindowDurationMins ?? null,
+      account_resets_at: device.usage?.accountResetsAt ? new Date(device.usage.accountResetsAt * 1_000).toISOString() : null,
+      usage_limit_reached_at: device.usage?.usageLimitReachedAt ?? null,
+      usage_last_seen_at: device.usage?.lastUsageAt ?? null,
       stale_at: now,
     })), "device_id");
   }

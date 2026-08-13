@@ -1,5 +1,15 @@
 # Remote Codex app-server
 
+Referência oficial do protocolo: [Codex app-server README](https://github.com/openai/codex/blob/main/codex-rs/app-server/README.md).
+
+## Política e uso por dispositivo
+
+Prefira o painel em `/admin` para emitir o token. A emissão permite selecionar a conta, definir o percentual máximo da janela semanal e escolher a data de expiração. O painel também copia o token, a variável PowerShell ou o comando completo enquanto o modal de emissão estiver aberto.
+
+Cada conta pode ter um token não revogado. `disable` é temporário; `revoke` é permanente e preserva o registro para auditoria, mas nunca permite reabilitação. O token revogado precisa ser substituído por uma nova emissão.
+
+O host observa as notificações `thread/tokenUsage/updated` do app-server e registra por dispositivo os tokens de entrada, cache, saída e raciocínio observados. O app-server não oferece um contador oficial de cota semanal separado por token: a cota retornada por `account/rateLimits/read` é da conta. Por isso a UI mostra separadamente o uso observado do token e o percentual global atual da conta; se houver uso direto na máquina central, a atribuição individual não é exata.
+
 Este repositório contém um relay experimental para usar o `codex app-server` da máquina central a partir de outro computador sem copiar o login ChatGPT/OpenAI.
 
 ```mermaid
