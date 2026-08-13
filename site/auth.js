@@ -25,11 +25,11 @@
       refresh_token: "",
       user: readJson(window.sessionStorage, LEGACY_USER_KEY),
     };
-    persistSession(migrated);
+    persistSession(migrated, null);
     return migrated;
   }
 
-  function persistSession(data, previous = getSession()) {
+  function persistSession(data, previous = null) {
     const session = {
       access_token: data.access_token || previous?.access_token || "",
       refresh_token: data.refresh_token || previous?.refresh_token || "",
