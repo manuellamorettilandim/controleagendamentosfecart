@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Agenda e acesso temporário ao Remote Codex.">
+    <title>Minha sessão · Remote Codex</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body class="user-page">
+    <!--
+      THESIS: o acesso é uma janela viva de tempo e cota, não um dashboard de métricas soltas.
+      OWN-WORLD: console de operações noturno, verde mineral, placas de estado, números tabulares e uma faixa horária contínua.
+      STORY: entender o estado agora, acompanhar a franquia, reservar uma janela e iniciar com um comando seguro.
+      FIRST VIEWPORT: relógio largo à esquerda, medidor quadrado à direita e ação de sessão entre o resumo e a agenda.
+      FORM: composição 2+1 e timeline fixada pelo brief; seed 343bd3a1.
+      FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
+    -->
+    <header class="user-header">
+      <a class="user-brand" href="/dashboard"><span class="brand-glyph">RC</span><span><strong>Remote Codex</strong><small>Sessão agendada</small></span></a>
+      <div class="user-account">
+        <span class="user-avatar" id="user-avatar">U</span>
+        <span><strong id="user-name">Carregando…</strong><small id="user-group">—</small></span>
+        <button id="user-logout" class="quiet-button" type="button">Sair</button>
+      </div>
+    </header>
+
+    <main class="user-main">
+      <section class="user-intro">
+        <div><h1>Minha sessão</h1><p>Seu acesso aparece automaticamente quando o horário reservado começar.</p></div>
+        <div id="sync-status" class="sync-status" role="status"><span></span> Sincronizando</div>
+      </section>
+
+      <section class="session-overview" aria-label="Resumo da sessão">
+        <article class="time-console">
+          <div class="console-topline"><span id="session-state" class="state-chip offline"><i></i> Desligado</span><span id="current-date">—</span></div>
+          <div class="clock-row"><time id="current-time">--:--</time><span id="current-seconds">--</span></div>
+          <p id="session-message" class="session-message">Nenhum horário ativo agora.</p>
+          <dl class="session-stats">
+            <div><dt>Tokens observados</dt><dd id="tokens-used">0</dd></div>
+            <div><dt>Tempo restante</dt><dd id="time-left">—</dd></div>
+            <div><dt>Próxima reserva</dt><dd id="next-booking">Nenhuma</dd></div>
+          </dl>
+        </article>
+
+        <article class="quota-console">
+          <div class="quota-heading"><h2>Franquia da sessão</h2><span id="quota-account-state">bloqueada</span></div>
+          <div id="quota-ring" class="quota-ring" style="--remaining: 100">
+            <div><strong id="quota-value">100%</strong><span>disponível</span></div>
+          </div>
+          <p><strong id="quota-budget">5%</strong> da janela semanal da conta</p>
+          <small id="quota-reset">Libera junto com o horário reservado.</small>
+        </article>
+      </section>
+
+      <section id="quick-access" class="quick-access locked" aria-labelledby="quick-access-title">
+        <div class="quick-access-copy">
+          <span class="access-signal" aria-hidden="true"></span>
+          <div><h2 id="quick-access-title">Acesso rápido</h2><p id="quick-access-description">Agende um horário para liberar sua credencial temporária.</p></div>
+        </div>
+        <div id="credential-locked" class="credential-locked"><span>Credencial indisponível</span></div>
+        <div id="credential-ready" class="credential-ready" hidden>
+          <code id="session-command">—</code>
+          <div><button id="copy-command" class="action-button" type="button">Copiar comando</button><button id="copy-token" class="secondary-button" type="button">Copiar token</button></div>
+        </div>
+        <button id="issue-session" class="action-button" type="button" hidden>Gerar credencial da sessão</button>
+        <p id="credential-status" class="form-message" role="status"></p>
+      </section>
+
+      <section class="schedule-section" aria-labelledby="schedule-title">
+        <div class="schedule-heading"><div><h2 id="schedule-title">Agenda de acesso</h2><p>Escolha uma hora livre. Cada reserva pode durar até três horas.</p></div><button id="refresh-dashboard" class="secondary-button" type="button">Atualizar</button></div>
+        <div id="date-strip" class="date-strip" role="tablist" aria-label="Escolha o dia"></div>
+        <div class="schedule-board">
+          <div class="schedule-axis"><span>00h</span><span>06h</span><span>12h</span><span>18h</span><span>24h</span></div>
+          <div id="hour-slots" class="hour-slots" aria-label="Escolha o horário"></div>
+        </div>
+        <div class="booking-controls">
+          <fieldset><legend>Duração</legend><div class="duration-switch"><button type="button" data-duration="1" class="active">1 hora</button><button type="button" data-duration="2">2 horas</button><button type="button" data-duration="3">3 horas</button></div></fieldset>
+          <div class="booking-summary"><span id="booking-summary">Selecione um horário livre</span><button id="book-slot" class="action-button" type="button" disabled>Agendar horário</button></div>
+        </div>
+        <p id="booking-message" class="form-message" role="status"></p>
+      </section>
+
+      <section class="reservations-section" aria-labelledby="reservations-title">
+        <div class="schedule-heading"><div><h2 id="reservations-title">Meus horários</h2><p>Reservas futuras e histórico recente.</p></div></div>
+        <div id="reservation-list" class="reservation-list"></div>
+      </section>
+    </main>
+    <script src="/auth.js" defer></script>
+    <script src="/dashboard.js" defer></script>
+  </body>
+</html>

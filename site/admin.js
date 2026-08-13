@@ -7,6 +7,8 @@
     role: "",
     accounts: [],
     devices: [],
+    users: [],
+    reservations: [],
     issuedToken: "",
     issuedDevice: null,
     loginAccountId: "",
@@ -154,6 +156,7 @@
       state.devices = devices.devices || [];
       renderDevices(devices);
       if (state.role === "owner") await loadAdmins();
+      await Promise.all([loadUsers(), loadReservations()]);
       setStatus(accounts.stale ? "Host offline ou snapshot stale; os dados exibidos não garantem estado atual." : "Host conectado e sincronizado.", accounts.stale ? "warning" : "success");
     } catch (error) {
       setStatus(error.message, "error");
@@ -231,6 +234,40 @@
       body.querySelectorAll("[data-admin-action]").forEach((button) => button.addEventListener("click", () => requestAction(`admin-${button.dataset.adminAction}`, button.dataset.adminId)));
     } catch (error) {
       body.innerHTML = `<tr><td colspan="5" class="admin-empty">${escapeHtml(error.message)}</td></tr>`;
+    }
+  }
+
+  async function loadUsers() {
+    const body = $("#users-body");
+    try {
+      const data = await api("/api/admin/users");
+      state.users = data.users || [];
+      const groups = new Set(state.users.map((user) => user.group_name));
+      $("#users-summary").innerHTML = `<span><strong>${state.users.length}</strong> usuários</span><span><strong>${groups.size}</strong> turmas</span><span><strong>${state.users.filter((user) => user.enabled).length}</strong> ativos</span>`;
+      body.innerHTML = state.users.map((user) => `<tr><td><strong>${escapeHtml(user.username)}</strong><small>${escapeHtml(user.user_id)}</small></td><td>${escapeHtml(user.group_name)}</td><td>${escapeHtml(accountById(user.account_id)?.label || user.account_id)}</td><td><strong>${Number(user.weekly_quota_percent).toFixed(1)}%</strong><small>da janela semanal da conta</small></td><td><span class="admin-badge ${user.enabled ? "success" : "error"}">${user.enabled ? "ativo" : "desativado"}</span></td><td>${escapeHtml(formatDate(user.created_at))}</td></tr>`).join("") || `<tr><td colspan="6" class="admin-empty">Nenhum usuário comum migrado.</td></tr>`;
+    } catch (error) {
+      body.innerHTML = `<tr><td colspan="6" class="admin-empty">${escapeHtml(error.message)}</td></tr>`;
+    }
+  }
+
+  async function loadReservations() {
+    const body = $("#reservations-body");
+    try {
+      const data = await api("/api/admin/reservations");
+      state.reservations = data.reservations || [];
+      const now = Date.now();
+      const active = state.reservations.filter((item) => item.status === "scheduled" && Date.parse(item.starts_at) <= now && Date.parse(item.ends_at) > now).length;
+      const future = state.reservations.filter((item) => item.status === "scheduled" && Date.parse(item.starts_at) > now).length;
+      $("#reservations-summary").innerHTML = `<span><strong>${active}</strong> em andamento</span><span><strong>${future}</strong> futuras</span><span><strong>${state.reservations.filter((item) => item.device_id).length}</strong> credenciais emitidas</span>`;
+      body.innerHTML = state.reservations.map((item) => {
+        const profile = state.users.find((user) => user.user_id === item.user_id) || {};
+        const start = new Date(item.starts_at);
+        const end = new Date(item.ends_at);
+        const status = item.status === "cancelled" ? "cancelada" : start <= new Date() && end > new Date() ? "ativa" : start > new Date() ? "agendada" : "encerrada";
+        return `<tr><td><strong>${escapeHtml(profile.username || item.user_id)}</strong><small>${escapeHtml(profile.group_name || "turma indisponível")}</small></td><td><strong>${escapeHtml(formatDate(item.starts_at))}</strong><small>até ${escapeHtml(formatDate(item.ends_at))}</small></td><td>${escapeHtml(accountById(item.account_id)?.label || item.account_id)}</td><td>${item.quota_budget_percent == null ? "aguardando ativação" : `${Number(item.quota_budget_percent).toFixed(1)}%`}<small>${item.quota_base_used_percent == null ? "" : `base da conta ${Number(item.quota_base_used_percent).toFixed(1)}%`}</small></td><td>${item.device_id ? `<strong>${escapeHtml(item.device_id)}</strong><small>ativada ${escapeHtml(formatDate(item.activated_at))}</small>` : "não emitida"}</td><td><span class="admin-badge ${status === "ativa" ? "success" : status === "agendada" ? "warning" : ""}">${status}</span></td></tr>`;
+      }).join("") || `<tr><td colspan="6" class="admin-empty">Nenhuma reserva registrada.</td></tr>`;
+    } catch (error) {
+      body.innerHTML = `<tr><td colspan="6" class="admin-empty">${escapeHtml(error.message)}</td></tr>`;
     }
   }
 
@@ -400,6 +437,8 @@
     $("#logout-button").addEventListener("click", () => void logout());
     $("#refresh-accounts").addEventListener("click", () => refreshAll().catch(() => undefined));
     $("#refresh-devices").addEventListener("click", () => refreshAll().catch(() => undefined));
+    $("#refresh-users").addEventListener("click", () => loadUsers());
+    $("#refresh-reservations").addEventListener("click", () => loadReservations());
     $("#add-account").addEventListener("click", openAccountDialog);
     $("#issue-device").addEventListener("click", () => openDeviceDialog());
     $("#invite-admin").addEventListener("click", openInviteDialog);

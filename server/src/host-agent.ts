@@ -93,6 +93,10 @@ interface PublicDevice {
   fingerprint: string;
   accountId: string | null;
   weeklyLimitPercent: number;
+  userId: string | null;
+  reservationId: string | null;
+  quotaBaseUsedPercent: number | null;
+  quotaBudgetPercent: number | null;
   usage: DeviceUsageSnapshot;
 }
 
@@ -211,6 +215,10 @@ function asRelayDevice(device: DeviceAccess): RelayDevice {
     lastSeenAt: device.lastSeenAt,
     accountId: device.accountId,
     weeklyLimitPercent: device.weeklyLimitPercent,
+    userId: device.userId,
+    reservationId: device.reservationId,
+    quotaBaseUsedPercent: device.quotaBaseUsedPercent,
+    quotaBudgetPercent: device.quotaBudgetPercent,
     usage,
   };
 }
@@ -239,6 +247,10 @@ function publicDevice(device: DeviceAccess): PublicDevice {
     fingerprint: device.tokenHash.slice(0, 12),
     accountId: device.accountId,
     weeklyLimitPercent: device.weeklyLimitPercent,
+    userId: device.userId,
+    reservationId: device.reservationId,
+    quotaBaseUsedPercent: device.quotaBaseUsedPercent,
+    quotaBudgetPercent: device.quotaBudgetPercent,
     usage,
   };
 }
@@ -673,6 +685,42 @@ export class HostAgent {
         );
         await this.syncAccess();
         await this.audit(actorId, command, "device", issued.device.deviceId, { label: issued.device.label });
+        return { device: publicDevice(issued.device), token: issued.token };
+      }
+      case "session.issue": {
+        const accountId = requestString(payload, "accountId");
+        const userId = requestString(payload, "userId");
+        const reservationId = requestString(payload, "reservationId");
+        const expiresAt = requestString(payload, "expiresAt");
+        const budgetPercent = requestPercent(payload, "quotaBudgetPercent", 5);
+        if (budgetPercent <= 0) throw new Error("A franquia da sessão precisa ser maior que zero.");
+        const worker = await this.workerFor(accountId);
+        if (!worker.ready || worker.snapshot.status !== "ready") {
+          throw new Error("A conta vinculada à reserva não está disponível.");
+        }
+        const weeklyWindow = weeklyRateLimit(worker.snapshot);
+        const baseUsedPercent = weeklyWindow?.usedPercent ?? 0;
+        const absoluteLimit = Math.min(100, Math.round((baseUsedPercent + budgetPercent) * 100) / 100);
+        const issued = await this.accessStore.issue(
+          `Sessão ${reservationId.slice(0, 8)}`,
+          Math.max(1_000, Date.parse(expiresAt) - Date.now()),
+          new Date(),
+          {
+            accountId,
+            expiresAt,
+            weeklyLimitPercent: absoluteLimit,
+            userId,
+            reservationId,
+            quotaBaseUsedPercent: baseUsedPercent,
+            quotaBudgetPercent: budgetPercent,
+          },
+        );
+        await this.syncAccess();
+        await this.audit(userId, command, "reservation", reservationId, {
+          accountId,
+          quotaBudgetPercent: budgetPercent,
+          quotaBaseUsedPercent: baseUsedPercent,
+        });
         return { device: publicDevice(issued.device), token: issued.token };
       }
       case "access.list": {

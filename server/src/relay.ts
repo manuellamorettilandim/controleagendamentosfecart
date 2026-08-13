@@ -46,9 +46,12 @@ const STATIC_ROUTES: Record<string, string> = {
   "/login.html": "login.html",
   "/admin": "admin.html",
   "/admin.html": "admin.html",
+  "/dashboard": "dashboard.html",
+  "/dashboard.html": "dashboard.html",
   "/auth.js": "auth.js",
   "/login.js": "login.js",
   "/admin.js": "admin.js",
+  "/dashboard.js": "dashboard.js",
   "/styles.css": "styles.css",
   "/site.js": "site.js",
 };
@@ -132,6 +135,15 @@ function routeParts(pathname: string): string[] {
   return pathname.split("/").filter(Boolean);
 }
 
+function dataError(value: unknown, fallback: string): string {
+  if (!value || typeof value !== "object") return fallback;
+  const record = value as Record<string, unknown>;
+  for (const key of ["message", "msg", "error_description", "details"]) {
+    if (typeof record[key] === "string" && record[key]) return record[key] as string;
+  }
+  return fallback;
+}
+
 function urlHasQuery(rawUrl: string | undefined): boolean {
   return Boolean(rawUrl && new URL(rawUrl, "http://relay.invalid").search);
 }
@@ -160,9 +172,17 @@ function weeklyRateLimitUsedPercent(account: AccountSnapshot | undefined): numbe
 
 function deviceUsageLimitReached(device: RelayDevice, account: AccountSnapshot | undefined): boolean {
   if (device.usage?.usageLimitReachedAt) return true;
-  const limit = device.weeklyLimitPercent ?? 100;
   const usedPercent = weeklyRateLimitUsedPercent(account);
-  return usedPercent !== null && usedPercent >= limit;
+  if (usedPercent === null) return false;
+  const quotaBase = device.quotaBaseUsedPercent;
+  const quotaBudget = device.quotaBudgetPercent;
+  if (quotaBase != null && quotaBudget != null) {
+    const consumed = usedPercent >= quotaBase
+      ? usedPercent - quotaBase
+      : usedPercent;
+    return consumed >= quotaBudget;
+  }
+  return usedPercent >= (device.weeklyLimitPercent ?? 100);
 }
 
 function deviceSnapshotFromRow(row: Record<string, unknown>): Record<string, unknown> | null {
@@ -175,6 +195,10 @@ function deviceSnapshotFromRow(row: Record<string, unknown>): Record<string, unk
     label,
     accountId: typeof row.account_id === "string" ? row.account_id : null,
     weeklyLimitPercent: numberOr(row.weekly_limit_percent, 100),
+    userId: typeof row.user_id === "string" ? row.user_id : null,
+    reservationId: typeof row.reservation_id === "string" ? row.reservation_id : null,
+    quotaBaseUsedPercent: numberOr(row.quota_base_used_percent, null),
+    quotaBudgetPercent: numberOr(row.quota_budget_percent, null),
     createdAt: row.created_at ?? null,
     expiresAt: row.expires_at ?? null,
     revokedAt: row.revoked_at ?? null,
@@ -362,6 +386,11 @@ export class RelayServer {
       return;
     }
 
+    if (url.pathname.startsWith("/api/user/")) {
+      await this.handleUserApi(request, response, url.pathname);
+      return;
+    }
+
     if (request.method !== "GET" && request.method !== "HEAD") {
       response.setHeader("Allow", "GET, HEAD");
       response.statusCode = 405;
@@ -455,6 +484,23 @@ export class RelayServer {
         jsonResponse(response, 200, result);
         return;
       }
+      if (method === "GET" && parts.length === 3 && parts[2] === "users") {
+        const users = await this.authClient.queryAdmin<Record<string, unknown>>(token, "codex_user_profiles", {
+          select: "user_id,username,group_name,enabled,account_id,weekly_quota_percent,created_at,updated_at",
+          order: "group_name.asc,username.asc",
+        });
+        jsonResponse(response, 200, { users });
+        return;
+      }
+      if (method === "GET" && parts.length === 3 && parts[2] === "reservations") {
+        const reservations = await this.authClient.queryAdmin<Record<string, unknown>>(token, "codex_reservations", {
+          select: "id,user_id,account_id,starts_at,ends_at,status,device_id,quota_base_used_percent,quota_budget_percent,activated_at,cancelled_at,created_at",
+          order: "starts_at.desc",
+          limit: "250",
+        });
+        jsonResponse(response, 200, { reservations });
+        return;
+      }
 
       if (method !== "POST") {
         response.setHeader("Allow", "GET, POST");
@@ -512,6 +558,200 @@ export class RelayServer {
     }
   }
 
+  private async handleUserApi(request: IncomingMessage, response: ServerResponse, pathname: string): Promise<void> {
+    if (urlHasQuery(request.url)) {
+      jsonResponse(response, 400, { error: "Query strings are not used by user APIs." });
+      return;
+    }
+    if (!this.authClient) {
+      jsonResponse(response, 503, { error: "Supabase Auth is not configured on the relay." });
+      return;
+    }
+    const token = bearerToken(request);
+    if (!token) {
+      jsonResponse(response, 401, { error: "Supabase bearer token required." });
+      return;
+    }
+    const identity = await this.authClient.authenticateUser(token).catch(() => null);
+    if (!identity) {
+      jsonResponse(response, 401, { error: "Supabase authentication failed." });
+      return;
+    }
+    const profileResult = await this.authClient.rest(token, "codex_user_profiles", {
+      select: "user_id,username,group_name,enabled,account_id,weekly_quota_percent,created_at",
+      user_id: `eq.${identity.userId}`,
+      limit: "1",
+    });
+    const profile = profileResult.ok && Array.isArray(profileResult.data) && profileResult.data.length === 1
+      ? profileResult.data[0] as Record<string, unknown>
+      : null;
+    if (!profile || profile.enabled !== true) {
+      jsonResponse(response, 403, { error: "Este usuário não está habilitado para o Remote Codex." });
+      return;
+    }
+
+    const parts = routeParts(pathname);
+    const method = request.method ?? "GET";
+    try {
+      if (method === "GET" && parts.length === 3 && parts[2] === "dashboard") {
+        const rangeStart = new Date();
+        rangeStart.setHours(0, 0, 0, 0);
+        const rangeEnd = new Date(rangeStart.getTime() + 14 * 24 * 60 * 60_000);
+        const [reservationsResult, accountResult, devicesResult, busyResult] = await Promise.all([
+          this.authClient.rest(token, "codex_reservations", {
+            select: "id,account_id,starts_at,ends_at,status,device_id,quota_base_used_percent,quota_budget_percent,activated_at,cancelled_at,created_at",
+            order: "starts_at.asc",
+            limit: "120",
+          }),
+          this.authClient.rest(token, "codex_account_snapshots", {
+            select: "account_id,label,status,is_default,rate_limits,usage,observed_at",
+            account_id: `eq.${String(profile.account_id)}`,
+            limit: "1",
+          }),
+          this.authClient.rest(token, "codex_device_snapshots", {
+            select: "device_id,reservation_id,status,expires_at,last_seen_at,observed_tokens,observed_input_tokens,observed_output_tokens,account_used_percent,account_resets_at,quota_base_used_percent,quota_budget_percent,usage_limit_reached_at",
+            user_id: `eq.${identity.userId}`,
+            order: "created_at.desc",
+            limit: "30",
+          }),
+          this.authClient.rest(token, "codex_busy_slots", {
+            select: "starts_at,ends_at",
+            starts_at: `lt.${rangeEnd.toISOString()}`,
+            ends_at: `gt.${rangeStart.toISOString()}`,
+            order: "starts_at.asc",
+          }),
+        ]);
+        jsonResponse(response, 200, {
+          serverTime: new Date().toISOString(),
+          relay: this.status(),
+          profile,
+          reservations: reservationsResult.ok && Array.isArray(reservationsResult.data) ? reservationsResult.data : [],
+          account: accountResult.ok && Array.isArray(accountResult.data) ? accountResult.data[0] ?? null : null,
+          devices: devicesResult.ok && Array.isArray(devicesResult.data) ? devicesResult.data : [],
+          busySlots: busyResult.ok && Array.isArray(busyResult.data) ? busyResult.data : [],
+        });
+        return;
+      }
+
+      if (method !== "POST") {
+        jsonResponse(response, 405, { error: "Method not allowed." });
+        return;
+      }
+      const body = await readJsonBody(request);
+      if (parts.length === 3 && parts[2] === "reservations") {
+        const startsAt = typeof body.startsAt === "string" ? new Date(body.startsAt) : new Date(Number.NaN);
+        const durationHours = Number(body.durationHours);
+        if (Number.isNaN(startsAt.getTime()) || !Number.isInteger(durationHours) || durationHours < 1 || durationHours > 3) {
+          jsonResponse(response, 400, { error: "Escolha um horário válido e duração de uma a três horas." });
+          return;
+        }
+        if (startsAt.getTime() < Date.now() || startsAt.getMinutes() !== 0 || startsAt.getSeconds() !== 0) {
+          jsonResponse(response, 400, { error: "A reserva deve começar em uma hora cheia futura." });
+          return;
+        }
+        const endsAt = new Date(startsAt.getTime() + durationHours * 60 * 60_000);
+        const inserted = await this.authClient.rest(token, "codex_reservations", {}, {
+          method: "POST",
+          body: {
+            user_id: identity.userId,
+            account_id: profile.account_id,
+            starts_at: startsAt.toISOString(),
+            ends_at: endsAt.toISOString(),
+            status: "scheduled",
+          },
+          headers: { Prefer: "return=representation" },
+        });
+        if (!inserted.ok) {
+          const conflict = inserted.status === 409 || dataError(inserted.data, "").toLowerCase().includes("conflict");
+          jsonResponse(response, conflict ? 409 : 400, { error: conflict ? "Esse horário já está reservado." : dataError(inserted.data, "Não foi possível criar a reserva.") });
+          return;
+        }
+        jsonResponse(response, 201, { reservation: Array.isArray(inserted.data) ? inserted.data[0] : inserted.data });
+        return;
+      }
+
+      const reservationId = parts[3];
+      if (parts.length !== 5 || parts[2] !== "reservations" || !reservationId) {
+        jsonResponse(response, 404, { error: "User endpoint not found." });
+        return;
+      }
+      const reservationResult = await this.authClient.rest(token, "codex_reservations", {
+        select: "id,user_id,account_id,starts_at,ends_at,status,device_id",
+        id: `eq.${reservationId}`,
+        user_id: `eq.${identity.userId}`,
+        limit: "1",
+      });
+      const reservation = reservationResult.ok && Array.isArray(reservationResult.data) && reservationResult.data.length === 1
+        ? reservationResult.data[0] as Record<string, unknown>
+        : null;
+      if (!reservation) {
+        jsonResponse(response, 404, { error: "Reserva não encontrada." });
+        return;
+      }
+
+      if (parts[4] === "cancel") {
+        if (reservation.status !== "scheduled" || Date.parse(String(reservation.starts_at)) <= Date.now()) {
+          jsonResponse(response, 409, { error: "Somente reservas futuras podem ser canceladas." });
+          return;
+        }
+        const cancelled = await this.authClient.rest(token, "codex_reservations", { id: `eq.${reservationId}`, user_id: `eq.${identity.userId}` }, {
+          method: "PATCH",
+          body: { status: "cancelled", cancelled_at: new Date().toISOString() },
+          headers: { Prefer: "return=representation" },
+        });
+        jsonResponse(response, cancelled.ok ? 200 : 400, cancelled.ok ? { reservation: Array.isArray(cancelled.data) ? cancelled.data[0] : cancelled.data } : { error: dataError(cancelled.data, "Não foi possível cancelar.") });
+        return;
+      }
+
+      if (parts[4] === "session") {
+        const now = Date.now();
+        const startsAt = Date.parse(String(reservation.starts_at));
+        const endsAt = Date.parse(String(reservation.ends_at));
+        if (reservation.status !== "scheduled" || now < startsAt || now >= endsAt) {
+          jsonResponse(response, 409, { error: "A credencial só fica disponível durante o horário reservado." });
+          return;
+        }
+        if (reservation.device_id) {
+          jsonResponse(response, 409, { error: "A credencial desta reserva já foi emitida. Use a cópia guardada neste navegador." });
+          return;
+        }
+        const result = await this.sendControlRequest("session.issue", {
+          accountId: String(reservation.account_id),
+          userId: identity.userId,
+          reservationId,
+          expiresAt: new Date(endsAt).toISOString(),
+          quotaBudgetPercent: Number(profile.weekly_quota_percent ?? 5),
+        }, identity.userId) as Record<string, unknown>;
+        const device = result.device as Record<string, unknown> | undefined;
+        const updated = await this.authClient.rest(token, "codex_reservations", {
+          id: `eq.${reservationId}`,
+          user_id: `eq.${identity.userId}`,
+          device_id: "is.null",
+        }, {
+          method: "PATCH",
+          body: {
+            device_id: device?.deviceId ?? null,
+            quota_base_used_percent: device?.quotaBaseUsedPercent ?? null,
+            quota_budget_percent: device?.quotaBudgetPercent ?? profile.weekly_quota_percent,
+            activated_at: new Date().toISOString(),
+          },
+          headers: { Prefer: "return=representation" },
+        });
+        if (!updated.ok || !Array.isArray(updated.data) || updated.data.length !== 1) {
+          if (device?.deviceId) await this.sendControlRequest("access.revoke", { deviceId: device.deviceId }, identity.userId).catch(() => undefined);
+          jsonResponse(response, 409, { error: "A reserva já foi ativada em outra janela." });
+          return;
+        }
+        jsonResponse(response, 200, { ...result, reservation: updated.data[0] });
+        return;
+      }
+      jsonResponse(response, 404, { error: "User endpoint not found." });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      jsonResponse(response, message.toLowerCase().includes("offline") ? 503 : 400, { error: message });
+    }
+  }
+
   private async adminAccounts(token: string, _identity: SupabaseAdminIdentity): Promise<Record<string, unknown>> {
     const status = this.status();
     let accounts = [...this.accounts.values()];
@@ -552,7 +792,7 @@ export class RelayServer {
     }
 
     const rows = await this.authClient?.queryAdmin<Record<string, unknown>>(token, "codex_device_snapshots", {
-      select: "device_id,label,account_id,weekly_limit_percent,created_at,expires_at,revoked_at,disabled_at,last_seen_at,status,fingerprint,usage_window_resets_at,observed_tokens,observed_input_tokens,observed_cached_input_tokens,observed_output_tokens,observed_reasoning_tokens,account_used_percent,account_window_duration_mins,account_resets_at,usage_limit_reached_at,usage_last_seen_at,stale_at",
+      select: "device_id,label,account_id,weekly_limit_percent,user_id,reservation_id,quota_base_used_percent,quota_budget_percent,created_at,expires_at,revoked_at,disabled_at,last_seen_at,status,fingerprint,usage_window_resets_at,observed_tokens,observed_input_tokens,observed_cached_input_tokens,observed_output_tokens,observed_reasoning_tokens,account_used_percent,account_window_duration_mins,account_resets_at,usage_limit_reached_at,usage_last_seen_at,stale_at",
       order: "created_at.desc",
     }) ?? [];
     return {

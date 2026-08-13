@@ -9,11 +9,12 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "npm run build && node --test dist/test/access-store.test.js dist/test/account-store.test.js dist/test/relay.test.js dist/test/host-agent.test.js dist/test/supabase.test.js",
+    "test": "npm run build && node --test dist/test/access-store.test.js dist/test/account-store.test.js dist/test/relay.test.js dist/test/host-agent.test.js dist/test/supabase.test.js dist/test/user-identity.test.js",
     "relay": "node dist/src/relay-main.js",
     "host": "node --env-file=.env dist/src/host-agent.js",
     "access": "node dist/src/access-cli.js",
     "admin": "node --env-file=.env dist/src/admin-cli.js",
+    "users": "node --env-file=.env dist/src/user-cli.js",
     "dev:relay": "tsx server/src/relay-main.ts",
     "dev:host": "tsx server/src/host-agent.ts"
   },

@@ -8,6 +8,14 @@
     <link rel="stylesheet" href="/styles.css">
   </head>
   <body class="admin-page">
+    <!--
+      THESIS: uma central de operações com dados acionáveis, não uma coleção de cartões genéricos.
+      OWN-WORLD: carvão e verde mineral, navegação fixa, tabelas densas e estados explícitos.
+      STORY: acompanhar saúde e quota, administrar pessoas e reservas, e auditar cada credencial.
+      FIRST VIEWPORT: sidebar persistente, título largo e conta/quota em primeiro plano.
+      FORM: console administrativo existente ampliado com pessoas e agenda; seed 343bd3a1.
+      FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
+    -->
     <main id="app-view" class="admin-app">
       <aside class="admin-sidebar">
         <a class="admin-sidebar-brand" href="/admin" aria-label="Remote Codex, início do painel">
@@ -18,6 +26,8 @@
         <nav class="admin-sidebar-nav" aria-label="Áreas administrativas">
           <button class="active" data-tab="accounts" type="button"><span aria-hidden="true">⌂</span> Visão geral</button>
           <button data-tab="devices" type="button"><span aria-hidden="true">⌁</span> Dispositivos</button>
+          <button data-tab="users" type="button"><span aria-hidden="true">U</span> Usuários</button>
+          <button data-tab="reservations" type="button"><span aria-hidden="true">H</span> Agenda</button>
           <button data-tab="admins" id="admins-tab" type="button"><span aria-hidden="true">♙</span> Administradores</button>
         </nav>
         <div class="admin-sidebar-spacer"></div>
@@ -44,6 +54,18 @@
           <div class="admin-section-head"><div><p class="admin-eyebrow">ACCESS TOKENS</p><h2>Dispositivos autorizados</h2><p class="admin-muted">Cada conta pode ter um token não revogado. O token bruto fica disponível apenas no modal de emissão; depois, apenas fingerprint, política e uso observado permanecem.</p></div><div class="admin-actions"><button id="refresh-devices" class="admin-button ghost">Atualizar</button><button id="issue-device" class="admin-button primary">Emitir token</button></div></div>
           <div id="devices-note" class="admin-status"></div>
           <div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Dispositivo</th><th>Conta</th><th>Política</th><th>Uso observado</th><th>Status</th><th>Ações</th></tr></thead><tbody id="devices-body"></tbody></table></div>
+        </section>
+
+        <section id="tab-users" class="admin-tab-panel" hidden>
+          <div class="admin-section-head"><div><h2>Usuários e turmas</h2><p class="admin-muted">Logins comuns do Supabase Auth, conta vinculada e fração semanal liberada para cada equipe.</p></div><button id="refresh-users" class="admin-button ghost">Atualizar</button></div>
+          <div id="users-summary" class="admin-summary-strip"></div>
+          <div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Usuário</th><th>Turma</th><th>Conta</th><th>Franquia</th><th>Status</th><th>Criado em</th></tr></thead><tbody id="users-body"></tbody></table></div>
+        </section>
+
+        <section id="tab-reservations" class="admin-tab-panel" hidden>
+          <div class="admin-section-head"><div><h2>Agenda e sessões</h2><p class="admin-muted">Reservas recentes, ativações e vínculo com credenciais temporárias emitidas pelo host.</p></div><button id="refresh-reservations" class="admin-button ghost">Atualizar</button></div>
+          <div id="reservations-summary" class="admin-summary-strip"></div>
+          <div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Usuário</th><th>Janela</th><th>Conta</th><th>Franquia</th><th>Sessão</th><th>Status</th></tr></thead><tbody id="reservations-body"></tbody></table></div>
         </section>
 
         <section id="tab-admins" class="admin-tab-panel" hidden>

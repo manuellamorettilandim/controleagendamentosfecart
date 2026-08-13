@@ -10,6 +10,20 @@ Cada conta pode ter um token não revogado. `disable` é temporário; `revoke` �
 
 O host observa as notificações `thread/tokenUsage/updated` do app-server e registra por dispositivo os tokens de entrada, cache, saída e raciocínio observados. O app-server não oferece um contador oficial de cota semanal separado por token: a cota retornada por `account/rateLimits/read` é da conta. Por isso a UI mostra separadamente o uso observado do token e o percentual global atual da conta; se houver uso direto na máquina central, a atribuição individual não é exata.
 
+## Usuários e agendamento
+
+O login unificado fica em `/login`: administradores entram com email e usuários comuns com o nome da equipe. A página `/dashboard` permite reservar uma janela exclusiva de uma a três horas. A credencial do relay só pode ser emitida quando a reserva está ativa e expira automaticamente no fim da janela.
+
+A franquia comum padrão é 5 pontos percentuais da janela semanal da conta. Para o usuário, essa parcela aparece como 100% disponível; o host registra o percentual da conta no início da sessão e bloqueia o token quando a conta avançar os pontos concedidos. Como o app-server informa quota somente por conta, uso paralelo fora do relay pode consumir essa parcela e antecipar o bloqueio.
+
+Depois de aplicar a migration `codex_user_scheduling`, importe os logins do protótipo para usuários reais do Supabase Auth:
+
+```powershell
+npm.cmd run users -- import-legacy --account primary --quota 5
+```
+
+O comando atualiza as senhas de demonstração existentes. Para uso real, rotacione-as após a importação. O SQL legado e suas políticas públicas não são reativados.
+
 Este repositório contém um relay experimental para usar o `codex app-server` da máquina central a partir de outro computador sem copiar o login ChatGPT/OpenAI.
 
 ```mermaid

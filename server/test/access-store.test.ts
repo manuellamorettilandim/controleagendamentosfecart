@@ -50,6 +50,52 @@ test("AccessStore issues concurrent device tokens and persists only hashes", asy
   }
 });
 
+test("AccessStore persists sanitized reservation ownership metadata", async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "remote-codex-session-"));
+  try {
+    const store = new AccessStore(path.join(directory, "access.json"));
+    const issued = await store.issue("Sessão teste", 3_600_000, new Date("2026-08-13T12:00:00.000Z"), {
+      accountId: "primary",
+      userId: "user-123",
+      reservationId: "reservation-123",
+      quotaBaseUsedPercent: 18.5,
+      quotaBudgetPercent: 5,
+    });
+    const stored = (await store.list()).at(-1);
+    assert.equal(stored?.userId, "user-123");
+    assert.equal(stored?.reservationId, "reservation-123");
+    assert.equal(stored?.quotaBaseUsedPercent, 18.5);
+    assert.equal(stored?.quotaBudgetPercent, 5);
+    assert.notEqual(stored?.tokenHash, issued.token);
+  } finally {
+    await fs.rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("AccessStore enforces a session quota as delta, including after account reset", async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "remote-codex-quota-"));
+  try {
+    const store = new AccessStore(path.join(directory, "access.json"));
+    const issued = await store.issue("scheduled session", 3_600_000, new Date("2026-08-13T12:00:00.000Z"), {
+      accountId: "primary",
+      quotaBaseUsedPercent: 80,
+      quotaBudgetPercent: 5,
+      weeklyLimitPercent: 85,
+    });
+    await store.updateAccountLimit("primary", 84.9, 10_080, 1_800_000_000);
+    assert.equal((await store.list()).find((device) => device.deviceId === issued.device.deviceId)?.usage.usageLimitReachedAt, null);
+    await store.updateAccountLimit("primary", 85, 10_080, 1_800_000_000, new Date("2026-08-13T12:10:00.000Z"));
+    assert.equal((await store.list()).find((device) => device.deviceId === issued.device.deviceId)?.usage.usageLimitReachedAt, "2026-08-13T12:10:00.000Z");
+
+    await store.updateAccountLimit("primary", 4.9, 10_080, 1_800_604_800);
+    assert.equal((await store.list()).find((device) => device.deviceId === issued.device.deviceId)?.usage.usageLimitReachedAt, null);
+    await store.updateAccountLimit("primary", 5, 10_080, 1_800_604_800, new Date("2026-08-13T12:20:00.000Z"));
+    assert.equal((await store.list()).find((device) => device.deviceId === issued.device.deviceId)?.usage.usageLimitReachedAt, "2026-08-13T12:20:00.000Z");
+  } finally {
+    await fs.rm(directory, { recursive: true, force: true });
+  }
+});
+
 test("parseTtl accepts supported units and rejects unsafe ranges", () => {
   assert.equal(parseTtl("30d"), 30 * 24 * 60 * 60_000);
   assert.equal(parseTtl("12h"), 12 * 60 * 60_000);

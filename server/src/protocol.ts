@@ -21,6 +21,11 @@ export interface RelayDevice {
   accountId?: string | null;
   /** Absolute ceiling in the account's weekly rate-limit window. */
   weeklyLimitPercent?: number | null;
+  /** End-user session metadata. Raw credentials are never included. */
+  userId?: string | null;
+  reservationId?: string | null;
+  quotaBaseUsedPercent?: number | null;
+  quotaBudgetPercent?: number | null;
   usage?: DeviceUsageSnapshot | null;
 }
 
@@ -104,6 +109,7 @@ export type ControlCommand =
   | "access.disable"
   | "access.enable"
   | "access.revoke"
+  | "session.issue"
   | "account.add"
   | "account.list"
   | "account.login.start"
@@ -239,6 +245,10 @@ function validDevice(value: unknown): value is RelayDevice {
     isNullableString(value.lastSeenAt) &&
     (value.accountId === undefined || isNullableString(value.accountId)) &&
     (value.weeklyLimitPercent === undefined || value.weeklyLimitPercent === null || (typeof value.weeklyLimitPercent === "number" && Number.isFinite(value.weeklyLimitPercent) && value.weeklyLimitPercent >= 0 && value.weeklyLimitPercent <= 100)) &&
+    (value.userId === undefined || isNullableString(value.userId)) &&
+    (value.reservationId === undefined || isNullableString(value.reservationId)) &&
+    (value.quotaBaseUsedPercent === undefined || value.quotaBaseUsedPercent === null || typeof value.quotaBaseUsedPercent === "number") &&
+    (value.quotaBudgetPercent === undefined || value.quotaBudgetPercent === null || typeof value.quotaBudgetPercent === "number") &&
     (value.usage === undefined || value.usage === null || validDeviceUsage(value.usage))
   );
 }
@@ -271,6 +281,7 @@ function validControlCommand(value: unknown): value is ControlCommand {
     value === "access.disable" ||
     value === "access.enable" ||
     value === "access.revoke" ||
+    value === "session.issue" ||
     value === "account.add" ||
     value === "account.list" ||
     value === "account.login.start" ||

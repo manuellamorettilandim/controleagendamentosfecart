@@ -3,25 +3,63 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="Login administrativo do Remote Codex.">
+    <meta name="description" content="Entre no Remote Codex para reservar seu horário ou administrar o acesso.">
     <title>Entrar · Remote Codex</title>
     <link rel="stylesheet" href="/styles.css">
   </head>
-  <body class="admin-page login-page">
-    <main class="admin-shell">
-      <section class="admin-login">
-        <a class="admin-login-brand" href="/">Remote Codex</a>
-        <div class="admin-brand-mark">RC</div>
-        <p class="admin-eyebrow">REMOTE CODEX · ADMIN</p>
-        <h1>Entrar no controle central.</h1>
-        <p class="admin-muted">Use seu usuário autorizado do Supabase. O login do ChatGPT continua exclusivamente na máquina central.</p>
-        <form id="login-form" class="admin-form">
-          <label>Email<input id="login-email" type="email" autocomplete="username" required></label>
-          <label>Senha<input id="login-password" type="password" autocomplete="current-password" required></label>
-          <button id="login-submit" class="admin-button primary" type="submit">Entrar</button>
-          <p id="login-error" class="admin-error" role="alert"></p>
+  <body class="auth-page">
+    <!--
+      THESIS: acesso remoto começa por tempo reservado, não por uma credencial permanente; recusa o formulário isolado no centro da tela.
+      OWN-WORLD: carvão profundo, verde mineral e branco frio; placas operacionais, números tabulares e linhas de tempo precisas.
+      STORY: identificar o tipo de acesso, entrar com segurança e seguir diretamente para agenda ou controle central.
+      FIRST VIEWPORT: narrativa operacional à esquerda e formulário compacto à direita, com o seletor de papel no topo da ação.
+      FORM: login bipartido, composição escolhida pelo brief; seed 343bd3a1.
+      FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
+    -->
+    <main class="auth-shell">
+      <section class="auth-stage" aria-labelledby="auth-stage-title">
+        <a class="auth-brand" href="/">
+          <span class="brand-glyph" aria-hidden="true">RC</span>
+          <span>Remote Codex</span>
+        </a>
+        <div class="auth-stage-copy">
+          <p class="auth-status-line"><span class="live-pip"></span> Acesso por horário · credencial temporária</p>
+          <h1 id="auth-stage-title">Seu tempo com o Codex, sob controle.</h1>
+          <p>Reserve uma janela de até três horas. Quando ela começar, sua credencial aparece e funciona somente até o horário ou a franquia terminar.</p>
+        </div>
+        <ol class="auth-flow" aria-label="Como funciona">
+          <li><span>1</span><div><strong>Entre</strong><small>Use o login da sua equipe.</small></div></li>
+          <li><span>2</span><div><strong>Agende</strong><small>Escolha um horário livre.</small></div></li>
+          <li><span>3</span><div><strong>Inicie</strong><small>Copie o comando da sessão.</small></div></li>
+        </ol>
+        <p class="auth-security">A autenticação OpenAI permanece no host central.</p>
+      </section>
+
+      <section class="auth-panel" aria-labelledby="login-title">
+        <div class="auth-mobile-brand"><span class="brand-glyph">RC</span><strong>Remote Codex</strong></div>
+        <div class="role-switch" role="tablist" aria-label="Tipo de acesso">
+          <button id="role-user" class="role-option active" type="button" role="tab" aria-selected="true" data-role="user">Usuário</button>
+          <button id="role-admin" class="role-option" type="button" role="tab" aria-selected="false" data-role="admin">Administrador</button>
+        </div>
+        <div class="auth-panel-heading">
+          <h2 id="login-title">Acesse sua agenda</h2>
+          <p id="login-description">Entre com o nome e a senha da sua equipe.</p>
+        </div>
+        <form id="login-form" class="auth-form">
+          <label id="login-identity-label" for="login-identity">Usuário</label>
+          <input id="login-identity" type="text" autocomplete="username" spellcheck="false" placeholder="nome da equipe" required>
+          <label for="login-password">Senha</label>
+          <div class="password-field">
+            <input id="login-password" type="password" autocomplete="current-password" placeholder="Sua senha" required>
+            <button id="toggle-password" type="button" aria-label="Mostrar senha">Mostrar</button>
+          </div>
+          <button id="login-submit" class="auth-submit" type="submit"><span>Entrar</span><span aria-hidden="true">→</span></button>
+          <p id="login-error" class="form-message error" role="alert"></p>
         </form>
-        <p id="login-note" class="admin-status"></p>
+        <div class="auth-panel-foot">
+          <span class="secure-mark" aria-hidden="true"></span>
+          <p id="login-note">Sessão protegida pelo Supabase Auth.</p>
+        </div>
       </section>
     </main>
     <script src="/auth.js" defer></script>

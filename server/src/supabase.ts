@@ -6,6 +6,11 @@ export interface SupabaseAdminIdentity {
   role: "owner" | "admin";
 }
 
+export interface SupabaseUserIdentity {
+  userId: string;
+  email: string | null;
+}
+
 export type SupabaseAdminKeyType = "secret" | "service_role";
 
 interface SupabaseUser {
@@ -57,14 +62,10 @@ export class SupabaseAuthClient {
   }
 
   public async authenticate(token: string): Promise<SupabaseAdminIdentity | null> {
+    const user = await this.authenticateUser(token);
+    if (!user) return null;
     const normalizedToken = token.trim();
-    if (!normalizedToken) return null;
-
-    const userResult = await this.request("/auth/v1/user", { token: normalizedToken });
-    if (!userResult.ok) return null;
-    const user = asRecord(userResult.data) as SupabaseUser | null;
-    const userId = asString(user?.id);
-    if (!userId) return null;
+    const userId = user.userId;
 
     const query = new URLSearchParams({
       select: "role,enabled",
@@ -77,7 +78,17 @@ export class SupabaseAuthClient {
     const role = row?.role === "owner" || row?.role === "admin" ? row.role : null;
     if (!role || row?.enabled !== true) return null;
 
-    return { userId, email: asString(user?.email), role };
+    return { userId, email: user.email, role };
+  }
+
+  public async authenticateUser(token: string): Promise<SupabaseUserIdentity | null> {
+    const normalizedToken = token.trim();
+    if (!normalizedToken) return null;
+    const userResult = await this.request("/auth/v1/user", { token: normalizedToken });
+    if (!userResult.ok) return null;
+    const user = asRecord(userResult.data) as SupabaseUser | null;
+    const userId = asString(user?.id);
+    return userId ? { userId, email: asString(user?.email) } : null;
   }
 
   public async queryAdmin<T = unknown>(token: string, table: string, query: Record<string, string>): Promise<T[]> {
@@ -85,6 +96,11 @@ export class SupabaseAuthClient {
     const result = await this.request(`/rest/v1/${table}?${params.toString()}`, { token });
     if (!result.ok || !Array.isArray(result.data)) return [];
     return result.data as T[];
+  }
+
+  public async rest(token: string, table: string, query: Record<string, string> = {}, options: SupabaseRequestOptions = {}): Promise<{ ok: boolean; status: number; data: unknown }> {
+    const params = new URLSearchParams(query);
+    return this.request(`/rest/v1/${table}${params.size ? `?${params.toString()}` : ""}`, { ...options, token });
   }
 
   private async request(path: string, options: SupabaseRequestOptions = {}): Promise<{ ok: boolean; status: number; data: unknown }> {
@@ -110,6 +126,10 @@ export interface DeviceSnapshotRow {
   label: string;
   account_id: string | null;
   weekly_limit_percent: number;
+  user_id: string | null;
+  reservation_id: string | null;
+  quota_base_used_percent: number | null;
+  quota_budget_percent: number | null;
   created_at: string;
   expires_at: string;
   revoked_at: string | null;
@@ -176,6 +196,44 @@ export class SupabaseServiceClient {
     return { userId, email: userEmail };
   }
 
+  public async upsertEndUser(input: {
+    username: string;
+    loginEmail: string;
+    password: string;
+    groupName: string;
+    accountId: string;
+    weeklyQuotaPercent: number;
+  }): Promise<{ userId: string }> {
+    const listed = asRecord(await this.request("/auth/v1/admin/users?per_page=1000"));
+    const users = Array.isArray(listed?.users) ? listed.users : [];
+    const existing = users.find((candidate) => asString(asRecord(candidate)?.email)?.toLowerCase() === input.loginEmail.toLowerCase());
+    let userId = asString(asRecord(existing)?.id);
+    const authBody = {
+      email: input.loginEmail,
+      password: input.password,
+      email_confirm: true,
+      app_metadata: { remote_codex_role: "user" },
+    };
+    if (userId) {
+      await this.request(`/auth/v1/admin/users/${encodeURIComponent(userId)}`, { method: "PUT", body: authBody });
+    } else {
+      const created = asRecord(await this.request("/auth/v1/admin/users", { method: "POST", body: authBody }));
+      userId = asString(created?.id);
+    }
+    if (!userId) throw new Error(`Supabase não retornou o usuário ${input.username}.`);
+    await this.upsert("codex_user_profiles", [{
+      user_id: userId,
+      username: input.username,
+      login_email: input.loginEmail,
+      group_name: input.groupName,
+      enabled: true,
+      account_id: input.accountId,
+      weekly_quota_percent: input.weeklyQuotaPercent,
+      updated_at: new Date().toISOString(),
+    }], "user_id");
+    return { userId };
+  }
+
   private async upsertAdmin(userId: string, email: string | null, role: "owner" | "admin", createdBy: string | null): Promise<void> {
     await this.upsert("codex_admins", [{ user_id: userId, email, role, enabled: true, created_by: createdBy }], "user_id");
   }
@@ -224,6 +282,10 @@ export class SupabaseServiceClient {
       label: device.label,
       account_id: device.accountId ?? null,
       weekly_limit_percent: device.weeklyLimitPercent ?? 100,
+      user_id: device.userId ?? null,
+      reservation_id: device.reservationId ?? null,
+      quota_base_used_percent: device.quotaBaseUsedPercent ?? null,
+      quota_budget_percent: device.quotaBudgetPercent ?? null,
       created_at: device.createdAt,
       expires_at: device.expiresAt,
       revoked_at: device.revokedAt,

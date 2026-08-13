@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-13T23:20:00-03:00",
+  "title": "Design System: Remote Codex",
+  "extensions": {
+    "colorMeta": {
+      "operational-black": { "role": "neutral", "displayName": "Preto operacional", "canonical": "#07100d", "tonalRamp": ["#020604", "#07100d", "#0d1d17", "#193429", "#315245", "#58766a", "#9aaea5", "#e8efeb"] },
+      "signal-green": { "role": "primary", "displayName": "Verde de sinal", "canonical": "#70e0a3", "tonalRamp": ["#092619", "#0f422a", "#17603d", "#258252", "#35a969", "#70e0a3", "#b2f0cf", "#e8fbf1"] },
+      "danger": { "role": "danger", "displayName": "Alerta coral", "canonical": "#ff858d", "tonalRamp": ["#321014", "#5d1c23", "#8c2e36", "#bd4650", "#e96871", "#ff858d", "#ffc0c4", "#fff0f1"] }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Dados e títulos", "purpose": "Tempo, quota e títulos de página." },
+      "body": { "displayName": "Interface", "purpose": "Controles, instruções e estado." }
+    },
+    "shadows": [
+      { "name": "panel-ambient", "value": "0 16px 50px rgba(0, 0, 0, 0.18)", "purpose": "Separar painéis operacionais do fundo." },
+      { "name": "dialog", "value": "0 24px 100px rgba(0, 0, 0, 0.55)", "purpose": "Elevar modais acima do console." }
+    ],
+    "motion": [
+      { "name": "state-fast", "value": "150ms ease", "purpose": "Hover e mudança de estado de controles." }
+    ],
+    "breakpoints": [
+      { "name": "stack", "value": "920px" },
+      { "name": "mobile", "value": "620px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Ação operacional principal.",
+      "html": "<button class=\"ds-btn-primary\">Agendar horário</button>",
+      "css": ".ds-btn-primary{min-height:3.2rem;border:0;border-radius:.8rem;padding:0 1.15rem;background:var(--rc-green,#70e0a3);color:#07100d;font:900 1rem Aptos,sans-serif;cursor:pointer}.ds-btn-primary:hover{background:#8be9b5}.ds-btn-primary:focus-visible{outline:3px solid rgba(112,224,163,.38);outline-offset:3px}"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Campo escuro para credenciais e nomes.",
+      "html": "<input class=\"ds-input\" placeholder=\"nome da equipe\">",
+      "css": ".ds-input{width:100%;min-height:3.45rem;border:1px solid #324a40;border-radius:.8rem;padding:0 1rem;background:#09110e;color:#f2f8f5;font:400 1rem Aptos,sans-serif}.ds-input:focus{border-color:#70e0a3;outline:3px solid rgba(112,224,163,.25);outline-offset:2px}"
+    },
+    {
+      "name": "Operational Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Container tonal para tempo, quota e agenda.",
+      "html": "<section class=\"ds-card\"><strong>14:30</strong><span>Horário ativo</span></section>",
+      "css": ".ds-card{display:grid;gap:.75rem;border-radius:1rem;padding:1.5rem;background:#0d1814;color:#f2f8f5;box-shadow:0 16px 50px rgba(0,0,0,.18);font-family:Aptos,sans-serif}.ds-card strong{font-size:2.5rem;font-variant-numeric:tabular-nums}.ds-card span{color:#91a69c}"
+    },
+    {
+      "name": "State Chip",
+      "kind": "chip",
+      "description": "Estado online ou desligado.",
+      "html": "<span class=\"ds-chip\"><i></i> Horário ativo</span>",
+      "css": ".ds-chip{display:inline-flex;align-items:center;gap:.5rem;width:max-content;border-radius:99px;padding:.5rem .7rem;background:rgba(112,224,163,.13);color:#70e0a3;font:900 .7rem Aptos,sans-serif}.ds-chip i{width:.45rem;height:.45rem;border-radius:50%;background:currentColor}"
+    }
+  ],
+  "narrative": {
+    "northStar": "A Mesa de Operações",
+    "overview": "O produto se comporta como um console de acesso: escuro, concentrado e orientado a estado. Verde é um sinal operacional, não decoração; ele identifica disponibilidade, seleção e ações seguras.",
+    "keyCharacteristics": ["Superfícies escuras em camadas.", "Verde reservado para ações e estados ativos.", "Dados temporais grandes e tabulares.", "Controles arredondados e densos."],
+    "rules": [
+      { "name": "Signal Rule", "body": "Verde vivo comunica ação disponível, seleção ou estado online.", "section": "colors" },
+      { "name": "Clock Rule", "body": "Horários, percentuais e contadores usam algarismos tabulares.", "section": "typography" },
+      { "name": "Tonal Stack Rule", "body": "Primeiro separe superfícies por tom; use sombra apenas quando necessário.", "section": "elevation" }
+    ],
+    "dos": ["Use verde apenas quando houver significado operacional.", "Preserve leitura imediata de horário, quota e estado.", "Mantenha tokens e comandos monoespaçados."],
+    "donts": ["Não use gradientes decorativos.", "Não eleve todo card.", "Não esconda expiração ou bloqueio."]
+  }
+}

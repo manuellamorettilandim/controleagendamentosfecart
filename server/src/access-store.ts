@@ -16,6 +16,10 @@ export interface DeviceAccess {
   lastSeenAt: string | null;
   accountId: string | null;
   weeklyLimitPercent: number;
+  userId: string | null;
+  reservationId: string | null;
+  quotaBaseUsedPercent: number | null;
+  quotaBudgetPercent: number | null;
   usage: DeviceUsageState;
 }
 
@@ -66,6 +70,10 @@ export interface IssueDeviceOptions {
   accountId?: string | null;
   weeklyLimitPercent?: number;
   expiresAt?: string | null;
+  userId?: string | null;
+  reservationId?: string | null;
+  quotaBaseUsedPercent?: number | null;
+  quotaBudgetPercent?: number | null;
 }
 
 export interface UpdateDevicePolicyOptions {
@@ -229,6 +237,18 @@ function positiveDelta(current: number, previous: number): number {
   return current > previous ? current - previous : 0;
 }
 
+function quotaLimitReached(device: DeviceAccess, accountUsedPercent: number | null): boolean {
+  if (accountUsedPercent === null) return false;
+  if (device.quotaBaseUsedPercent !== null && device.quotaBudgetPercent !== null) {
+    // A reset during a session makes the new account window start at zero.
+    const consumed = accountUsedPercent >= device.quotaBaseUsedPercent
+      ? accountUsedPercent - device.quotaBaseUsedPercent
+      : accountUsedPercent;
+    return consumed >= device.quotaBudgetPercent;
+  }
+  return accountUsedPercent >= device.weeklyLimitPercent;
+}
+
 function addSafe(left: number, right: number): number {
   return Math.min(Number.MAX_SAFE_INTEGER, left + Math.max(0, right));
 }
@@ -271,6 +291,10 @@ function validateDevice(value: unknown): DeviceAccess {
     lastSeenAt: (device.lastSeenAt as string | null | undefined) ?? null,
     accountId: isString(device.accountId) && device.accountId.trim() ? device.accountId.trim() : null,
     weeklyLimitPercent: validateWeeklyLimitPercent(device.weeklyLimitPercent),
+    userId: isString(device.userId) && device.userId.trim() ? device.userId.trim() : null,
+    reservationId: isString(device.reservationId) && device.reservationId.trim() ? device.reservationId.trim() : null,
+    quotaBaseUsedPercent: finiteNumber(device.quotaBaseUsedPercent),
+    quotaBudgetPercent: finiteNumber(device.quotaBudgetPercent),
     usage: usageFromValue(device.usage),
   };
 }
@@ -380,6 +404,10 @@ export class AccessStore {
         lastSeenAt: null,
         accountId,
         weeklyLimitPercent,
+        userId: typeof options.userId === "string" && options.userId.trim() ? options.userId.trim() : null,
+        reservationId: typeof options.reservationId === "string" && options.reservationId.trim() ? options.reservationId.trim() : null,
+        quotaBaseUsedPercent: finiteNumber(options.quotaBaseUsedPercent),
+        quotaBudgetPercent: finiteNumber(options.quotaBudgetPercent),
         usage: emptyUsage(),
       };
 
@@ -589,9 +617,9 @@ export class AccessStore {
       usage.accountUsedPercent = finiteNumber(observation.accountUsedPercent);
       usage.accountWindowDurationMins = finiteNumber(observation.accountWindowDurationMins);
       usage.accountResetsAt = finiteNumber(observation.accountResetsAt);
-      if (usage.accountUsedPercent !== null && usage.accountUsedPercent >= device.weeklyLimitPercent) {
+      if (quotaLimitReached(device, usage.accountUsedPercent)) {
         usage.usageLimitReachedAt ??= now.toISOString();
-      } else if (windowChanged || usage.accountUsedPercent === null || usage.accountUsedPercent < device.weeklyLimitPercent) {
+      } else {
         usage.usageLimitReachedAt = null;
       }
       device.usage = usage;
@@ -628,9 +656,9 @@ export class AccessStore {
         usage.accountUsedPercent = accountUsedPercent;
         usage.accountWindowDurationMins = accountWindowDurationMins;
         usage.accountResetsAt = accountResetsAt;
-        if (accountUsedPercent !== null && accountUsedPercent >= device.weeklyLimitPercent) {
+        if (quotaLimitReached(device, accountUsedPercent)) {
           usage.usageLimitReachedAt ??= now.toISOString();
-        } else if (windowChanged || accountUsedPercent === null || accountUsedPercent < device.weeklyLimitPercent) {
+        } else {
           usage.usageLimitReachedAt = null;
         }
         device.usage = usage;
