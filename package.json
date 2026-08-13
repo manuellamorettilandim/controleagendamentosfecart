@@ -9,10 +9,11 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "npm run build && node --test dist/test/access-store.test.js dist/test/relay.test.js dist/test/host-agent.test.js",
+    "test": "npm run build && node --test dist/test/access-store.test.js dist/test/account-store.test.js dist/test/relay.test.js dist/test/host-agent.test.js",
     "relay": "node dist/src/relay-main.js",
     "host": "node dist/src/host-agent.js",
     "access": "node dist/src/access-cli.js",
+    "admin": "node dist/src/admin-cli.js",
     "dev:relay": "tsx server/src/relay-main.ts",
     "dev:host": "tsx server/src/host-agent.ts"
   },

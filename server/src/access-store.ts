@@ -12,11 +12,12 @@ export interface DeviceAccess {
   createdAt: string;
   expiresAt: string;
   revokedAt: string | null;
+  disabledAt: string | null;
   lastSeenAt: string | null;
 }
 
 export interface AccessRegistry {
-  version: 1;
+  version: 2;
   devices: DeviceAccess[];
 }
 
@@ -103,7 +104,7 @@ export function defaultAccessRegistryPath(env: NodeJS.ProcessEnv = process.env):
 }
 
 function emptyRegistry(): AccessRegistry {
-  return { version: 1, devices: [] };
+  return { version: 2, devices: [] };
 }
 
 function isString(value: unknown): value is string {
@@ -129,6 +130,10 @@ function validateDevice(value: unknown): DeviceAccess {
     throw new Error("Registro de acesso inválido: revokedAt deve ser string ou null.");
   }
 
+  if (device.disabledAt !== null && device.disabledAt !== undefined && !isString(device.disabledAt)) {
+    throw new Error("Invalid access registry: disabledAt must be a string or null.");
+  }
+
   if (device.lastSeenAt !== null && device.lastSeenAt !== undefined && !isString(device.lastSeenAt)) {
     throw new Error("Registro de acesso inválido: lastSeenAt deve ser string ou null.");
   }
@@ -140,6 +145,7 @@ function validateDevice(value: unknown): DeviceAccess {
     createdAt: device.createdAt as string,
     expiresAt: device.expiresAt as string,
     revokedAt: (device.revokedAt as string | null | undefined) ?? null,
+    disabledAt: (device.disabledAt as string | null | undefined) ?? null,
     lastSeenAt: (device.lastSeenAt as string | null | undefined) ?? null,
   };
 }
@@ -150,12 +156,12 @@ function validateRegistry(value: unknown): AccessRegistry {
   }
 
   const registry = value as Record<string, unknown>;
-  if (registry.version !== 1 || !Array.isArray(registry.devices)) {
+  if ((registry.version !== 1 && registry.version !== 2) || !Array.isArray(registry.devices)) {
     throw new Error("Registro de acesso inválido: versão ou devices ausentes.");
   }
 
   return {
-    version: 1,
+    version: 2,
     devices: registry.devices.map(validateDevice),
   };
 }
@@ -236,6 +242,7 @@ export class AccessStore {
         createdAt: now.toISOString(),
         expiresAt: new Date(now.getTime() + ttlMs).toISOString(),
         revokedAt: null,
+        disabledAt: null,
         lastSeenAt: null,
       };
 
@@ -255,7 +262,45 @@ export class AccessStore {
     const registry = await this.read();
     return registry.devices.filter((device) => {
       const expiresAt = Date.parse(device.expiresAt);
-      return device.revokedAt === null && Number.isFinite(expiresAt) && expiresAt > timestamp;
+      return (
+        device.revokedAt === null &&
+        device.disabledAt === null &&
+        Number.isFinite(expiresAt) &&
+        expiresAt > timestamp
+      );
+    });
+  }
+
+  public async disable(deviceId: string, now = new Date()): Promise<DeviceAccess | null> {
+    return withWriteLock(this.filePath, async () => {
+      const registry = await this.read();
+      const device = registry.devices.find((candidate) => candidate.deviceId === deviceId);
+      if (!device || device.revokedAt !== null || device.disabledAt !== null) {
+        return null;
+      }
+
+      device.disabledAt = now.toISOString();
+      await this.write(registry);
+      return device;
+    });
+  }
+
+  public async enable(deviceId: string, now = new Date()): Promise<DeviceAccess | null> {
+    return withWriteLock(this.filePath, async () => {
+      const registry = await this.read();
+      const device = registry.devices.find((candidate) => candidate.deviceId === deviceId);
+      if (
+        !device ||
+        device.revokedAt !== null ||
+        device.disabledAt === null ||
+        Date.parse(device.expiresAt) <= now.getTime()
+      ) {
+        return null;
+      }
+
+      device.disabledAt = null;
+      await this.write(registry);
+      return device;
     });
   }
 
@@ -296,7 +341,12 @@ export class AccessStore {
     await withWriteLock(this.filePath, async () => {
       const registry = await this.read();
       const device = registry.devices.find((candidate) => candidate.deviceId === deviceId);
-      if (!device || device.revokedAt !== null || Date.parse(device.expiresAt) <= now.getTime()) {
+      if (
+        !device ||
+        device.revokedAt !== null ||
+        device.disabledAt !== null ||
+        Date.parse(device.expiresAt) <= now.getTime()
+      ) {
         return;
       }
 

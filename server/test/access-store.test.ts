@@ -26,12 +26,19 @@ test("AccessStore issues concurrent device tokens and persists only hashes", asy
     for (const { token, device } of issued) {
       assert.match(raw, new RegExp(device.tokenHash));
       assert.equal(raw.includes(token), false);
-      assert.equal(device.tokenHash, hashToken(token));
+    assert.equal(device.tokenHash, hashToken(token));
     }
 
     const revoked = await store.revoke(issued[0].device.deviceId, new Date("2026-08-12T13:00:00.000Z"));
     assert.equal(revoked?.revokedAt, "2026-08-12T13:00:00.000Z");
     assert.equal((await store.active(new Date("2026-08-12T13:00:00.000Z"))).length, 2);
+
+    const disabled = await store.disable(issued[1].device.deviceId, new Date("2026-08-12T13:30:00.000Z"));
+    assert.equal(disabled?.disabledAt, "2026-08-12T13:30:00.000Z");
+    assert.equal((await store.active(new Date("2026-08-12T13:30:00.000Z"))).length, 1);
+    const enabled = await store.enable(issued[1].device.deviceId, new Date("2026-08-12T13:45:00.000Z"));
+    assert.equal(enabled?.disabledAt, null);
+    assert.equal((await store.active(new Date("2026-08-12T13:45:00.000Z"))).length, 2);
 
     const expired = await store.active(new Date("2026-09-12T12:01:00.000Z"));
     assert.equal(expired.length, 0);

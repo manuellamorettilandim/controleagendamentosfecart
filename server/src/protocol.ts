@@ -15,7 +15,48 @@ export interface RelayDevice {
   createdAt: string;
   expiresAt: string;
   revokedAt: string | null;
+  disabledAt: string | null;
   lastSeenAt: string | null;
+}
+
+export interface RateLimitWindow {
+  usedPercent: number | null;
+  windowDurationMins: number | null;
+  resetsAt: number | null;
+  credits: Record<string, string | number | null> | null;
+}
+
+export interface AccountRateLimit {
+  limitId: string;
+  limitName: string | null;
+  primary: RateLimitWindow | null;
+  secondary: RateLimitWindow | null;
+  rateLimitReachedType: string | null;
+}
+
+export interface AccountUsageSnapshot {
+  lifetimeTokens: number | null;
+  peakDailyTokens: number | null;
+  longestRunningTurnSec: number | null;
+  currentStreakDays: number | null;
+  longestStreakDays: number | null;
+  dailyUsageBuckets: Array<{ startDate: string; tokens: number }> | null;
+}
+
+export type AccountRuntimeStatus = "ready" | "login_required" | "offline" | "disabled" | "error";
+
+export interface AccountSnapshot {
+  accountId: string;
+  label: string;
+  email: string | null;
+  planType: string | null;
+  authMode: string | null;
+  status: AccountRuntimeStatus;
+  isDefault: boolean;
+  updatedAt: string | null;
+  rateLimits: Record<string, AccountRateLimit>;
+  usage: AccountUsageSnapshot | null;
+  error: string | null;
 }
 
 export interface AccessSyncMessage {
@@ -30,6 +71,48 @@ export interface AccessRevokeMessage {
   deviceId: string;
 }
 
+export interface AccountsSyncMessage {
+  v: typeof PROTOCOL_VERSION;
+  type: "accounts.sync";
+  defaultAccountId: string | null;
+  accounts: AccountSnapshot[];
+}
+
+export type ControlCommand =
+  | "access.issue"
+  | "access.list"
+  | "access.disable"
+  | "access.enable"
+  | "access.revoke"
+  | "account.add"
+  | "account.list"
+  | "account.login.start"
+  | "account.refresh"
+  | "account.set-default"
+  | "account.logout"
+  | "admin.list"
+  | "admin.enable"
+  | "admin.disable"
+  | "admin.invite";
+
+export interface ControlRequestMessage {
+  v: typeof PROTOCOL_VERSION;
+  type: "control.request";
+  requestId: string;
+  command: ControlCommand;
+  payload: Record<string, unknown>;
+  actorId: string | null;
+}
+
+export interface ControlResponseMessage {
+  v: typeof PROTOCOL_VERSION;
+  type: "control.response";
+  requestId: string;
+  ok: boolean;
+  result?: unknown;
+  error?: string;
+}
+
 export interface AccessSeenMessage {
   v: typeof PROTOCOL_VERSION;
   type: "access.seen";
@@ -41,6 +124,7 @@ export interface StreamOpenMessage {
   type: "stream.open";
   streamId: string;
   deviceId: string;
+  accountId: string;
 }
 
 export interface StreamDataMessage {
@@ -69,6 +153,9 @@ export type WireMessage =
   | RegisterMessage
   | AccessSyncMessage
   | AccessRevokeMessage
+  | AccountsSyncMessage
+  | ControlRequestMessage
+  | ControlResponseMessage
   | AccessSeenMessage
   | StreamOpenMessage
   | StreamDataMessage
@@ -127,9 +214,78 @@ function validDevice(value: unknown): value is RelayDevice {
     /^[a-f0-9]{64}$/i.test(String(value.tokenHash)) &&
     isString(value.createdAt) &&
     isString(value.expiresAt) &&
-    isNullableString(value.revokedAt) &&
+    (value.revokedAt === undefined || isNullableString(value.revokedAt)) &&
+    (value.disabledAt === undefined || isNullableString(value.disabledAt)) &&
     isNullableString(value.lastSeenAt)
   );
+}
+
+function validControlCommand(value: unknown): value is ControlCommand {
+  return (
+    value === "access.issue" ||
+    value === "access.list" ||
+    value === "access.disable" ||
+    value === "access.enable" ||
+    value === "access.revoke" ||
+    value === "account.add" ||
+    value === "account.list" ||
+    value === "account.login.start" ||
+    value === "account.refresh" ||
+    value === "account.set-default" ||
+    value === "account.logout" ||
+    value === "admin.list" ||
+    value === "admin.enable" ||
+    value === "admin.disable" ||
+    value === "admin.invite"
+  );
+}
+
+function validRateLimitWindow(value: unknown): value is RateLimitWindow | null {
+  if (value === null) {
+    return true;
+  }
+  if (!isRecord(value)) {
+    return false;
+  }
+  return (
+    (value.usedPercent === null || typeof value.usedPercent === "number") &&
+    (value.windowDurationMins === null || typeof value.windowDurationMins === "number") &&
+    (value.resetsAt === null || typeof value.resetsAt === "number") &&
+    (value.credits === null || value.credits === undefined || isRecord(value.credits))
+  );
+}
+
+function validAccountSnapshot(value: unknown): value is AccountSnapshot {
+  if (!isRecord(value)) {
+    return false;
+  }
+  if (
+    !isString(value.accountId) ||
+    !isString(value.label) ||
+    !isNullableString(value.email) ||
+    !isNullableString(value.planType) ||
+    !isNullableString(value.authMode) ||
+    !["ready", "login_required", "offline", "disabled", "error"].includes(String(value.status)) ||
+    typeof value.isDefault !== "boolean" ||
+    !isNullableString(value.updatedAt) ||
+    !isRecord(value.rateLimits) ||
+    !isNullableString(value.error)
+  ) {
+    return false;
+  }
+
+  return Object.values(value.rateLimits).every((limit) => {
+    if (!isRecord(limit)) {
+      return false;
+    }
+    return (
+      isString(limit.limitId) &&
+      isNullableString(limit.limitName) &&
+      validRateLimitWindow(limit.primary) &&
+      validRateLimitWindow(limit.secondary) &&
+      isNullableString(limit.rateLimitReachedType)
+    );
+  });
 }
 
 function validMessage(value: unknown): value is WireMessage {
@@ -142,11 +298,34 @@ function validMessage(value: unknown): value is WireMessage {
       return isString(value.hostId) && value.hostId.length > 0 && value.hostId.length <= 120;
     case "access.sync":
       return Array.isArray(value.devices) && value.devices.every(validDevice);
+    case "accounts.sync":
+      return (
+        (value.defaultAccountId === null || isString(value.defaultAccountId)) &&
+        Array.isArray(value.accounts) &&
+        value.accounts.every(validAccountSnapshot)
+      );
+    case "control.request":
+      return (
+        isString(value.requestId) &&
+        value.requestId.length > 0 &&
+        value.requestId.length <= 120 &&
+        validControlCommand(value.command) &&
+        isRecord(value.payload) &&
+        isNullableString(value.actorId)
+      );
+    case "control.response":
+      return (
+        isString(value.requestId) &&
+        value.requestId.length > 0 &&
+        value.requestId.length <= 120 &&
+        typeof value.ok === "boolean" &&
+        (value.error === undefined || isString(value.error))
+      );
     case "access.revoke":
     case "access.seen":
       return isString(value.deviceId) && value.deviceId.length > 0 && value.deviceId.length <= 120;
     case "stream.open":
-      return isString(value.streamId) && isString(value.deviceId) && value.streamId.length > 0;
+      return isString(value.streamId) && isString(value.deviceId) && isString(value.accountId) && value.streamId.length > 0;
     case "stream.data":
       return (
         isString(value.streamId) &&

@@ -9,15 +9,20 @@ function usage(): void {
   console.log(`Uso:
   npm run access -- issue --label pc-notebook --ttl 30d
   npm run access -- list
+  npm run access -- disable <device-id>
+  npm run access -- enable <device-id>
   npm run access -- revoke <device-id>
   npm run access -- revoke-all
 
 O token bruto só é exibido uma vez no comando issue. O arquivo local guarda apenas hashes.`);
 }
 
-function statusOf(device: { revokedAt: string | null; expiresAt: string }): string {
+function statusOf(device: { revokedAt: string | null; disabledAt: string | null; expiresAt: string }): string {
   if (device.revokedAt !== null) {
     return "revoked";
+  }
+  if (device.disabledAt !== null) {
+    return "disabled";
   }
   return Date.parse(device.expiresAt) > Date.now() ? "active" : "expired";
 }
@@ -63,6 +68,15 @@ async function main(): Promise<void> {
     for (const device of devices) {
       console.log(`${device.deviceId}\t${statusOf(device)}\t${device.label}\texpires=${device.expiresAt}\tlastSeen=${device.lastSeenAt ?? "never"}`);
     }
+    return;
+  }
+
+  if (command === "disable" || command === "enable") {
+    const deviceId = positionals[0];
+    if (!deviceId) throw new Error("Informe o device-id.");
+    const device = command === "disable" ? await store.disable(deviceId) : await store.enable(deviceId);
+    if (!device) throw new Error("Dispositivo não encontrado, expirado, revogado ou já no estado solicitado.");
+    console.log(`${command === "disable" ? "Acesso desabilitado" : "Acesso reabilitado"}: ${device.deviceId} (${device.label}).`);
     return;
   }
 

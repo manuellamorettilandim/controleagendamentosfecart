@@ -12,6 +12,8 @@ flowchart LR
 
 O relay recebe somente tokens de dispositivos e seus hashes em memória. O host central mantém `CODEX_HOME`, executa `codex login` e abre uma conexão de saída para o relay. Se esse túnel cai, o relay entra em modo bloqueado e encerra os clientes.
 
+O painel administrativo fica em [`/admin`](/admin). Ele usa Supabase Auth para owner/admin, permite operar várias contas ChatGPT isoladas no host central, acompanhar limites retornados pelo app-server e controlar dispositivos. O Supabase armazena somente metadados e snapshots; credenciais OpenAI nunca saem do host.
+
 ## Estado atual
 
 Esta é uma implementação pessoal/experimental. O transporte remoto do app-server é experimental segundo a [documentação oficial do OpenAI](https://learn.chatgpt.com/docs/app-server), e o Render Free pode dormir ou reiniciar. O teste de aceitação ainda precisa ser feito com uma conta autenticada e dois computadores em redes diferentes.
@@ -45,6 +47,16 @@ $env:RELAY_URL = "wss://SEU_RELAY.onrender.com"
 $env:RELAY_AGENT_TOKEN = "SEGREDO_LONGO_DO_HOST"
 npm.cmd run host
 ```
+
+Para a primeira configuração administrativa, aplique a migration em `supabase/migrations/`, crie o usuário owner no Supabase Auth e rode na máquina central:
+
+```powershell
+$env:SUPABASE_URL = "https://SEU_PROJETO.supabase.co"
+$env:SUPABASE_SERVICE_ROLE_KEY = "SERVICE_ROLE_SOMENTE_NO_HOST"
+npm.cmd run admin -- bootstrap --email owner@example.com
+```
+
+Depois abra `https://SEU_RELAY.onrender.com/admin`. O host inicia um app-server por conta, cada um em seu próprio `CODEX_HOME`; novas contas podem ser adicionadas no painel e o login device-code é exibido ali.
 
 Em outro computador, o token de dispositivo é usado somente para o relay:
 

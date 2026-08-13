@@ -14,10 +14,13 @@ import {
   decodeStreamData,
   encodeMessage,
   PROTOCOL_VERSION,
+  type AccountSnapshot,
+  type ControlCommand,
   type RelayDevice,
   type StreamCloseMessage,
   type WireMessage,
 } from "./protocol.js";
+import { accountSnapshotFromRow, SupabaseAuthClient, type SupabaseAdminIdentity } from "./supabase.js";
 
 const DEFAULT_PORT = 10_000;
 const DEFAULT_HOST = "0.0.0.0";
@@ -39,6 +42,9 @@ const STATIC_ROUTES: Record<string, string> = {
   "/deploy.html": "deploy.html",
   "/security": "security.html",
   "/security.html": "security.html",
+  "/admin": "admin.html",
+  "/admin.html": "admin.html",
+  "/admin.js": "admin.js",
   "/styles.css": "styles.css",
   "/site.js": "site.js",
 };
@@ -50,11 +56,14 @@ export interface RelayOptions {
   siteDir?: string;
   heartbeatTimeoutMs?: number;
   maxPayload?: number;
+  supabaseUrl?: string;
+  supabasePublishableKey?: string;
 }
 
 interface ClientStream {
   streamId: string;
   deviceId: string;
+  accountId: string;
   client: WebSocket;
 }
 
@@ -65,6 +74,8 @@ export interface RelayStatus {
   accessSynced: boolean;
   activeDevices: number;
   activeStreams: number;
+  activeAccounts: number;
+  defaultAccountId: string | null;
 }
 
 function bearerToken(request: IncomingMessage): string | null {
@@ -98,6 +109,29 @@ function jsonResponse(response: ServerResponse, status: number, value: unknown):
   response.end(body);
 }
 
+async function readJsonBody(request: IncomingMessage): Promise<Record<string, unknown>> {
+  const chunks: Buffer[] = [];
+  let total = 0;
+  for await (const chunk of request) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    total += buffer.length;
+    if (total > 64 * 1024) throw new Error("Request body too large.");
+    chunks.push(buffer);
+  }
+  if (chunks.length === 0) return {};
+  const parsed: unknown = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("JSON body must be an object.");
+  return parsed as Record<string, unknown>;
+}
+
+function routeParts(pathname: string): string[] {
+  return pathname.split("/").filter(Boolean);
+}
+
+function urlHasQuery(rawUrl: string | undefined): boolean {
+  return Boolean(rawUrl && new URL(rawUrl, "http://relay.invalid").search);
+}
+
 function closeCode(code: number | undefined, fallback: number): number {
   if (!code || !Number.isInteger(code) || code < 1000 || code > 4999 || [1004, 1005, 1006, 1015].includes(code)) {
     return fallback;
@@ -117,16 +151,25 @@ function isLiveSocket(socket: WebSocket): boolean {
 export class RelayServer {
   private readonly server: http.Server;
   private readonly webSocketServer: WebSocketServer;
-  private readonly options: Required<Pick<RelayOptions, "agentTokenHash" | "host" | "port" | "siteDir" | "heartbeatTimeoutMs" | "maxPayload">>;
+  private readonly options: Required<Pick<RelayOptions, "agentTokenHash" | "host" | "port" | "siteDir" | "heartbeatTimeoutMs" | "maxPayload">> & {
+    supabaseUrl?: string;
+    supabasePublishableKey?: string;
+  };
   private readonly devices = new Map<string, RelayDevice>();
   private readonly streams = new Map<string, ClientStream>();
   private readonly clientToStream = new Map<WebSocket, string>();
+  private readonly accounts = new Map<string, AccountSnapshot>();
+  private readonly lastAccountSnapshots = new Map<string, AccountSnapshot>();
+  private readonly pendingControls = new Map<string, { resolve: (value: unknown) => void; reject: (error: Error) => void; timer: NodeJS.Timeout }>();
+  private readonly authClient: SupabaseAuthClient | null;
   private tunnel: WebSocket | null = null;
   private hostId: string | null = null;
   private registered = false;
   private accessSynced = false;
   private lastHeartbeatAt = 0;
   private lastSyncAt = 0;
+  private defaultAccountId: string | null = null;
+  private accountsSynced = false;
   private expiryTimer: NodeJS.Timeout | null = null;
 
   public constructor(options: RelayOptions) {
@@ -137,11 +180,16 @@ export class RelayServer {
       siteDir: path.resolve(options.siteDir ?? path.resolve(process.cwd(), "site")),
       heartbeatTimeoutMs: options.heartbeatTimeoutMs ?? DEFAULT_HEARTBEAT_TIMEOUT_MS,
       maxPayload: options.maxPayload ?? DEFAULT_MAX_PAYLOAD,
+      supabaseUrl: options.supabaseUrl?.trim() || undefined,
+      supabasePublishableKey: options.supabasePublishableKey?.trim() || undefined,
     };
 
     if (!/^[a-f0-9]{64}$/i.test(this.options.agentTokenHash)) {
       throw new Error("RELAY_AGENT_TOKEN_SHA256 deve ser um SHA-256 hexadecimal de 64 caracteres.");
     }
+    this.authClient = this.options.supabaseUrl && this.options.supabasePublishableKey
+      ? new SupabaseAuthClient(this.options.supabaseUrl, this.options.supabasePublishableKey)
+      : null;
 
     this.server = http.createServer((request, response) => {
       void this.handleHttp(request, response);
@@ -199,7 +247,15 @@ export class RelayServer {
 
   public status(): RelayStatus {
     const hostConnected = this.tunnel?.readyState === WebSocket.OPEN;
-    const ready = Boolean(hostConnected && this.registered && this.accessSynced && this.isFresh());
+    const defaultAccount = this.defaultAccountId ? this.accounts.get(this.defaultAccountId) : null;
+    const ready = Boolean(
+      hostConnected &&
+      this.registered &&
+      this.accessSynced &&
+      this.accountsSynced &&
+      defaultAccount?.status === "ready" &&
+      this.isFresh(),
+    );
     return {
       ready,
       hostConnected,
@@ -207,6 +263,8 @@ export class RelayServer {
       accessSynced: this.accessSynced,
       activeDevices: this.devices.size,
       activeStreams: this.streams.size,
+      activeAccounts: [...this.accounts.values()].filter((account) => account.status === "ready").length,
+      defaultAccountId: this.defaultAccountId,
     };
   }
 
@@ -222,12 +280,6 @@ export class RelayServer {
 
   private async handleHttp(request: IncomingMessage, response: ServerResponse): Promise<void> {
     const url = new URL(request.url ?? "/", "http://relay.invalid");
-    if (request.method !== "GET" && request.method !== "HEAD") {
-      response.setHeader("Allow", "GET, HEAD");
-      response.statusCode = 405;
-      response.end("Method Not Allowed\n");
-      return;
-    }
 
     if (url.pathname === "/healthz") {
       jsonResponse(response, 200, { status: "ok", service: "codex-relay" });
@@ -237,6 +289,32 @@ export class RelayServer {
     if (url.pathname === "/readyz") {
       const status = this.status();
       jsonResponse(response, status.ready ? 200 : 503, status);
+      return;
+    }
+
+    if (url.pathname === "/api/admin/config") {
+      if (request.method !== "GET") {
+        response.setHeader("Allow", "GET");
+        response.statusCode = 405;
+        response.end("Method Not Allowed\n");
+        return;
+      }
+      jsonResponse(response, this.authClient ? 200 : 503, {
+        supabaseUrl: this.options.supabaseUrl ?? null,
+        publishableKey: this.options.supabasePublishableKey ?? null,
+      });
+      return;
+    }
+
+    if (url.pathname.startsWith("/api/admin/")) {
+      await this.handleAdminApi(request, response, url.pathname);
+      return;
+    }
+
+    if (request.method !== "GET" && request.method !== "HEAD") {
+      response.setHeader("Allow", "GET, HEAD");
+      response.statusCode = 405;
+      response.end("Method Not Allowed\n");
       return;
     }
 
@@ -268,7 +346,7 @@ export class RelayServer {
       response.statusCode = 200;
       response.setHeader("Content-Type", contentType);
       response.setHeader("X-Content-Type-Options", "nosniff");
-      response.setHeader("Content-Security-Policy", "default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:");
+      response.setHeader("Content-Security-Policy", "default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:; connect-src 'self' https://*.supabase.co https://*.supabase.in");
       if (request.method === "HEAD") {
         response.end();
       } else {
@@ -279,6 +357,172 @@ export class RelayServer {
       response.statusCode = code === "ENOENT" ? 404 : 500;
       response.end(code === "ENOENT" ? "Not Found\n" : "Internal Server Error\n");
     }
+  }
+
+  private async handleAdminApi(request: IncomingMessage, response: ServerResponse, pathname: string): Promise<void> {
+    if (urlHasQuery(request.url)) {
+      jsonResponse(response, 400, { error: "Query strings are not used by admin APIs." });
+      return;
+    }
+    if (!this.authClient) {
+      jsonResponse(response, 503, { error: "Supabase Auth is not configured on the relay." });
+      return;
+    }
+    const token = bearerToken(request);
+    if (!token) {
+      jsonResponse(response, 401, { error: "Supabase bearer token required." });
+      return;
+    }
+    let identity: SupabaseAdminIdentity | null = null;
+    try {
+      identity = await this.authClient.authenticate(token);
+    } catch {
+      identity = null;
+    }
+    if (!identity) {
+      jsonResponse(response, 401, { error: "Supabase authentication failed." });
+      return;
+    }
+
+    const parts = routeParts(pathname);
+    const method = request.method ?? "GET";
+    try {
+      if (method === "GET" && parts.length === 3 && parts[2] === "accounts") {
+        jsonResponse(response, 200, await this.adminAccounts(token, identity));
+        return;
+      }
+      if (method === "GET" && parts.length === 3 && parts[2] === "devices") {
+        jsonResponse(response, 200, await this.adminDevices(token, identity));
+        return;
+      }
+      if (method === "GET" && parts.length === 3 && parts[2] === "admins") {
+        if (identity.role !== "owner") {
+          jsonResponse(response, 403, { error: "Only the owner can manage administrators." });
+          return;
+        }
+        const result = await this.sendControlRequest("admin.list", {}, identity.userId);
+        jsonResponse(response, 200, result);
+        return;
+      }
+
+      if (method !== "POST") {
+        response.setHeader("Allow", "GET, POST");
+        jsonResponse(response, 405, { error: "Method not allowed." });
+        return;
+      }
+
+      const body = await readJsonBody(request);
+      let command: ControlCommand;
+      let payload = body;
+      if (parts.length === 3 && parts[2] === "accounts") command = "account.add";
+      else if (parts.length === 6 && parts[2] === "accounts" && parts[4] === "login" && parts[5] === "start" && parts[3]) command = "account.login.start";
+      else if (parts.length === 5 && parts[2] === "accounts" && parts[4] === "refresh" && parts[3]) command = "account.refresh";
+      else if (parts.length === 5 && parts[2] === "accounts" && parts[4] === "logout" && parts[3]) command = "account.logout";
+      else if (parts.length === 5 && parts[2] === "accounts" && parts[4] === "default" && parts[3]) command = "account.set-default";
+      else if (parts.length === 3 && parts[2] === "devices") command = "access.issue";
+      else if (parts.length === 5 && parts[2] === "devices" && parts[4] === "disable" && parts[3]) command = "access.disable";
+      else if (parts.length === 5 && parts[2] === "devices" && parts[4] === "enable" && parts[3]) command = "access.enable";
+      else if (parts.length === 5 && parts[2] === "devices" && parts[4] === "revoke" && parts[3]) command = "access.revoke";
+      else if (parts.length === 4 && parts[2] === "admins" && parts[3] === "invite") {
+        if (identity.role !== "owner") {
+          jsonResponse(response, 403, { error: "Only the owner can invite administrators." });
+          return;
+        }
+        command = "admin.invite";
+      } else if (parts.length === 5 && parts[2] === "admins" && parts[4] === "enable" && parts[3]) {
+        if (identity.role !== "owner") {
+          jsonResponse(response, 403, { error: "Only the owner can manage administrators." });
+          return;
+        }
+        command = "admin.enable";
+      } else if (parts.length === 5 && parts[2] === "admins" && parts[4] === "disable" && parts[3]) {
+        if (identity.role !== "owner") {
+          jsonResponse(response, 403, { error: "Only the owner can manage administrators." });
+          return;
+        }
+        command = "admin.disable";
+      } else {
+        jsonResponse(response, 404, { error: "Admin endpoint not found." });
+        return;
+      }
+
+      if (command === "account.login.start" || command === "account.refresh" || command === "account.logout") payload = { ...body, accountId: parts[3] };
+      if (command === "account.set-default") payload = { ...body, accountId: typeof body.accountId === "string" ? body.accountId : parts[3] };
+      if (command.startsWith("access.")) payload = { ...body, deviceId: parts.length >= 4 ? parts[3] : body.deviceId };
+      if (command === "admin.enable" || command === "admin.disable") payload = { ...body, userId: parts[3] };
+      const result = await this.sendControlRequest(command, payload, identity.userId);
+      jsonResponse(response, 200, result);
+      return;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const status = message.includes("not configured") ? 503 : message.includes("not found") ? 404 : 400;
+      jsonResponse(response, status, { error: message });
+    }
+  }
+
+  private async adminAccounts(token: string, _identity: SupabaseAdminIdentity): Promise<Record<string, unknown>> {
+    const status = this.status();
+    let accounts = [...this.accounts.values()];
+    let stale = !status.hostConnected || !this.accountsSynced;
+    if (accounts.length === 0 || stale) {
+      const rows = await this.authClient?.queryAdmin<Record<string, unknown>>(token, "codex_account_snapshots", {
+        select: "account_id,label,email,plan_type,auth_mode,status,is_default,updated_at,rate_limits,usage,error,observed_at",
+        order: "account_id.asc",
+      }) ?? [];
+      const stored = rows.map(accountSnapshotFromRow).filter((account): account is AccountSnapshot => account !== null);
+      if (stored.length > 0) accounts = stored;
+      else if (accounts.length === 0) accounts = [...this.lastAccountSnapshots.values()];
+      stale = !status.hostConnected || !this.accountsSynced;
+    }
+    const defaultAccountId = accounts.find((account) => account.isDefault)?.accountId ?? this.defaultAccountId;
+    return {
+      role: _identity.role,
+      hostConnected: status.hostConnected,
+      ready: status.ready,
+      stale,
+      defaultAccountId,
+      accounts,
+    };
+  }
+
+  private async adminDevices(token: string, _identity: SupabaseAdminIdentity): Promise<Record<string, unknown>> {
+    const status = this.status();
+    if (status.hostConnected && this.registered) {
+      try {
+        const result = await this.sendControlRequest("access.list", {}, null);
+        const devices = result && typeof result === "object" && Array.isArray((result as Record<string, unknown>).devices)
+          ? (result as Record<string, unknown>).devices
+          : [];
+        return { hostConnected: true, stale: false, devices };
+      } catch {
+        // The central host may be restarting; use the last sanitized snapshot below.
+      }
+    }
+
+    const rows = await this.authClient?.queryAdmin<Record<string, unknown>>(token, "codex_device_snapshots", {
+      select: "device_id,label,created_at,expires_at,revoked_at,disabled_at,last_seen_at,status,fingerprint,stale_at",
+      order: "created_at.desc",
+    }) ?? [];
+    return {
+      hostConnected: status.hostConnected,
+      stale: true,
+      devices: rows,
+    };
+  }
+
+  private sendControlRequest(command: ControlCommand, payload: Record<string, unknown>, actorId: string | null): Promise<unknown> {
+    if (!this.tunnel || this.tunnel.readyState !== WebSocket.OPEN || !this.registered) {
+      return Promise.reject(new Error("Central host is offline."));
+    }
+    const requestId = `control-${crypto.randomUUID()}`;
+    return new Promise<unknown>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pendingControls.delete(requestId);
+        reject(new Error("Central host control request timed out."));
+      }, 20_000);
+      this.pendingControls.set(requestId, { resolve, reject, timer });
+      this.sendToTunnel({ v: PROTOCOL_VERSION, type: "control.request", requestId, command, payload, actorId });
+    });
   }
 
   private handleUpgrade(request: IncomingMessage, socket: Duplex, head: Buffer): void {
@@ -329,7 +573,7 @@ export class RelayServer {
     const now = Date.now();
     const presentedHash = hashToken(token);
     for (const device of this.devices.values()) {
-      if (device.revokedAt !== null || Date.parse(device.expiresAt) <= now) {
+      if (device.revokedAt !== null || device.disabledAt !== null || Date.parse(device.expiresAt) <= now) {
         continue;
       }
       if (hashesEqual(presentedHash, device.tokenHash)) {
@@ -348,9 +592,12 @@ export class RelayServer {
     this.hostId = null;
     this.registered = false;
     this.accessSynced = false;
+    this.accountsSynced = false;
     this.lastHeartbeatAt = Date.now();
     this.lastSyncAt = 0;
     this.devices.clear();
+    this.accounts.clear();
+    this.defaultAccountId = null;
 
     webSocket.on("message", (raw) => this.handleTunnelMessage(webSocket, raw));
     webSocket.on("close", () => {
@@ -396,6 +643,22 @@ export class RelayServer {
         this.devices.delete(message.deviceId);
         this.closeDeviceStreams(message.deviceId, 4003, "Acesso revogado");
         return;
+      case "accounts.sync":
+        if (!this.registered) {
+          this.failClosed("Sincronização de contas antes do registro");
+          return;
+        }
+        this.applyAccountsSync(message.defaultAccountId, message.accounts);
+        return;
+      case "control.response": {
+        const pending = this.pendingControls.get(message.requestId);
+        if (!pending) return;
+        this.pendingControls.delete(message.requestId);
+        clearTimeout(pending.timer);
+        if (message.ok) pending.resolve(message.result);
+        else pending.reject(new Error(message.error || "Central host control request failed."));
+        return;
+      }
       case "stream.data":
         this.forwardDataToClient(message);
         return;
@@ -407,15 +670,29 @@ export class RelayServer {
         return;
       case "access.seen":
       case "stream.open":
+      case "control.request":
         return;
     }
+  }
+
+  private applyAccountsSync(defaultAccountId: string | null, snapshots: AccountSnapshot[]): void {
+    const next = new Map<string, AccountSnapshot>();
+    for (const snapshot of snapshots) {
+      next.set(snapshot.accountId, snapshot);
+      this.lastAccountSnapshots.set(snapshot.accountId, snapshot);
+    }
+    this.accounts.clear();
+    for (const [accountId, snapshot] of next) this.accounts.set(accountId, snapshot);
+    this.defaultAccountId = defaultAccountId;
+    this.accountsSynced = true;
+    this.lastSyncAt = Date.now();
   }
 
   private applyAccessSync(nextDevices: RelayDevice[]): void {
     const now = Date.now();
     const next = new Map<string, RelayDevice>();
     for (const device of nextDevices) {
-      if (device.revokedAt !== null || Date.parse(device.expiresAt) <= now) {
+      if (device.revokedAt !== null || device.disabledAt !== null || Date.parse(device.expiresAt) <= now) {
         continue;
       }
       next.set(device.deviceId, device);
@@ -437,7 +714,12 @@ export class RelayServer {
 
   private handleClient(webSocket: WebSocket, device: RelayDevice): void {
     const streamId = cryptoRandomId();
-    const stream: ClientStream = { streamId, deviceId: device.deviceId, client: webSocket };
+    const accountId = this.defaultAccountId;
+    if (!accountId) {
+      this.closeSocket(webSocket, 1013, "Nenhuma conta padrão disponível");
+      return;
+    }
+    const stream: ClientStream = { streamId, deviceId: device.deviceId, accountId, client: webSocket };
     this.streams.set(streamId, stream);
     this.clientToStream.set(webSocket, streamId);
 
@@ -460,7 +742,7 @@ export class RelayServer {
     });
     webSocket.on("error", () => undefined);
 
-    this.sendToTunnel({ v: PROTOCOL_VERSION, type: "stream.open", streamId, deviceId: device.deviceId });
+    this.sendToTunnel({ v: PROTOCOL_VERSION, type: "stream.open", streamId, deviceId: device.deviceId, accountId });
     this.sendToTunnel({ v: PROTOCOL_VERSION, type: "access.seen", deviceId: device.deviceId });
   }
 
@@ -523,7 +805,7 @@ export class RelayServer {
 
   private pruneState(): void {
     const now = Date.now();
-    if (this.tunnel && (!this.isFresh(now) || !this.registered || !this.accessSynced)) {
+    if (this.tunnel && (!this.isFresh(now) || !this.registered || !this.accessSynced || !this.accountsSynced)) {
       this.failClosed("Túnel central sem sincronização");
       return;
     }
@@ -541,9 +823,18 @@ export class RelayServer {
     this.hostId = null;
     this.registered = false;
     this.accessSynced = false;
+    this.accountsSynced = false;
     this.lastHeartbeatAt = 0;
     this.lastSyncAt = 0;
     this.devices.clear();
+    this.accounts.clear();
+    this.defaultAccountId = null;
+
+    for (const [requestId, pending] of this.pendingControls) {
+      clearTimeout(pending.timer);
+      pending.reject(new Error("Central host disconnected."));
+      this.pendingControls.delete(requestId);
+    }
 
     for (const stream of [...this.streams.values()]) {
       this.closeStream(stream.streamId, 4001, "Host central indisponível", false);
@@ -597,5 +888,7 @@ export function relayOptionsFromEnvironment(env: NodeJS.ProcessEnv = process.env
     port: Number(env.PORT || DEFAULT_PORT),
     siteDir: env.SITE_DIR || path.resolve(process.cwd(), "site"),
     heartbeatTimeoutMs: Number(env.RELAY_HEARTBEAT_TIMEOUT_MS || DEFAULT_HEARTBEAT_TIMEOUT_MS),
+    supabaseUrl: env.SUPABASE_URL?.trim() || undefined,
+    supabasePublishableKey: env.SUPABASE_PUBLISHABLE_KEY?.trim() || undefined,
   };
 }

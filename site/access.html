@@ -10,7 +10,7 @@
       <h2>Listar</h2><pre><code>npm.cmd run access -- list</code></pre><p>O status pode ser <code>active</code>, <code>expired</code> ou <code>revoked</code>. A sincronização do host remove acessos expirados do conjunto aceito pelo relay.</p>
       <h2>Revogar</h2><pre><code>npm.cmd run access -- revoke device-XXXXXXXX
 npm.cmd run access -- revoke-all</code></pre><p>O host agent detecta a alteração, envia a nova sincronização e o relay fecha a sessão do dispositivo afetado. Com <code>revoke-all</code>, todos os clientes são cortados.</p>
-      <div class="notice"><strong>Não há painel público:</strong> isso é intencional. A emissão e a revogação exigem acesso local à máquina que mantém a autenticação.</div>
+      <div class="notice"><strong>Painel administrativo:</strong> use <a href="/admin">/admin</a> com Supabase Auth para emitir, desabilitar, reabilitar e revogar dispositivos sem expor o login OpenAI.</div>
     </main>
     <footer class="site-footer"><span>Fonte de verdade: host central</span><a href="/">Início</a></footer><script src="/site.js" defer></script>
   </body>

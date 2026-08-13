@@ -8,6 +8,7 @@ import { WebSocket, WebSocketServer } from "ws";
 import type { RawData } from "ws";
 
 import { AccessStore } from "../src/access-store.js";
+import { AccountStore } from "../src/account-store.js";
 import { hashToken } from "../src/crypto.js";
 import { HostAgent, hostConfigFromEnvironment } from "../src/host-agent.js";
 import { RelayServer } from "../src/relay.js";
@@ -61,11 +62,33 @@ function waitForReady(relay: RelayServer): Promise<void> {
 test("host agent connects the relay to a local app-server without exposing the local token", async () => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "remote-codex-host-"));
   const codexHome = path.join(directory, "codex-home");
+  const accountStore = new AccountStore(path.join(directory, "accounts.json"), path.join(directory, "accounts"));
   const store = new AccessStore(path.join(codexHome, "remote-access.json"));
   const issued = await store.issue("host-test-client", 60 * 60_000);
   const fakeAppServer = new WebSocketServer({ port: 0 });
   fakeAppServer.on("connection", (socket) => {
-    socket.on("message", (raw, binary) => socket.send(raw, { binary }));
+    socket.on("message", (raw, binary) => {
+      const text = Buffer.isBuffer(raw) ? raw.toString("utf8") : String(raw);
+      let message: { id?: number; method?: string } = {};
+      try { message = JSON.parse(text) as { id?: number; method?: string }; } catch { /* opaque stream frame */ }
+      if (message.method === "initialize" && typeof message.id === "number") {
+        socket.send(JSON.stringify({ id: message.id, result: {} }));
+        return;
+      }
+      if (message.method === "account/read" && typeof message.id === "number") {
+        socket.send(JSON.stringify({ id: message.id, result: { account: { type: "chatgpt", email: "test@example.com", planType: "plus" } } }));
+        return;
+      }
+      if (message.method === "account/rateLimits/read" && typeof message.id === "number") {
+        socket.send(JSON.stringify({ id: message.id, result: { rateLimitsByLimitId: {} } }));
+        return;
+      }
+      if (message.method === "account/usage/read" && typeof message.id === "number") {
+        socket.send(JSON.stringify({ id: message.id, result: { summary: {}, dailyUsageBuckets: [] } }));
+        return;
+      }
+      socket.send(raw, { binary });
+    });
   });
   await new Promise<void>((resolve) => fakeAppServer.once("listening", () => resolve()));
 
@@ -91,11 +114,13 @@ test("host agent connects the relay to a local app-server without exposing the l
       RELAY_HOST_ID: "host-test",
       APP_SERVER_PORT: String(listeningPort(fakeAppServer)),
       CODEX_APP_SERVER_TOKEN_FILE: path.join(codexHome, "app-server.token"),
+      CODEX_ACCOUNT_REGISTRY: path.join(directory, "accounts.json"),
+      CODEX_ACCOUNTS_DIR: path.join(directory, "accounts"),
       HOST_SKIP_APP_SERVER: "1",
       ACCESS_SYNC_INTERVAL_MS: "50",
       RELAY_HEARTBEAT_INTERVAL_MS: "50",
     });
-    agent = new HostAgent(config, store);
+    agent = new HostAgent(config, store, accountStore);
     await agent.start();
     await waitForReady(relay);
 

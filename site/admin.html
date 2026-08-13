@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Painel administrativo do Remote Codex.">
+    <title>Admin · Remote Codex</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body class="admin-page">
+    <main class="admin-shell">
+      <section id="login-view" class="admin-login">
+        <div class="admin-brand-mark">RC</div>
+        <p class="admin-eyebrow">REMOTE CODEX · ADMIN</p>
+        <h1>Controle central.</h1>
+        <p class="admin-muted">Entre com um usuário autorizado do Supabase. O login do ChatGPT continua apenas na máquina central.</p>
+        <form id="login-form" class="admin-form">
+          <label>Email<input id="login-email" type="email" autocomplete="username" required></label>
+          <label>Senha<input id="login-password" type="password" autocomplete="current-password" required></label>
+          <button class="admin-button primary" type="submit">Entrar</button>
+          <p id="login-error" class="admin-error" role="alert"></p>
+        </form>
+      </section>
+
+      <section id="app-view" class="admin-app" hidden>
+        <header class="admin-topbar">
+          <div>
+            <p class="admin-eyebrow">REMOTE CODEX · ADMIN</p>
+            <h1>Painel</h1>
+          </div>
+          <div class="admin-session"><span id="session-email"></span><span id="session-role" class="admin-badge"></span><button id="logout-button" class="admin-button ghost">Sair</button></div>
+        </header>
+        <div id="global-status" class="admin-status" role="status"></div>
+        <nav class="admin-tabs" aria-label="Áreas administrativas">
+          <button class="active" data-tab="accounts">Contas</button>
+          <button data-tab="devices">Dispositivos</button>
+          <button data-tab="admins" id="admins-tab">Administradores</button>
+        </nav>
+
+        <section id="tab-accounts" class="admin-tab-panel">
+          <div class="admin-section-head"><div><p class="admin-eyebrow">ACCOUNTS</p><h2>Contas ChatGPT</h2><p class="admin-muted">Cada conta usa um <code>CODEX_HOME</code> isolado no host central. A troca do padrão só afeta novas sessões.</p></div><div class="admin-actions"><button id="refresh-accounts" class="admin-button ghost">Atualizar</button><button id="add-account" class="admin-button primary">Adicionar conta</button></div></div>
+          <div id="accounts-grid" class="admin-card-grid"></div>
+        </section>
+
+        <section id="tab-devices" class="admin-tab-panel" hidden>
+          <div class="admin-section-head"><div><p class="admin-eyebrow">DEVICES</p><h2>Dispositivos autorizados</h2><p class="admin-muted">O token bruto aparece somente uma vez. Depois, apenas fingerprint e status ficam disponíveis.</p></div><div class="admin-actions"><button id="refresh-devices" class="admin-button ghost">Atualizar</button><button id="issue-device" class="admin-button primary">Emitir token</button></div></div>
+          <div id="devices-note" class="admin-status"></div>
+          <div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Dispositivo</th><th>Status</th><th>Expiração</th><th>Último acesso</th><th>Ações</th></tr></thead><tbody id="devices-body"></tbody></table></div>
+        </section>
+
+        <section id="tab-admins" class="admin-tab-panel" hidden>
+          <div class="admin-section-head"><div><p class="admin-eyebrow">ACCESS CONTROL</p><h2>Administradores</h2><p class="admin-muted">Somente o owner pode convidar e alterar administradores.</p></div><button id="invite-admin" class="admin-button primary">Convidar administrador</button></div>
+          <div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Email</th><th>Papel</th><th>Status</th><th>Criado em</th><th>Ações</th></tr></thead><tbody id="admins-body"></tbody></table></div>
+        </section>
+      </section>
+    </main>
+
+    <dialog id="token-dialog" class="admin-dialog">
+      <form method="dialog" class="admin-dialog-card">
+        <p class="admin-eyebrow">TOKEN EMITIDO</p><h2>Copie agora</h2>
+        <p class="admin-muted">Por segurança, este token não será recuperável depois que esta janela for fechada.</p>
+        <div class="admin-token-row"><code id="issued-token"></code><button id="copy-token" class="admin-button primary" type="button">Copiar</button></div>
+        <p id="copy-status" class="admin-status"></p>
+        <button class="admin-button ghost" value="close">Fechar</button>
+      </form>
+    </dialog>
+
+    <dialog id="login-dialog" class="admin-dialog">
+      <form method="dialog" class="admin-dialog-card">
+        <p class="admin-eyebrow">LOGIN DA CONTA</p><h2 id="login-dialog-title">Confirme a conta</h2>
+        <p class="admin-muted">Abra a URL exibida, informe o código e confirme a conta no navegador. O segredo permanece no host.</p>
+        <p><a id="login-url" class="admin-login-url" href="#" target="_blank" rel="noreferrer"></a></p>
+        <div class="admin-code" id="login-code"></div>
+        <p id="login-dialog-status" class="admin-status"></p>
+        <div class="admin-actions"><button id="login-refresh" class="admin-button primary" type="button">Atualizar estado</button><button class="admin-button ghost" value="close">Fechar</button></div>
+      </form>
+    </dialog>
+    <script src="/admin.js" defer></script>
+  </body>
+</html>

@@ -6,6 +6,7 @@
     <main class="shell narrow">
       <p class="eyebrow">Página 05 · Operação</p><h1>Render + host central</h1>
       <h2>Relay público</h2><ol><li>Crie um Web Service no Render a partir deste repositório.</li><li>Use o <code>render.yaml</code>; o build é <code>npm ci &amp;&amp; npm run build</code> e o start é <code>npm run relay</code>.</li><li>Gere um segredo forte para o túnel. No Render, configure somente <code>RELAY_AGENT_TOKEN_SHA256</code>, o SHA-256 desse segredo.</li><li>Após o deploy, teste <code>https://SEU_HOST/healthz</code>. O <code>/readyz</code> ficará 503 até o host conectar.</li></ol>
+      <h2>Painel administrativo</h2><p>Configure no Render somente <code>SUPABASE_URL</code> e <code>SUPABASE_PUBLISHABLE_KEY</code>. Aplique a migration <code>supabase/migrations/20260812000000_codex_admin.sql</code>, crie o usuário owner no Supabase Auth e rode <code>npm.cmd run admin -- bootstrap --email seu-email</code> na máquina central. A service role não entra no Render.</p>
       <h2>Host central</h2><pre><code>codex login
 $env:RELAY_URL = "wss://SEU_HOST.onrender.com"
 $env:RELAY_AGENT_TOKEN = "O_MESMO_SEGREDO_USADO_NO_HASH"
