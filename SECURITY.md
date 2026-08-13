@@ -7,7 +7,7 @@
 - O token local do `codex app-server`, usado somente em `127.0.0.1`.
 - O arquivo `remote-access.json`, que contém apenas hashes SHA-256 dos tokens dos dispositivos.
 - O arquivo `accounts.json` e os diretórios de contas, com um `CODEX_HOME` separado por assinatura.
-- `SUPABASE_SERVICE_ROLE_KEY`, somente para convites, auditoria e snapshots administrativos.
+- `SUPABASE_SECRET_KEY`, somente para convites, auditoria e snapshots administrativos. A antiga `SUPABASE_SERVICE_ROLE_KEY` fica apenas como fallback de migração.
 
 ## O que não deve sair
 
@@ -15,7 +15,7 @@ Não copie `auth.json`, o diretório `CODEX_HOME`, tokens ChatGPT, API keys Open
 
 O relay recebe o token de um dispositivo no cabeçalho `Authorization: Bearer ...` do handshake WebSocket. Ele calcula o hash em memória e compara com o conjunto sincronizado pelo host; o token não é aceito em URL, query string nem escrito nos logs.
 
-O painel `/admin` usa Supabase Auth. Render recebe somente `SUPABASE_URL` e a publishable key; o navegador recebe um JWT do Supabase e o relay valida o papel em `codex_admins`. A service role não deve ser configurada no Render nem no navegador.
+O painel `/admin` usa Supabase Auth. Render recebe somente `SUPABASE_URL` e a publishable key; o navegador recebe um JWT do Supabase e o relay valida o papel em `codex_admins`. A secret key não deve ser configurada no Render nem no navegador.
 
 O token do dispositivo ainda é uma credencial de acesso ao seu relay. Use um token por computador, TTL curto e `revoke` quando o computador deixar de ser confiável. Qualquer pessoa que obtiver esse token poderá usar o acesso enquanto o host central estiver conectado.
 
@@ -45,7 +45,7 @@ Aplique `supabase/migrations/20260812000000_codex_admin.sql` no mesmo projeto Su
 
 ```powershell
 $env:SUPABASE_URL = "https://SEU_PROJETO.supabase.co"
-$env:SUPABASE_SERVICE_ROLE_KEY = "SERVICE_ROLE_SOMENTE_NESTA_MAQUINA"
+$env:SUPABASE_SECRET_KEY = "SB_SECRET_SOMENTE_NESTA_MAQUINA"
 npm.cmd run admin -- bootstrap --email owner@example.com
 ```
 

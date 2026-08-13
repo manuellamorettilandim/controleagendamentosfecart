@@ -27,7 +27,7 @@ import {
   type StreamOpenMessage,
   type WireMessage,
 } from "./protocol.js";
-import { SupabaseServiceClient } from "./supabase.js";
+import { SupabaseServiceClient, type SupabaseAdminKeyType } from "./supabase.js";
 
 const DEFAULT_RELAY_HEARTBEAT_INTERVAL_MS = 5_000;
 const DEFAULT_ACCESS_SYNC_INTERVAL_MS = 1_000;
@@ -53,6 +53,7 @@ export interface HostConfig {
   primaryAccountId: string;
   primaryAccountLabel: string;
   supabaseUrl?: string;
+  supabaseSecretKey?: string;
   supabaseServiceRoleKey?: string;
   startAppServer: boolean;
 }
@@ -215,6 +216,7 @@ export function hostConfigFromEnvironment(env: NodeJS.ProcessEnv = process.env):
     primaryAccountId: primary.accountId || "primary",
     primaryAccountLabel: primary.label || "Conta principal",
     supabaseUrl: env.SUPABASE_URL?.trim() || undefined,
+    supabaseSecretKey: env.SUPABASE_SECRET_KEY?.trim() || undefined,
     supabaseServiceRoleKey: env.SUPABASE_SERVICE_ROLE_KEY?.trim() || undefined,
     startAppServer: env.HOST_SKIP_APP_SERVER !== "1",
   };
@@ -245,8 +247,10 @@ export class HostAgent {
     this.accessStore = accessStore;
     this.accountStore = accountStore;
     this.reconnectDelayMs = config.reconnectInitialMs;
-    this.supabase = config.supabaseUrl && config.supabaseServiceRoleKey
-      ? new SupabaseServiceClient(config.supabaseUrl, config.supabaseServiceRoleKey)
+    const adminKey = config.supabaseSecretKey || config.supabaseServiceRoleKey;
+    const adminKeyType: SupabaseAdminKeyType = config.supabaseSecretKey ? "secret" : "service_role";
+    this.supabase = config.supabaseUrl && adminKey
+      ? new SupabaseServiceClient(config.supabaseUrl, adminKey, adminKeyType)
       : null;
   }
 
@@ -607,7 +611,7 @@ export class HostAgent {
         await this.audit(actorId, command, "admin", targetUserId);
         return { admin: changed };
       case "admin.invite":
-        if (!this.supabase) throw new Error("Configure SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY no host central.");
+        if (!this.supabase) throw new Error("Configure SUPABASE_URL e SUPABASE_SECRET_KEY no host central.");
         const invited = await this.supabase.inviteAdmin(requestString(payload, "email"), actorId);
         await this.audit(actorId, command, "admin", invited.userId, { email: invited.email });
         return invited;

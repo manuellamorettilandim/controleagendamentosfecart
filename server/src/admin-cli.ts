@@ -1,11 +1,11 @@
-import { SupabaseServiceClient } from "./supabase.js";
+import { SupabaseServiceClient, type SupabaseAdminKeyType } from "./supabase.js";
 
 function usage(): void {
   console.log(`Uso no host central:
   npm.cmd run admin -- bootstrap --email owner@example.com
   npm.cmd run admin -- invite --email admin@example.com
 
-Este comando usa SUPABASE_SERVICE_ROLE_KEY somente na máquina central.`);
+Este comando usa SUPABASE_SECRET_KEY somente na máquina central (SUPABASE_SERVICE_ROLE_KEY é aceito apenas como fallback legado).`);
 }
 
 function option(name: string): string | null {
@@ -23,9 +23,12 @@ async function main(): Promise<void> {
   const email = option("--email");
   if (!email) throw new Error("Informe --email.");
   const url = process.env.SUPABASE_URL?.trim();
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
-  if (!url || !key) throw new Error("Configure SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY no host central.");
-  const client = new SupabaseServiceClient(url, key);
+  const secretKey = process.env.SUPABASE_SECRET_KEY?.trim();
+  const legacyKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+  const key = secretKey || legacyKey;
+  if (!url || !key) throw new Error("Configure SUPABASE_URL e SUPABASE_SECRET_KEY no host central.");
+  const keyType: SupabaseAdminKeyType = secretKey ? "secret" : "service_role";
+  const client = new SupabaseServiceClient(url, key, keyType);
 
   if (command === "bootstrap") {
     const owner = await client.bootstrapOwner(email);

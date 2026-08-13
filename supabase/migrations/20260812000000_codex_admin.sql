@@ -110,7 +110,7 @@ create policy codex_admin_audit_read_admin
 
 grant execute on function public.codex_is_admin() to authenticated;
 
--- service_role is used only by the central host for synchronization and invites.
+-- The Supabase secret key authenticates as the elevated service_role database role.
 grant all on table public.codex_admins to service_role;
 grant all on table public.codex_account_snapshots to service_role;
 grant all on table public.codex_device_snapshots to service_role;

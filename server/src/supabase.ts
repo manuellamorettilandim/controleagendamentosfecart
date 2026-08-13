@@ -6,6 +6,8 @@ export interface SupabaseAdminIdentity {
   role: "owner" | "admin";
 }
 
+export type SupabaseAdminKeyType = "secret" | "service_role";
+
 interface SupabaseUser {
   id?: unknown;
   email?: unknown;
@@ -118,13 +120,15 @@ export interface DeviceSnapshotRow {
 
 export class SupabaseServiceClient {
   private readonly url: string;
-  private readonly serviceRoleKey: string;
+  private readonly adminKey: string;
+  private readonly adminKeyType: SupabaseAdminKeyType;
 
-  public constructor(url: string, serviceRoleKey: string) {
+  public constructor(url: string, adminKey: string, adminKeyType: SupabaseAdminKeyType = "secret") {
     this.url = baseUrl(url);
-    this.serviceRoleKey = serviceRoleKey.trim();
-    if (!this.url || !this.serviceRoleKey) {
-      throw new Error("Supabase service client requires SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.");
+    this.adminKey = adminKey.trim();
+    this.adminKeyType = adminKeyType;
+    if (!this.url || !this.adminKey) {
+      throw new Error("Supabase admin client requires SUPABASE_URL and SUPABASE_SECRET_KEY.");
     }
   }
 
@@ -240,9 +244,9 @@ export class SupabaseServiceClient {
     const response = await fetch(`${this.url}${path}`, {
       method: options.method ?? "GET",
       headers: {
-        apikey: this.serviceRoleKey,
-        Authorization: `Bearer ${this.serviceRoleKey}`,
+        apikey: this.adminKey,
         Accept: "application/json",
+        ...(this.adminKeyType === "service_role" ? { Authorization: `Bearer ${this.adminKey}` } : {}),
         ...(options.body === undefined ? {} : { "Content-Type": "application/json" }),
         ...options.headers,
       },
