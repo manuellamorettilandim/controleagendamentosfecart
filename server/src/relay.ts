@@ -301,7 +301,9 @@ export class RelayServer {
       return;
     }
 
-    if (url.pathname === "/codex") {
+    // O Codex CLI aceita apenas o endereco WSS sem caminho. Mantemos
+    // /codex como alias para clientes que conseguem configurar o caminho.
+    if (url.pathname === "/" || url.pathname === "/codex") {
       if (!this.status().ready) {
         rejectUpgrade(socket, 503, "Central host is not connected and synchronized.");
         return;

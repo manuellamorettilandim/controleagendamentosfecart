@@ -17,7 +17,7 @@ npm.cmd run host</code></pre>
       <p>Copie o token exibido uma vez. O arquivo local de acesso guarda apenas o hash; não há comando para recuperar o token depois.</p>
       <h2>3. No PC remoto</h2>
       <pre><code>$env:CODEX_REMOTE_TOKEN = "TOKEN_DO_DISPOSITIVO"
-codex --remote wss://SEU_RELAY.onrender.com/codex --remote-auth-token-env CODEX_REMOTE_TOKEN</code></pre>
+codex --remote wss://SEU_RELAY.onrender.com --remote-auth-token-env CODEX_REMOTE_TOKEN</code></pre>
       <div class="notice"><strong>Importante:</strong> o token acima autoriza o relay, não autentica na OpenAI. Ainda assim, trate-o como segredo e não o coloque em scripts públicos, URL ou logs.</div>
       <h2>Diagnóstico</h2>
       <ul><li><code>/healthz</code> deve responder 200 quando o relay está vivo.</li><li><code>/readyz</code> responde 200 somente depois do host registrar e sincronizar.</li><li>Se o host parar, o relay encerra a sessão e novas conexões retornam 503.</li></ul>

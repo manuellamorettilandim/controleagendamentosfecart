@@ -133,7 +133,7 @@ test("relay forwards opaque frames, rejects invalid access, and closes a revoked
   let tunnel: WebSocket | undefined;
   let client: WebSocket | undefined;
   try {
-    assert.equal(await rejectedStatus(`${base}/codex`, { Authorization: "Bearer invalid" }), 503);
+    assert.equal(await rejectedStatus(base, { Authorization: "Bearer invalid" }), 503);
     tunnel = await open(`${base}/tunnel`, { Authorization: `Bearer ${agentToken}` });
     tunnel.send(encodeMessage({ v: PROTOCOL_VERSION, type: "register", hostId: "test-host" }));
     const testDevice = syncDevice();
@@ -142,7 +142,7 @@ test("relay forwards opaque frames, rejects invalid access, and closes a revoked
 
     assert.equal(await rejectedStatus(`${base}/codex`, { Authorization: "Bearer invalid" }), 401);
     assert.equal(await rejectedStatus(`${base}/codex?token=${deviceToken}`, { Authorization: `Bearer ${deviceToken}` }), 400);
-    client = await open(`${base}/codex`, { Authorization: `Bearer ${deviceToken}` });
+    client = await open(base, { Authorization: `Bearer ${deviceToken}` });
     const opened = await nextDecodedMessage(tunnel);
     assert.equal(opened.type, "stream.open");
     const streamId = opened.type === "stream.open" ? opened.streamId : "";

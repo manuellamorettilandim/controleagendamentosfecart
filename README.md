@@ -50,7 +50,7 @@ Em outro computador, o token de dispositivo é usado somente para o relay:
 
 ```powershell
 $env:CODEX_REMOTE_TOKEN = "TOKEN_DO_DISPOSITIVO"
-codex --remote wss://SEU_RELAY.onrender.com/codex --remote-auth-token-env CODEX_REMOTE_TOKEN
+codex --remote wss://SEU_RELAY.onrender.com --remote-auth-token-env CODEX_REMOTE_TOKEN
 ```
 
 O token do dispositivo não é um login OpenAI. Ele deve ser emitido, copiado uma única vez e revogado pelo host central:
