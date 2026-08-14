@@ -15,6 +15,7 @@
     editingDeviceId: null,
     pendingAction: null,
     adminWeekStart: null,
+    adminCalendar: null,
   };
 
   const $ = (selector) => document.querySelector(selector);
@@ -151,17 +152,21 @@
   async function refreshAll() {
     setStatus("Atualizando estado do host…");
     try {
-      const accounts = await api("/api/admin/accounts");
+      const [accounts, devices] = await Promise.all([
+        api("/api/admin/accounts"),
+        api("/api/admin/devices"),
+      ]);
       state.role = accounts.role || state.role || "admin";
       $("#session-role").textContent = state.role;
       $("#admins-tab").hidden = state.role !== "owner";
       state.accounts = accounts.accounts || [];
       renderAccounts(accounts);
-      const devices = await api("/api/admin/devices");
       state.devices = devices.devices || [];
       renderDevices(devices);
-      if (state.role === "owner") await loadAdmins();
-      await loadUsers();
+      await Promise.all([
+        state.role === "owner" ? loadAdmins() : Promise.resolve(),
+        loadUsers(),
+      ]);
       await loadReservations();
       renderOverview(accounts, devices);
       setStatus(accounts.stale ? "Host offline ou snapshot stale; os dados exibidos não garantem estado atual." : "Host conectado e sincronizado.", accounts.stale ? "warning" : "success");
@@ -210,42 +215,61 @@
     const readyAccounts = state.accounts.filter((account) => account.status === "ready").length;
     const activeDevices = state.devices.filter((device) => device.status === "active").length;
     const activeReservations = state.reservations.filter((item) => item.status === "scheduled" && Date.parse(item.starts_at) <= now && Date.parse(item.ends_at) > now).length;
-    const accountLabel = state.accounts.length ? `${readyAccounts} de ${state.accounts.length} prontas` : "nenhuma conta cadastrada";
-    const deviceLabel = state.devices.length ? `${activeDevices} aceitando conexões` : "nenhum dispositivo emitido";
-    const sessionLabel = activeReservations ? "acompanhe a sessão agora" : "nenhuma janela em andamento";
     const hostReady = Boolean(accountsPayload?.ready && accountsPayload?.hostConnected);
-    const hostLabel = hostReady ? "conectado e sincronizado" : accountsPayload?.stale ? "snapshot desatualizado" : "aguardando sincronização";
-    insights.innerHTML = `
-      <article class="overview-insight ${hostReady ? "primary" : "attention"}"><label>Host central</label><strong>${hostReady ? "Online" : "Offline"}</strong><p>${escapeHtml(hostLabel)}</p></article>
-      <article class="overview-insight"><label>Contas prontas</label><strong>${readyAccounts}/${state.accounts.length}</strong><p>${escapeHtml(accountLabel)}</p></article>
-      <article class="overview-insight"><label>Sessões agora</label><strong>${activeReservations}</strong><p>${escapeHtml(sessionLabel)}</p></article>
-      <article class="overview-insight"><label>Credenciais ativas</label><strong>${activeDevices}</strong><p>${escapeHtml(deviceLabel)}</p></article>`;
-
-    const activity = $("#overview-activity");
     const upcoming = state.reservations
       .filter((item) => item.status === "scheduled" && Date.parse(item.ends_at) > now)
       .sort((left, right) => Date.parse(left.starts_at) - Date.parse(right.starts_at))
       .slice(0, 5);
-    activity.innerHTML = upcoming.length ? upcoming.map((item) => {
+    const next = upcoming[0] || null;
+    const nextStart = next ? new Date(next.starts_at) : null;
+    const nextLabel = nextStart ? nextStart.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "—";
+    const nextDateLabel = nextStart ? nextStart.toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "short" }).replace(".", "") : "Nenhuma sessão futura";
+    const hostLabel = hostReady ? "conectado e sincronizado" : accountsPayload?.stale ? "snapshot desatualizado" : "aguardando sincronização";
+    const healthTitle = hostReady ? "Tudo pronto para operar" : "A operação pede revisão";
+
+    const attention = [];
+    const addAttention = (message, tab, tone = "warning") => attention.push({ message, tab, tone });
+    if (accountsPayload?.stale || devicesPayload?.stale) addAttention("O snapshot está desatualizado; confirme a fonte antes de emitir acesso.", "accounts", "warning");
+    state.accounts.filter((account) => account.status !== "ready").slice(0, 2).forEach((account) => addAttention(`${account.label}: ${accountStatusLabel(account.status)}.`, "accounts", "danger"));
+    state.devices.filter((device) => ["limited", "disabled", "expired"].includes(device.status)).slice(0, 2).forEach((device) => addAttention(`${device.label}: acesso ${statusLabel(device.status)}.`, "devices", "danger"));
+    state.devices.filter((device) => device.status === "active" && Date.parse(device.expiresAt) - now < 3 * 24 * 60 * 60_000).slice(0, 2).forEach((device) => addAttention(`${device.label}: expira em menos de três dias.`, "devices", "warning"));
+    if (state.reservations.some((item) => item.status === "scheduled" && Date.parse(item.starts_at) <= now && Date.parse(item.ends_at) > now && !item.device_id)) addAttention("Existe uma sessão ativa sem credencial emitida.", "reservations", "warning");
+
+    insights.innerHTML = `
+      <section class="overview-health-panel" aria-labelledby="overview-health-title">
+        <div class="overview-health-head"><div><h2 id="overview-health-title">Operação agora</h2><p>${escapeHtml(healthTitle)} · ${escapeHtml(hostLabel)}.</p></div><span class="overview-health-badge ${hostReady ? "success" : "warning"}"><i></i>${hostReady ? "Host online" : "Host offline"}</span></div>
+        <div class="overview-health-stats">
+          <div class="overview-health-stat overview-health-stat-primary"><span>Próxima sessão</span><strong>${nextLabel}</strong><small>${escapeHtml(nextDateLabel)}</small></div>
+          <div class="overview-health-stat"><span>Contas prontas</span><strong>${readyAccounts}/${state.accounts.length}</strong><small>${state.accounts.length ? "autenticadas no host" : "nenhuma conta cadastrada"}</small></div>
+          <div class="overview-health-stat"><span>Sessões ativas</span><strong>${activeReservations}</strong><small>${activeReservations ? "acompanhar agora" : "nenhuma em andamento"}</small></div>
+          <div class="overview-health-stat"><span>Credenciais ativas</span><strong>${activeDevices}</strong><small>${state.devices.length ? `${state.devices.length} emitidas no histórico` : "nenhuma emitida"}</small></div>
+        </div>
+        <div class="overview-health-footer"><span><i></i>${accountsPayload?.stale ? "Última leitura pode estar desatualizada" : "Estado atualizado nesta sessão"}</span><div><button class="admin-button tiny ghost" type="button" data-overview-tab="reservations">Abrir agenda</button><button id="retry-overview" class="admin-button tiny ghost" type="button">Atualizar</button></div></div>
+      </section>
+      <section class="overview-queue-panel" aria-labelledby="overview-queue-title">
+        <header><div><h2 id="overview-queue-title">Fila de ação</h2><p>Próximos bloqueios que merecem uma decisão.</p></div><span class="overview-queue-count">${attention.length}</span></header>
+        <div id="overview-attention" class="overview-queue"></div>
+      </section>
+      <section class="overview-activity-panel" aria-labelledby="overview-activity-title">
+        <header><div><h2 id="overview-activity-title">Próximas sessões</h2><p>Veja quem entra em seguida e se a credencial já foi emitida.</p></div><button class="admin-button tiny ghost" type="button" data-overview-tab="reservations">Ver agenda completa</button></header>
+        <div id="overview-activity" class="overview-timeline"></div>
+      </section>`;
+
+    $("#overview-activity").innerHTML = upcoming.length ? upcoming.map((item) => {
       const profile = state.users.find((user) => user.user_id === item.user_id) || {};
       const start = new Date(item.starts_at);
       const end = new Date(item.ends_at);
+      const active = Date.parse(item.starts_at) <= now;
       const date = start.toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "short" }).replace(".", "");
       const time = `${start.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}–${end.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`;
-      const active = Date.parse(item.starts_at) <= now;
-      return `<div class="overview-list-item"><div><strong>${escapeHtml(profile.username || item.user_id)}</strong><span>${escapeHtml(profile.group_name || "turma indisponível")} · ${escapeHtml(date)} · ${active ? "em andamento" : "agendada"}</span></div><time>${escapeHtml(time)}</time></div>`;
-    }).join("") : `<div class="admin-empty">Nenhuma sessão futura registrada.</div>`;
+      return `<button class="overview-session-row" type="button" data-overview-tab="reservations"><span class="overview-session-time">${escapeHtml(time)}</span><span class="overview-session-main"><strong>${escapeHtml(profile.username || item.user_id)}</strong><small>${escapeHtml(profile.group_name || "turma indisponível")} · ${escapeHtml(date)}</small></span><span class="overview-session-state ${active ? "active" : ""}"><i></i>${active ? "em andamento" : item.device_id ? "credencial emitida" : "aguardando credencial"}</span></button>`;
+    }).join("") : `<div class="overview-empty">Nenhuma sessão futura registrada.</div>`;
 
-    const attention = [];
-    if (accountsPayload?.stale || devicesPayload?.stale) attention.push("O snapshot está desatualizado; confirme o host antes de emitir acesso.");
-    state.accounts.filter((account) => account.status !== "ready").slice(0, 2).forEach((account) => attention.push(`${account.label}: status ${account.status || "indisponível"}.`));
-    state.devices.filter((device) => ["limited", "disabled"].includes(device.status)).slice(0, 2).forEach((device) => attention.push(`${device.label}: acesso ${statusLabel(device.status)}.`));
-    state.devices.filter((device) => device.status === "active" && Date.parse(device.expiresAt) - now < 3 * 24 * 60 * 60_000).slice(0, 2).forEach((device) => attention.push(`${device.label}: expira em menos de três dias.`));
-    state.reservations.filter((item) => item.status === "scheduled" && Date.parse(item.starts_at) <= now && Date.parse(item.ends_at) > now && !item.device_id).slice(0, 2).forEach(() => attention.push("Há uma sessão ativa sem credencial emitida."));
     $("#overview-attention").innerHTML = attention.length
-      ? `${attention.slice(0, 5).map((message) => `<div class="attention-item"><i></i><span>${escapeHtml(message)}</span></div>`).join("")}<button id="retry-overview" class="admin-button tiny ghost" type="button">Atualizar estado</button>`
-      : `<div class="attention-item good"><i></i><span>Nenhum bloqueio operacional aparente agora.</span></div>`;
-    $("#retry-overview")?.addEventListener("click", () => refreshAll().catch(() => undefined));
+      ? attention.slice(0, 5).map(({ message, tab, tone }) => `<button class="overview-queue-item" type="button" data-overview-tab="${tab}"><i class="${tone}"></i><span>${escapeHtml(message)}</span><b aria-hidden="true">→</b></button>`).join("")
+      : `<div class="overview-queue-empty"><i></i><span>Nenhum bloqueio operacional aparente agora.</span></div>`;
+
+    insights.querySelectorAll("[data-overview-tab]").forEach((button) => button.addEventListener("click", () => setActiveTab(button.dataset.overviewTab)));
   }
 
   const tabCopy = {
@@ -257,13 +281,19 @@
   };
 
   function setActiveTab(tab) {
-    document.querySelectorAll("[data-tab]").forEach((button) => button.classList.toggle("active", button.dataset.tab === tab));
+    document.querySelectorAll("[data-tab]").forEach((button) => {
+      const active = button.dataset.tab === tab;
+      button.classList.toggle("active", active);
+      if (active) button.setAttribute("aria-current", "page");
+      else button.removeAttribute("aria-current");
+    });
     document.querySelectorAll(".admin-tab-panel").forEach((panel) => { panel.hidden = panel.id !== `tab-${tab}`; });
     const copy = tabCopy[tab] || tabCopy.accounts;
     $("#admin-page-title").textContent = copy[0];
     $("#admin-page-description").textContent = copy[1];
     const search = $("#admin-search");
     if (search) { search.value = ""; filterPanel(""); }
+    if (tab === "reservations") window.requestAnimationFrame(() => state.adminCalendar?.updateSize());
   }
 
   function filterPanel(value) {
@@ -340,67 +370,70 @@
     return date;
   }
 
-  function adminWeekDays() {
-    return Array.from({ length: 7 }, (_, index) => {
-      const date = new Date(state.adminWeekStart);
-      date.setDate(date.getDate() + index);
-      return date;
+  function adminCalendarEvents() {
+    const now = Date.now();
+    return state.reservations.filter((item) => item.status === "scheduled").map((item) => {
+      const profile = state.users.find((user) => user.user_id === item.user_id) || {};
+      const active = Date.parse(item.starts_at) <= now && Date.parse(item.ends_at) > now;
+      return {
+        id: `reservation-${item.id}`,
+        title: profile.username || item.user_id,
+        start: item.starts_at,
+        end: item.ends_at,
+        className: active ? "admin-event-active" : "admin-event-scheduled",
+        extendedProps: {
+          reservationId: item.id,
+          username: profile.username || item.user_id,
+          groupName: profile.group_name || "turma indisponível",
+          accountLabel: accountById(item.account_id)?.label || item.account_id,
+          active,
+        },
+      };
     });
   }
 
-  function adminEventGeometry(day, startsAt, endsAt) {
-    const dayStart = startOfDay(day).getTime();
-    const dayEnd = dayStart + 24 * 3_600_000;
-    const start = Math.max(dayStart, Date.parse(startsAt));
-    const end = Math.min(dayEnd, Date.parse(endsAt));
-    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return null;
-    return { start: (start - dayStart) / 3_600_000, span: Math.max(.5, (end - start) / 3_600_000) };
+  function adminCalendarEventContent(info) {
+    const event = info.event;
+    const props = event.extendedProps;
+    const node = document.createElement("div");
+    node.className = "calendar-event-content";
+    node.innerHTML = `<strong>${escapeHtml(props.username)}</strong><span>${RemoteCodexCalendar.formatTime(event.start)}–${RemoteCodexCalendar.formatTime(event.end)}</span><small>${escapeHtml(props.accountLabel)}</small>`;
+    return { domNodes: [node] };
+  }
+
+  function focusReservation(reservationId) {
+    const row = document.querySelector(`[data-reservation-id="${CSS.escape(reservationId)}"]`);
+    row?.scrollIntoView({ behavior: "smooth", block: "center" });
+    row?.classList.add("calendar-row-focus");
+    window.setTimeout(() => row?.classList.remove("calendar-row-focus"), 1400);
+    const item = state.reservations.find((reservation) => reservation.id === reservationId);
+    if (item) $("#admin-schedule-selection").textContent = `${formatDate(item.starts_at)} · ${formatDate(item.ends_at)}`;
   }
 
   function renderAdminCalendar() {
     const board = $("#admin-calendar-board");
     if (!board) return;
-    const today = startOfDay(new Date());
-    if (!state.adminWeekStart) state.adminWeekStart = today;
-    const days = adminWeekDays();
-    const now = Date.now();
-    const startText = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short" }).format(days[0]).replace(".", "");
-    const endText = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short", year: "numeric" }).format(days.at(-1)).replace(".", "");
-    $("#admin-schedule-range").textContent = `${startText} – ${endText}`;
-    $("#calendar-admin-prev").disabled = state.adminWeekStart.getTime() <= today.getTime();
-    const headers = days.map((date) => {
-      const isToday = date.getTime() === today.getTime();
-      const weekday = date.toLocaleDateString("pt-BR", { weekday: "short" }).replace(".", "");
-      const month = date.toLocaleDateString("pt-BR", { month: "short" }).replace(".", "");
-      return `<div class="calendar-day-head ${isToday ? "today" : ""}"><span>${isToday ? "Hoje" : weekday}</span><strong>${date.getDate()}</strong><small>${month}</small></div>`;
-    }).join("");
-    const times = Array.from({ length: 24 }, (_, hour) => `<div class="calendar-time-label">${String(hour).padStart(2, "0")}:00</div>`).join("");
-    const columns = days.map((date) => {
-      const cells = Array.from({ length: 24 }, () => `<div class="calendar-cell"></div>`).join("");
-      const events = state.reservations
-        .filter((item) => item.status === "scheduled")
-        .map((item) => ({ item, geometry: adminEventGeometry(date, item.starts_at, item.ends_at) }))
-        .filter(({ geometry }) => geometry)
-        .map(({ item, geometry }) => {
-          const profile = state.users.find((user) => user.user_id === item.user_id) || {};
-          const start = new Date(item.starts_at);
-          const end = new Date(item.ends_at);
-          const active = Date.parse(item.starts_at) <= now && Date.parse(item.ends_at) > now;
-          const time = `${start.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}–${end.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`;
-          return `<div class="calendar-event ${active ? "mine" : "busy"}" style="--event-start:${geometry.start};--event-span:${geometry.span}"><button type="button" data-calendar-reservation="${escapeHtml(item.id)}"><strong>${escapeHtml(profile.username || item.user_id)}</strong><span>${escapeHtml(time)}</span></button></div>`;
-        }).join("");
-      const nowLine = date.getTime() === today.getTime() ? `<div class="calendar-now-line" style="--now-position:${new Date().getHours() + new Date().getMinutes() / 60}"><span class="sr-only">Agora</span></div>` : "";
-      return `<div class="calendar-day-column">${cells}${events}${nowLine}</div>`;
-    }).join("");
-    board.innerHTML = `<div class="calendar-corner">HORA</div>${headers}<div class="calendar-time-column">${times}</div>${columns}`;
-    board.querySelectorAll("[data-calendar-reservation]").forEach((button) => button.addEventListener("click", () => {
-      const row = document.querySelector(`[data-reservation-id="${CSS.escape(button.dataset.calendarReservation)}"]`);
-      row?.scrollIntoView({ behavior: "smooth", block: "center" });
-      row?.classList.add("calendar-row-focus");
-      window.setTimeout(() => row?.classList.remove("calendar-row-focus"), 1400);
-      const item = state.reservations.find((reservation) => reservation.id === button.dataset.calendarReservation);
-      if (item) $("#admin-schedule-selection").textContent = `${formatDate(item.starts_at)} · ${formatDate(item.ends_at)}`;
-    }));
+    if (!state.adminWeekStart) state.adminWeekStart = startOfDay(new Date());
+    if (!state.adminCalendar) {
+      state.adminCalendar = RemoteCodexCalendar.create(board, {
+        initialDate: state.adminWeekStart,
+        events: adminCalendarEvents(),
+        height: 640,
+        eventContent: adminCalendarEventContent,
+        eventClick: (info) => focusReservation(info.event.extendedProps.reservationId),
+        eventDidMount: (info) => {
+          const props = info.event.extendedProps;
+          info.el.setAttribute("aria-label", `${props.username}, ${RemoteCodexCalendar.formatTime(info.event.start)} até ${RemoteCodexCalendar.formatTime(info.event.end)}, ${props.active ? "em andamento" : "agendada"}`);
+        },
+        datesSet: (info) => {
+          state.adminWeekStart = startOfDay(info.start);
+          $("#admin-schedule-range").textContent = RemoteCodexCalendar.formatRange(info.start, new Date(info.end.getTime() - 86_400_000));
+        },
+      });
+    } else {
+      RemoteCodexCalendar.syncEvents(state.adminCalendar, adminCalendarEvents());
+      state.adminCalendar.updateSize();
+    }
   }
 
   async function loadReservations() {
@@ -649,9 +682,9 @@
     $("#action-form").addEventListener("submit", executeAction);
     ["#account-cancel", "#invite-cancel", "#device-cancel", "#action-cancel"].forEach((selector) => $(selector).addEventListener("click", () => $(selector.replace("-cancel", "-dialog")).close()));
     $("#login-refresh").addEventListener("click", () => refreshAccount(state.loginAccountId));
-    $("#calendar-admin-today").addEventListener("click", () => { state.adminWeekStart = startOfDay(); $("#admin-schedule-selection").textContent = "Selecione uma reserva para abrir os detalhes."; renderAdminCalendar(); });
-    $("#calendar-admin-prev").addEventListener("click", () => { const next = new Date(state.adminWeekStart); next.setDate(next.getDate() - 7); state.adminWeekStart = next < startOfDay() ? startOfDay() : startOfDay(next); renderAdminCalendar(); });
-    $("#calendar-admin-next").addEventListener("click", () => { const next = new Date(state.adminWeekStart); next.setDate(next.getDate() + 7); state.adminWeekStart = startOfDay(next); renderAdminCalendar(); });
+    $("#calendar-admin-today").addEventListener("click", () => { $("#admin-schedule-selection").textContent = "Selecione uma reserva para abrir os detalhes."; state.adminCalendar?.today(); });
+    $("#calendar-admin-prev").addEventListener("click", () => state.adminCalendar?.prev());
+    $("#calendar-admin-next").addEventListener("click", () => state.adminCalendar?.next());
     $("#device-weekly-limit").addEventListener("input", (event) => { $("#device-percent-output").textContent = `${event.target.value}%`; });
     $("#copy-token").addEventListener("click", () => copyText(state.issuedToken, "Token copiado."));
     $("#copy-env").addEventListener("click", () => copyText(`$env:CODEX_REMOTE_TOKEN = "${state.issuedToken}"`, "Variável PowerShell copiada."));

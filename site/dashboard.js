@@ -2,7 +2,7 @@
   "use strict";
 
   const $ = (selector) => document.querySelector(selector);
-  const state = { config: null, data: null, selectedDate: null, selectedHour: null, duration: 1, nowOffset: 0, weekStart: null };
+  const state = { config: null, data: null, selectedDate: null, selectedHour: null, duration: 1, nowOffset: 0, weekStart: null, calendar: null };
   const formatter = new Intl.NumberFormat("pt-BR");
 
   function localTokenKey(reservationId) { return `remote_codex_reservation_${reservationId}`; }
@@ -84,6 +84,7 @@
     }
     renderQuota(reservation, device);
     renderCredential(reservation, device);
+    if (state.selectedHour !== null) updateBookingSummary();
   }
 
   function renderQuota(reservation, device) {
@@ -134,94 +135,131 @@
     return (state.data.busySlots || []).some((slot) => Date.parse(slot.starts_at) < end && Date.parse(slot.ends_at) > start.getTime());
   }
 
-  function weekDays() {
-    return Array.from({ length: 7 }, (_, index) => {
-      const date = new Date(state.weekStart);
-      date.setDate(date.getDate() + index);
-      return date;
-    });
-  }
-
-  function formatWeekRange(days) {
-    const start = days[0];
-    const end = days.at(-1);
-    const startText = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short" }).format(start).replace(".", "");
-    const endText = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short", year: "numeric" }).format(end).replace(".", "");
-    return `${startText} – ${endText}`;
-  }
-
-  function eventSpanFor(day, startsAt, endsAt) {
-    const dayStart = startOfDay(day).getTime();
-    const dayEnd = dayStart + 24 * 3_600_000;
-    const start = Math.max(dayStart, Date.parse(startsAt));
-    const end = Math.min(dayEnd, Date.parse(endsAt));
-    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return null;
-    return { start: (start - dayStart) / 3_600_000, span: Math.max(.5, (end - start) / 3_600_000) };
-  }
-
-  function calendarEventsFor(day) {
-    const ownReservations = (state.data?.reservations || []).filter((item) => item.status === "scheduled" && eventSpanFor(day, item.starts_at, item.ends_at));
+  function calendarEvents() {
+    const ownReservations = (state.data?.reservations || []).filter((item) => item.status === "scheduled");
     const ownKeys = new Set(ownReservations.map((item) => `${item.starts_at}|${item.ends_at}`));
-    const busy = (state.data?.busySlots || [])
+    const ownEvents = ownReservations.map((item) => ({
+      id: `reservation-${item.id}`,
+      title: "Sua reserva",
+      start: item.starts_at,
+      end: item.ends_at,
+      className: ["calendar-event-own", Date.parse(item.starts_at) <= now().getTime() ? "calendar-event-active" : ""].filter(Boolean).join(" "),
+      extendedProps: { kind: "mine", reservationId: item.id },
+    }));
+    const busyEvents = (state.data?.busySlots || [])
       .filter((slot) => !ownKeys.has(`${slot.starts_at}|${slot.ends_at}`))
-      .filter((slot) => eventSpanFor(day, slot.starts_at, slot.ends_at))
-      .map((slot) => ({ ...slot, kind: "busy" }));
-    return [
-      ...ownReservations.map((item) => ({ ...item, kind: "mine" })),
-      ...busy,
-    ].map((event) => ({ ...event, geometry: eventSpanFor(day, event.starts_at, event.ends_at) }));
+      .map((slot, index) => ({
+        id: `busy-${index}-${slot.starts_at}`,
+        title: "Ocupado",
+        start: slot.starts_at,
+        end: slot.ends_at,
+        className: "calendar-event-busy",
+        extendedProps: { kind: "busy" },
+      }));
+    return [...ownEvents, ...busyEvents];
+  }
+
+  function selectedStart() {
+    if (state.selectedHour === null || !state.selectedDate) return null;
+    const date = new Date(state.selectedDate);
+    date.setHours(state.selectedHour, 0, 0, 0);
+    return date;
+  }
+
+  function selectionEnd(start) {
+    return new Date(start.getTime() + state.duration * 3_600_000);
+  }
+
+  function isSelectionBookable(start) {
+    const value = RemoteCodexCalendar.startOfHour(start);
+    return value.getTime() > now().getTime() && value.getHours() + state.duration <= 24 && !slotConflict(value, state.duration);
+  }
+
+  function clearSelection() {
+    state.selectedHour = null;
+    state.calendar?.unselect();
+    updateBookingSummary();
+  }
+
+  function applySelection(start, syncCalendar = true) {
+    const value = RemoteCodexCalendar.startOfHour(start);
+    if (!isSelectionBookable(value)) {
+      clearSelection();
+      $("#booking-message").textContent = "Esse horário não está mais disponível. Atualize a agenda e escolha outro.";
+      $("#booking-message").className = "form-message error";
+      return false;
+    }
+    state.selectedDate = RemoteCodexCalendar.startOfDay(value);
+    state.selectedHour = value.getHours();
+    if (syncCalendar) state.calendar?.select({ start: value, end: selectionEnd(value) });
+    $("#booking-message").textContent = "";
+    $("#booking-message").className = "form-message";
+    updateBookingSummary();
+    return true;
+  }
+
+  function calendarEventContent(info) {
+    const event = info.event;
+    const kind = event.extendedProps.kind;
+    const node = document.createElement("div");
+    node.className = "calendar-event-content";
+    node.innerHTML = `<strong>${kind === "mine" ? "Sua reserva" : "Ocupado"}</strong><span>${RemoteCodexCalendar.formatTime(event.start)} · ${Math.max(1, Math.round((event.end - event.start) / 3_600_000))}h</span>`;
+    return { domNodes: [node] };
   }
 
   function renderCalendar() {
     const board = $("#calendar-board");
-    const days = weekDays();
-    const current = now();
-    const today = startOfDay(current);
-    $("#schedule-range").textContent = formatWeekRange(days);
-    $("#calendar-prev").disabled = startOfDay(state.weekStart).getTime() <= today.getTime();
-    $("#calendar-next").disabled = false;
-
-    const headers = days.map((date) => {
-      const isToday = sameDay(date, today);
-      const weekday = date.toLocaleDateString("pt-BR", { weekday: "short" }).replace(".", "");
-      const month = date.toLocaleDateString("pt-BR", { month: "short" }).replace(".", "");
-      return `<div class="calendar-day-head ${isToday ? "today" : ""}"><span>${isToday ? "Hoje" : weekday}</span><strong>${date.getDate()}</strong><small>${month}</small></div>`;
-    }).join("");
-    const times = Array.from({ length: 24 }, (_, hour) => `<div class="calendar-time-label">${String(hour).padStart(2, "0")}:00</div>`).join("");
-    const columns = days.map((date) => {
-      const cells = Array.from({ length: 24 }, (_, hour) => {
-        const start = new Date(date); start.setHours(hour, 0, 0, 0);
-        const past = start.getTime() < current.getTime();
-        const busy = slotConflict(start, state.duration);
-        const selected = sameDay(date, state.selectedDate) && state.selectedHour === hour;
-        const overflow = hour + state.duration > 24;
-        const disabled = past || busy || overflow;
-        const title = busy ? "Horário reservado" : past ? "Horário encerrado" : overflow ? "A duração ultrapassa o dia" : `Reservar ${String(hour).padStart(2, "0")}:00`;
-        return `<div class="calendar-cell ${past ? "past" : ""} ${selected ? "selected" : ""}"><button type="button" data-date="${date.toISOString()}" data-hour="${hour}" aria-label="${title}" title="${title}" ${disabled ? "disabled" : ""}></button></div>`;
-      }).join("");
-      const events = calendarEventsFor(date).map((event) => {
-        const start = new Date(event.starts_at);
-        const label = event.kind === "mine" ? "Sua reserva" : "Ocupado";
-        const time = `${start.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} · ${Math.round(event.geometry.span)}h`;
-        return `<div class="calendar-event ${event.kind}" style="--event-start:${event.geometry.start};--event-span:${event.geometry.span}" aria-label="${label}, ${time}"><strong>${label}</strong><span>${time}</span></div>`;
-      }).join("");
-      const nowLine = sameDay(date, today) ? `<div class="calendar-now-line" style="--now-position:${current.getHours() + current.getMinutes() / 60}"><span class="sr-only">Agora</span></div>` : "";
-      return `<div class="calendar-day-column">${cells}${events}${nowLine}</div>`;
-    }).join("");
-    board.innerHTML = `<div class="calendar-corner">HORA</div>${headers}<div class="calendar-time-column">${times}</div>${columns}`;
-    board.querySelectorAll(".calendar-cell button:not(:disabled)").forEach((button) => button.addEventListener("click", () => {
-      state.selectedDate = startOfDay(new Date(button.dataset.date));
-      state.selectedHour = Number(button.dataset.hour);
-      renderCalendar();
-    }));
+    if (!board) return;
+    const today = RemoteCodexCalendar.startOfDay(now());
+    if (!state.weekStart) state.weekStart = today;
+    if (!state.calendar) {
+      state.calendar = RemoteCodexCalendar.create(board, {
+        initialDate: state.weekStart,
+        events: calendarEvents(),
+        selectable: true,
+        selectOverlap: false,
+        validRange: { start: today },
+        selectAllow: (info) => {
+          const duration = (info.end.getTime() - info.start.getTime()) / 3_600_000;
+          return duration === state.duration && isSelectionBookable(info.start);
+        },
+        dateClick: (info) => applySelection(info.date),
+        select: (info) => {
+          const duration = (info.end.getTime() - info.start.getTime()) / 3_600_000;
+          if (duration === state.duration) applySelection(info.start, false);
+          else state.calendar?.unselect();
+        },
+        eventContent: calendarEventContent,
+        eventClick: (info) => {
+          const message = info.event.extendedProps.kind === "mine" ? "Esta é uma reserva sua." : "Esse período já está ocupado.";
+          $("#booking-message").textContent = message;
+          $("#booking-message").className = "form-message";
+        },
+        eventDidMount: (info) => {
+          info.el.setAttribute("aria-label", `${info.event.title}, ${RemoteCodexCalendar.formatTime(info.event.start)} até ${RemoteCodexCalendar.formatTime(info.event.end)}`);
+        },
+        datesSet: (info) => {
+          state.weekStart = RemoteCodexCalendar.startOfDay(info.start);
+          $("#schedule-range").textContent = RemoteCodexCalendar.formatRange(info.start, new Date(info.end.getTime() - 86_400_000));
+          $("#calendar-prev").disabled = state.weekStart.getTime() <= today.getTime();
+        },
+      });
+    } else {
+      RemoteCodexCalendar.syncEvents(state.calendar, calendarEvents());
+      if (state.selectedHour !== null) {
+        const start = selectedStart();
+        if (start && isSelectionBookable(start)) state.calendar.select({ start, end: selectionEnd(start) });
+        else clearSelection();
+      }
+    }
     updateBookingSummary();
   }
 
-  function selectedStart() { if (state.selectedHour === null) return null; const date = new Date(state.selectedDate); date.setHours(state.selectedHour, 0, 0, 0); return date; }
   function updateBookingSummary() {
     const start = selectedStart();
-    $("#book-slot").disabled = !start;
-    const summary = start ? `${formatShort(start)} · ${String(start.getHours()).padStart(2, "0")}:00–${String(start.getHours() + state.duration).padStart(2, "0")}:00` : "Selecione um horário livre";
+    const valid = Boolean(start && isSelectionBookable(start));
+    $("#book-slot").disabled = !valid;
+    const summary = valid ? `${formatShort(start)} · ${String(start.getHours()).padStart(2, "0")}:00–${String(start.getHours() + state.duration).padStart(2, "0")}:00` : "Selecione um horário livre";
     $("#booking-summary").textContent = summary;
     $("#schedule-selection").textContent = start ? summary : "Nenhum horário selecionado";
   }
@@ -271,14 +309,14 @@
     if (!window.RemoteCodexAuth.getSession()?.access_token) { window.location.replace("/login"); return; }
     $("#user-logout").addEventListener("click", logout);
     $("#refresh-dashboard").addEventListener("click", () => loadDashboard());
-    $("#calendar-today").addEventListener("click", () => { state.weekStart = startOfDay(now()); state.selectedDate = new Date(state.weekStart); state.selectedHour = null; renderCalendar(); });
-    $("#calendar-prev").addEventListener("click", () => { const next = new Date(state.weekStart); next.setDate(next.getDate() - 7); state.weekStart = next < startOfDay(now()) ? startOfDay(now()) : startOfDay(next); state.selectedDate = new Date(state.weekStart); state.selectedHour = null; renderCalendar(); });
-    $("#calendar-next").addEventListener("click", () => { const next = new Date(state.weekStart); next.setDate(next.getDate() + 7); state.weekStart = startOfDay(next); state.selectedDate = new Date(state.weekStart); state.selectedHour = null; renderCalendar(); });
+    $("#calendar-today").addEventListener("click", () => { clearSelection(); state.calendar?.today(); });
+    $("#calendar-prev").addEventListener("click", () => { clearSelection(); state.calendar?.prev(); });
+    $("#calendar-next").addEventListener("click", () => { clearSelection(); state.calendar?.next(); });
     $("#book-slot").addEventListener("click", book);
     $("#issue-session").addEventListener("click", issueSession);
     $("#copy-command").addEventListener("click", () => { const reservation = activeReservation(); const stored = tokenFor(reservation); if (stored) copyText(commandFor(stored.token), "Comando copiado."); });
     $("#copy-token").addEventListener("click", () => { const stored = tokenFor(activeReservation()); if (stored) copyText(stored.token, "Token copiado."); });
-    document.querySelectorAll("[data-duration]").forEach((button) => button.addEventListener("click", () => { state.duration = Number(button.dataset.duration); document.querySelectorAll("[data-duration]").forEach((item) => item.classList.toggle("active", item === button)); state.selectedHour = null; renderCalendar(); }));
+    document.querySelectorAll("[data-duration]").forEach((button) => button.addEventListener("click", () => { state.duration = Number(button.dataset.duration); document.querySelectorAll("[data-duration]").forEach((item) => item.classList.toggle("active", item === button)); const start = selectedStart(); if (start && isSelectionBookable(start)) { state.calendar?.select({ start, end: selectionEnd(start) }); updateBookingSummary(); } else clearSelection(); }));
     await loadDashboard();
     setInterval(() => renderClock(), 1_000);
     setInterval(() => loadDashboard(true).catch(() => undefined), 30_000);

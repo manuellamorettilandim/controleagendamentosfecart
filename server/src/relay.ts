@@ -52,7 +52,14 @@ const STATIC_ROUTES: Record<string, string> = {
   "/login.js": "login.js",
   "/admin.js": "admin.js",
   "/dashboard.js": "dashboard.js",
+  "/calendar.js": "calendar.js",
   "/styles.css": "styles.css",
+  "/vendor/fullcalendar.js": "vendor/fullcalendar.js",
+  "/vendor/fullcalendar.css": "vendor/fullcalendar.css",
+  "/vendor/fullcalendar-theme-classic.js": "vendor/fullcalendar-theme-classic.js",
+  "/vendor/fullcalendar-theme-classic.css": "vendor/fullcalendar-theme-classic.css",
+  "/vendor/fullcalendar-palette-classic.css": "vendor/fullcalendar-palette-classic.css",
+  "/vendor/fullcalendar-locale-pt-br.js": "vendor/fullcalendar-locale-pt-br.js",
   "/site.js": "site.js",
 };
 
