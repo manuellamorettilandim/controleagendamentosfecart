@@ -3,67 +3,48 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="Entre no Remote Codex para reservar seu horário ou administrar o acesso.">
-    <title>Entrar · Remote Codex</title>
+    <meta name="description" content="Acesso ao painel e à agenda.">
+    <title>Entrar</title>
+    <link rel="stylesheet" href="/vendor/pico.min.css">
     <link rel="stylesheet" href="/styles.css">
   </head>
   <body class="auth-page">
     <!--
-      THESIS: o acesso começa por uma janela autorizada, não por uma credencial permanente escondida em um formulário.
-      OWN-WORLD: atlas de operações de serviço; palco grafite, painel claro ou escuro e mint reservado para ação segura.
-      STORY: escolher o tipo de acesso, entrar com clareza e seguir direto para agenda ou controle central.
-      FIRST VIEWPORT: contexto do produto à esquerda no desktop, formulário curto à direita e alternância de tema sempre acessível.
-      FORM: login bipartido, terceira direção fundamentada; seed 9019c2f2.
+      THESIS: uma entrada comum e silenciosa, com o formulário no centro e a cor apenas como orientação espacial.
+      OWN-WORLD: fundo neutro, uma faixa lateral sólida e controles sem decoração; sem marca, logo ou seletor de perfil.
+      STORY: informar a credencial cadastrada, autenticar e seguir para a área permitida por aquele login.
+      FIRST VIEWPORT: cartão único centralizado, título Entrar, dois campos, ação primária e mensagens de estado.
+      FORM: login centralizado e direto; o tipo é resolvido pelo cadastro/credencial, não por uma escolha na tela.
       FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
     -->
     <main class="auth-shell">
-      <section class="auth-stage" aria-labelledby="auth-stage-title">
-        <a class="auth-brand" href="/">
-          <span class="brand-logo" aria-hidden="true"><svg viewBox="0 0 32 32"><rect x="2" y="2" width="28" height="28" rx="9"></rect><path d="M11 9.5h5a6.5 6.5 0 0 1 0 13h-5a6.5 6.5 0 0 1 0-13Z"></path><path d="M15.5 16H23"></path><circle cx="23.5" cy="16" r="2.2"></circle></svg></span>
-          <span>Remote Codex</span>
-        </a>
-        <div class="auth-stage-copy">
-          <p class="auth-status-line"><span class="live-pip"></span> Acesso por horário · credencial temporária</p>
-          <h1 id="auth-stage-title">Seu tempo com o Codex, sob controle.</h1>
-          <p>Reserve uma janela de até três horas. Quando ela começar, sua credencial aparece e funciona somente até o horário ou a franquia terminar.</p>
-        </div>
-        <ol class="auth-flow" aria-label="Como funciona">
-          <li><span>1</span><div><strong>Entre</strong><small>Use o login da sua equipe.</small></div></li>
-          <li><span>2</span><div><strong>Agende</strong><small>Escolha um horário livre.</small></div></li>
-          <li><span>3</span><div><strong>Inicie</strong><small>Copie o comando da sessão.</small></div></li>
-        </ol>
-        <p class="auth-security">A autenticação OpenAI permanece no host central.</p>
-      </section>
-
       <section class="auth-panel" aria-labelledby="login-title">
-        <div class="auth-panel-toolbar"><div class="auth-mobile-brand"><span class="brand-logo" aria-hidden="true"><svg viewBox="0 0 32 32"><rect x="2" y="2" width="28" height="28" rx="9"></rect><path d="M11 9.5h5a6.5 6.5 0 0 1 0 13h-5a6.5 6.5 0 0 1 0-13Z"></path><path d="M15.5 16H23"></path><circle cx="23.5" cy="16" r="2.2"></circle></svg></span><strong>Remote Codex</strong></div><button class="theme-toggle" data-theme-toggle type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"></path></svg><span class="theme-label">Tema</span></button></div>
-        <div class="role-switch" role="tablist" aria-label="Tipo de acesso">
-          <button id="role-user" class="role-option active" type="button" role="tab" aria-selected="true" data-role="user">Usuário</button>
-          <button id="role-admin" class="role-option" type="button" role="tab" aria-selected="false" data-role="admin">Administrador</button>
+        <div class="auth-panel-toolbar">
+          <span aria-hidden="true"></span>
+          <button class="theme-toggle" data-theme-toggle type="button"><span class="theme-label">Tema</span></button>
         </div>
         <div class="auth-panel-heading">
-          <h2 id="login-title">Acesse sua agenda</h2>
-          <p id="login-description">Entre com o nome e a senha da sua equipe.</p>
+          <h1 id="login-title">Entrar</h1>
+          <p id="login-description">Use o e-mail ou usuário cadastrado.</p>
         </div>
         <form id="login-form" class="auth-form">
-          <label id="login-identity-label" for="login-identity">Usuário</label>
-          <input id="login-identity" type="text" autocomplete="username" spellcheck="false" placeholder="nome da equipe" required>
+          <label id="login-identity-label" for="login-identity">E-mail ou usuário</label>
+          <input id="login-identity" type="text" autocomplete="username" spellcheck="false" placeholder="Digite sua credencial" required>
           <label for="login-password">Senha</label>
           <div class="password-field">
-            <input id="login-password" type="password" autocomplete="current-password" placeholder="Sua senha" required>
-            <button id="toggle-password" type="button" aria-label="Mostrar senha"><span class="password-toggle-label">Mostrar</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12s3.2-5 9-5 9 5 9 5-3.2 5-9 5-9-5-9-5Z"></path><circle cx="12" cy="12" r="2.4"></circle></svg></button>
+            <input id="login-password" type="password" autocomplete="current-password" placeholder="Digite sua senha" required>
+            <button id="toggle-password" type="button" aria-label="Mostrar senha"><span class="password-toggle-label">Mostrar</span></button>
           </div>
-          <button id="login-submit" class="auth-submit" type="submit"><span>Entrar</span><span aria-hidden="true">→</span></button>
+          <button id="login-submit" class="auth-submit" type="submit">Entrar</button>
           <p id="login-error" class="form-message error" role="alert"></p>
         </form>
         <section id="login-config-alert" class="auth-config-alert" hidden role="alert" aria-live="polite">
-          <strong>O relay ainda não está pronto</strong>
-          <p id="login-config-message">Configure o relay central antes de liberar o login.</p>
+          <strong>Login indisponível</strong>
+          <p id="login-config-message">Configure o relay central antes de liberar o acesso.</p>
           <div class="auth-config-actions"><a class="secondary-button" href="/deploy">Configurar relay</a><button id="retry-config" class="secondary-button" type="button">Tentar novamente</button></div>
         </section>
         <div id="login-security-note" class="auth-panel-foot">
-          <span class="secure-mark" aria-hidden="true"></span>
-          <p id="login-note">Login protegido pelo Supabase Auth quando o relay estiver ativo.</p>
+          <p id="login-note">A área exibida depende da conta autenticada.</p>
         </div>
       </section>
     </main>

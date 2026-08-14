@@ -99,13 +99,19 @@
   async function copyText(value, successMessage) {
     try {
       await navigator.clipboard.writeText(value);
-      $("#copy-status").textContent = successMessage;
-      $("#copy-status").className = "admin-status success";
+      const copyStatus = $("#copy-status");
+      if (copyStatus) {
+        copyStatus.textContent = successMessage;
+        copyStatus.className = "admin-status success";
+      }
     } catch {
       $("#issued-token").focus();
       $("#issued-token").select();
-      $("#copy-status").textContent = "Não foi possível copiar automaticamente; selecione o conteúdo manualmente.";
-      $("#copy-status").className = "admin-status warning";
+      const copyStatus = $("#copy-status");
+      if (copyStatus) {
+        copyStatus.textContent = "Não foi possível copiar automaticamente; selecione o conteúdo manualmente.";
+        copyStatus.className = "admin-status warning";
+      }
     }
   }
 
@@ -162,13 +168,14 @@
       state.accounts = accounts.accounts || [];
       renderAccounts(accounts);
       state.devices = devices.devices || [];
-      renderDevices(devices);
+      renderDevicesSimple(devices);
       await Promise.all([
         state.role === "owner" ? loadAdmins() : Promise.resolve(),
         loadUsers(),
       ]);
+      renderDevicesSimple(devices);
       await loadReservations();
-      renderOverview(accounts, devices);
+      renderOverviewSimple(accounts, devices);
       setStatus(accounts.stale ? "Host offline ou snapshot stale; os dados exibidos não garantem estado atual." : "Host conectado e sincronizado.", accounts.stale ? "warning" : "success");
     } catch (error) {
       setStatus(error.message, "error");
@@ -183,23 +190,20 @@
       return;
     }
     grid.innerHTML = state.accounts.map((account) => {
-      const limits = Object.values(account.rateLimits || {});
-      const limitMarkup = limits.length ? limits.flatMap((rateLimit) => [[rateLimit, "principal", rateLimit.primary], [rateLimit, "secundária", rateLimit.secondary]]).filter(([, , window]) => window).map(([rateLimit, windowLabel, window]) => {
-        const percent = window.usedPercent === null || window.usedPercent === undefined ? null : Math.max(0, Math.min(100, Number(window.usedPercent)));
-        const credits = window.credits && Object.keys(window.credits).length ? ` · créditos ${Object.values(window.credits).map((value) => String(value)).join("/")}` : "";
-        return `<div class="limit-row"><div><strong>${escapeHtml(rateLimit.limitName || rateLimit.limitId)} · ${escapeHtml(windowLabel)}</strong><span>${percent === null ? "indisponível" : `${percent}% usado`}</span></div><div class="limit-track"><i style="width:${percent === null ? 0 : percent}%"></i></div><small>${window.windowDurationMins ? `${window.windowDurationMins} min · ` : ""}${formatReset(window.resetsAt)}${escapeHtml(credits)}</small></div>`;
-      }).join("") : `<p class="admin-muted">Limites não retornados pelo app-server.</p>`;
-      const usage = account.usage?.dailyUsageBuckets?.slice(-7) || [];
-      const usageText = usage.length ? `${usage.length} dias observados · ${usage.reduce((total, bucket) => total + Number(bucket.tokens || 0), 0).toLocaleString("pt-BR")} tokens` : "uso diário indisponível";
       const status = account.status || "offline";
-       const statusClassName = status === "ready" ? "success" : status === "login_required" ? "warning" : "error";
-       return `<article class="admin-account-card ${account.isDefault ? "default" : ""}">
-         <div class="admin-card-head"><div><span class="admin-badge ${statusClassName}">${escapeHtml(accountStatusLabel(status))}</span>${account.isDefault ? `<span class="admin-badge default-badge">padrão</span>` : ""}</div><button class="icon-button" type="button" data-refresh-account="${escapeHtml(account.accountId)}" title="Atualizar conta">↻</button></div>
-         <h3>${escapeHtml(account.label)}</h3><p class="account-email">${escapeHtml(account.email || "email indisponível")} · ${escapeHtml(account.planType || "plano indisponível")}</p>
-         <div class="limit-list">${limitMarkup}</div><p class="usage-summary">${escapeHtml(usageText)} · última atualização ${escapeHtml(formatDate(account.updatedAt))}</p>
-         ${account.error ? `<p class="admin-inline-error">${escapeHtml(account.error)}</p>` : ""}
-         <div class="admin-actions">${status === "ready" && !account.isDefault ? `<button class="admin-button small primary" type="button" data-default-account="${escapeHtml(account.accountId)}">Usar como padrão</button>` : ""}<button class="admin-button small ghost" type="button" data-login-account="${escapeHtml(account.accountId)}">${status === "ready" ? "Atualizar login" : "Iniciar login"}</button>${status === "ready" ? `<button class="admin-button small danger" type="button" data-logout-account="${escapeHtml(account.accountId)}">Sair</button>` : ""}${!account.isDefault ? `<button class="admin-button small danger" type="button" data-delete-account="${escapeHtml(account.accountId)}">Excluir conta</button>` : ""}</div>
-       </article>`;
+      const statusClassName = status === "ready" ? "success" : status === "login_required" ? "warning" : "error";
+      const window = weeklyWindow(account);
+      const percent = window?.usedPercent == null ? null : Math.max(0, Math.min(100, Number(window.usedPercent)));
+      const usageLabel = percent == null ? "Uso indisponível" : `${percent.toFixed(1)}% usado`;
+      const resetLabel = window?.resetsAt ? `reset ${formatReset(window.resetsAt)}` : "reset indisponível";
+      const observedTokens = (account.usage?.dailyUsageBuckets || []).reduce((total, bucket) => total + Number(bucket.tokens || 0), 0);
+      return `<article class="admin-account-card ${account.isDefault ? "default" : ""}">
+        <div class="account-main"><strong class="account-name">${escapeHtml(account.label)}</strong><span class="account-email">${escapeHtml(account.email || "email indisponível")}</span></div>
+        <div class="account-status"><span class="admin-badge ${statusClassName}">${escapeHtml(accountStatusLabel(status))}</span>${account.isDefault ? `<span class="admin-badge default-badge">padrão</span>` : ""}</div>
+        <div class="account-usage"><div><span>${escapeHtml(usageLabel)}</span><small>${escapeHtml(resetLabel)}</small></div><div class="limit-track" aria-hidden="true"><i style="width:${percent == null ? 0 : percent}%"></i></div><small>${observedTokens ? `${formatNumber(observedTokens)} tokens observados` : "sem tokens observados"}</small></div>
+        <div class="account-updated">Atualizado ${escapeHtml(formatDate(account.updatedAt))}${account.error ? `<span class="admin-inline-error">${escapeHtml(account.error)}</span>` : ""}</div>
+        <div class="admin-actions account-actions">${status === "ready" && !account.isDefault ? `<button class="admin-button small ghost" type="button" data-default-account="${escapeHtml(account.accountId)}">Definir padrão</button>` : ""}<button class="admin-button small ghost" type="button" data-login-account="${escapeHtml(account.accountId)}">${status === "ready" ? "Atualizar login" : "Iniciar login"}</button>${status === "ready" ? `<button class="admin-button small ghost" type="button" data-logout-account="${escapeHtml(account.accountId)}">Sair</button>` : ""}${!account.isDefault ? `<button class="admin-button small danger" type="button" data-delete-account="${escapeHtml(account.accountId)}">Excluir</button>` : ""}</div>
+      </article>`;
     }).join("");
     grid.querySelectorAll("[data-default-account]").forEach((button) => button.addEventListener("click", () => setDefault(button.dataset.defaultAccount)));
     grid.querySelectorAll("[data-login-account]").forEach((button) => button.addEventListener("click", () => startLogin(button.dataset.loginAccount, button)));
@@ -272,6 +276,51 @@
     insights.querySelectorAll("[data-overview-tab]").forEach((button) => button.addEventListener("click", () => setActiveTab(button.dataset.overviewTab)));
   }
 
+  function renderOverviewSimple(accountsPayload, devicesPayload) {
+    const insights = $("#overview-insights");
+    if (!insights) return;
+    const now = Date.now();
+    const activeReservations = state.reservations.filter((item) => item.status === "scheduled" && Date.parse(item.starts_at) <= now && Date.parse(item.ends_at) > now);
+    const upcoming = state.reservations
+      .filter((item) => item.status === "scheduled" && Date.parse(item.ends_at) > now)
+      .sort((left, right) => Date.parse(left.starts_at) - Date.parse(right.starts_at))
+      .slice(0, 6);
+    const readyAccounts = state.accounts.filter((account) => account.status === "ready").length;
+    const activeDevices = state.devices.filter((device) => device.status === "active").length;
+    const attention = [];
+    if (accountsPayload?.stale || devicesPayload?.stale) attention.push({ tab: "accounts", label: "Dados do host estão desatualizados.", tone: "warning" });
+    state.accounts.filter((account) => account.status !== "ready").slice(0, 3).forEach((account) => attention.push({ tab: "accounts", label: `${account.label}: ${accountStatusLabel(account.status)}.`, tone: "warning" }));
+    state.devices.filter((device) => ["limited", "disabled", "expired"].includes(device.status)).slice(0, 3).forEach((device) => attention.push({ tab: "devices", label: `${device.label}: ${statusLabel(device.status)}.`, tone: "danger" }));
+    if (state.reservations.some((item) => item.status === "scheduled" && Date.parse(item.starts_at) <= now && Date.parse(item.ends_at) > now && !item.device_id)) attention.push({ tab: "reservations", label: "Sessão ativa sem token emitido.", tone: "warning" });
+
+    const hostReady = Boolean(accountsPayload?.ready && accountsPayload?.hostConnected);
+    const hostLabel = hostReady ? "Host conectado" : accountsPayload?.stale ? "Snapshot desatualizado" : "Host aguardando";
+    const metric = (label, value, detail = "") => `<article class="overview-kpi"><span>${label}</span><strong>${value}</strong>${detail ? `<small>${detail}</small>` : ""}</article>`;
+    const reservationMarkup = upcoming.length ? upcoming.map((item) => {
+      const profile = state.users.find((user) => user.user_id === item.user_id) || {};
+      const start = new Date(item.starts_at);
+      const end = new Date(item.ends_at);
+      const date = start.toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "2-digit" }).replace(".", "");
+      const time = `${start.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}–${end.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`;
+      const active = Date.parse(item.starts_at) <= now;
+      return `<button class="overview-data-row" type="button" data-overview-tab="reservations"><span class="overview-data-time">${escapeHtml(time)}</span><span><strong>${escapeHtml(profile.username || item.user_id)}</strong><small>${escapeHtml(date)} · ${escapeHtml(accountById(item.account_id)?.label || item.account_id || "conta indisponível")}</small></span><span class="overview-row-state ${active ? "active" : ""}">${active ? "agora" : item.device_id ? "token emitido" : "sem token"}</span></button>`;
+    }).join("") : `<p class="overview-empty">Nenhuma sessão futura.</p>`;
+
+    const usageMarkup = state.accounts.length ? state.accounts.map((account) => {
+      const window = weeklyWindow(account);
+      const percent = window?.usedPercent == null ? null : Math.max(0, Math.min(100, Number(window.usedPercent)));
+      const buckets = (account.usage?.dailyUsageBuckets || []).slice(-7);
+      const maxTokens = Math.max(...buckets.map((bucket) => Number(bucket.tokens || 0)), 0);
+      const bars = buckets.length ? `<div class="usage-history" aria-label="Uso diário"><span>${buckets.map((bucket) => `<i style="height:${maxTokens ? Math.max(8, (Number(bucket.tokens || 0) / maxTokens) * 100) : 8}%" title="${escapeHtml(formatNumber(bucket.tokens || 0))} tokens"></i>`).join("")}</span></div>` : "";
+      return `<div class="overview-usage-row"><div><strong>${escapeHtml(account.label)}</strong><span>${percent == null ? "Uso indisponível" : `${percent.toFixed(1)}% da janela`}</span></div><div class="limit-track"><i style="width:${percent == null ? 0 : percent}%"></i></div>${bars}</div>`;
+    }).join("") : `<p class="overview-empty">Nenhuma conta cadastrada.</p>`;
+
+    const attentionMarkup = attention.length ? attention.slice(0, 6).map(({ tab, label, tone }) => `<button class="overview-attention-row" type="button" data-overview-tab="${tab}"><i class="${tone}"></i><span>${escapeHtml(label)}</span><b aria-hidden="true">→</b></button>`).join("") : `<p class="overview-empty good">Nenhuma ação pendente.</p>`;
+    insights.innerHTML = `<div class="overview-kpis">${metric("Contas prontas", `${readyAccounts}/${state.accounts.length}`, hostLabel)}${metric("Sessões agora", activeReservations.length, activeReservations.length ? "em andamento" : "nenhuma ativa")}${metric("Próximas sessões", upcoming.length, "na agenda carregada")}${metric("Tokens ativos", activeDevices, `${state.devices.length} no histórico`)}</div><div class="overview-status-line"><span class="status-dot ${hostReady ? "online" : "offline"}"></span>${escapeHtml(hostLabel)}<button class="admin-button tiny ghost" type="button" id="retry-overview">Atualizar</button></div><div class="overview-grid"><section class="overview-panel"><header><h3>Próximas sessões</h3><button class="admin-button tiny ghost" type="button" data-overview-tab="reservations">Ver agenda</button></header><div class="overview-data-list">${reservationMarkup}</div></section><section class="overview-panel"><header><h3>Uso por conta</h3><span class="overview-panel-meta">dados do host</span></header><div class="overview-usage-list">${usageMarkup}</div></section><section class="overview-panel overview-attention-panel"><header><h3>Atenção</h3><span class="overview-panel-meta">${attention.length}</span></header><div class="overview-attention-list">${attentionMarkup}</div></section></div>`;
+    $("#retry-overview")?.addEventListener("click", () => refreshAll().catch(() => undefined));
+    insights.querySelectorAll("[data-overview-tab]").forEach((button) => button.addEventListener("click", () => setActiveTab(button.dataset.overviewTab)));
+  }
+
   const tabCopy = {
     accounts: ["Visão geral", "Saúde das contas, acessos e próximas sessões em um só lugar."],
     devices: ["Dispositivos autorizados", "Controle políticas, uso observado e revogação de cada acesso."],
@@ -338,6 +387,48 @@
     }).join("");
     body.querySelectorAll("[data-device-action]").forEach((button) => button.addEventListener("click", () => requestAction(`device-${button.dataset.deviceAction}`, button.dataset.deviceId)));
     body.querySelectorAll("[data-device-edit]").forEach((button) => button.addEventListener("click", () => openDeviceDialog(button.dataset.deviceEdit)));
+  }
+
+  function renderDevicesSimple(payload) {
+    const active = state.devices.filter((device) => device.status === "active").length;
+    const attention = state.devices.filter((device) => ["limited", "disabled", "expired"].includes(device.status)).length;
+    $("#devices-summary").textContent = state.devices.length
+      ? `${active} ativos · ${attention} em atenção · ${state.devices.length} no histórico`
+      : "Nenhum token emitido.";
+    $("#devices-note").textContent = payload.stale ? "Snapshot desatualizado." : "Sincronizado agora.";
+    const body = $("#devices-body");
+    if (!state.devices.length) {
+      body.innerHTML = `<tr><td colspan="6" class="admin-empty">Nenhum dispositivo registrado.</td></tr>`;
+      return;
+    }
+    body.innerHTML = state.devices.map((device) => {
+      const account = accountById(device.accountId);
+      const user = state.users.find((candidate) => candidate.user_id === device.userId);
+      const usage = device.usage || {};
+      const accountPercent = Number(usage.accountUsedPercent);
+      const usageWidth = Number.isFinite(accountPercent) ? Math.max(0, Math.min(100, accountPercent)) : 0;
+      const userLabel = user?.username || (device.userId ? `${device.userId.slice(0, 8)}…` : "Não atribuído");
+      const userDetail = user?.group_name || (device.userId ? "ID do usuário" : "Sem reserva vinculada");
+      const policy = `${Number(device.weeklyLimitPercent ?? 100).toFixed(0)}% semanal`;
+      const actionButtons = device.status === "revoked"
+        ? `<span class="admin-muted">histórico</span>`
+        : `<button type="button" class="admin-button tiny ghost" data-device-edit="${escapeHtml(device.deviceId)}">Limites</button>${device.status === "disabled" ? `<button type="button" class="admin-button tiny ghost" data-device-action="enable" data-device-id="${escapeHtml(device.deviceId)}">Ativar</button>` : `<button type="button" class="admin-button tiny ghost" data-device-action="disable" data-device-id="${escapeHtml(device.deviceId)}">Desativar</button>`}<button type="button" class="admin-button tiny danger" data-device-action="revoke" data-device-id="${escapeHtml(device.deviceId)}">Revogar</button>`;
+      const issuedCopy = state.issuedToken && state.issuedDevice?.deviceId === device.deviceId ? `<button type="button" class="admin-button tiny ghost" data-copy-issued="${escapeHtml(device.deviceId)}">Copiar token</button>` : "";
+      return `<tr>
+        <td><strong>${escapeHtml(device.label)}</strong><small>${escapeHtml(device.deviceId)} · último acesso ${escapeHtml(formatDate(device.lastSeenAt))}</small></td>
+        <td><strong>${escapeHtml(account?.label || device.accountId || "Não vinculada")}</strong><small>${escapeHtml(policy)} · expira ${escapeHtml(formatDate(device.expiresAt))}</small></td>
+        <td><strong>${escapeHtml(userLabel)}</strong><small>${escapeHtml(userDetail)}</small></td>
+        <td><strong>${escapeHtml(formatNumber(usage.observedTokens))} tokens</strong><div class="usage-meter" aria-hidden="true"><i style="width:${usageWidth}%"></i></div><small>${Number.isFinite(accountPercent) ? `${accountPercent.toFixed(1)}% da conta` : "Uso indisponível"}${usage.accountWindowDurationMins ? ` · ${formatDuration(usage.accountWindowDurationMins)}` : ""}</small></td>
+        <td><span class="admin-badge ${statusClass(device.status)}">${escapeHtml(statusLabel(device.status))}</span>${usage.usageLimitReachedAt ? `<small class="admin-limit-warning">limite atingido</small>` : ""}</td>
+        <td class="table-actions">${issuedCopy}${actionButtons}</td>
+      </tr>`;
+    }).join("");
+    body.querySelectorAll("[data-device-action]").forEach((button) => button.addEventListener("click", () => requestAction(`device-${button.dataset.deviceAction}`, button.dataset.deviceId)));
+    body.querySelectorAll("[data-device-edit]").forEach((button) => button.addEventListener("click", () => openDeviceDialog(button.dataset.deviceEdit)));
+    body.querySelectorAll("[data-copy-issued]").forEach((button) => button.addEventListener("click", async () => {
+      await copyText(state.issuedToken, "Token copiado novamente.");
+      setStatus("Token copiado novamente.", "success");
+    }));
   }
 
   async function loadAdmins() {
@@ -591,9 +682,9 @@
       }
       const data = await api("/api/admin/devices", { method: "POST", body: JSON.stringify({ label: $("#device-label").value.trim(), accountId: $("#device-account").value, weeklyLimitPercent, expiresAt }) });
       $("#device-dialog").close();
-      await refreshAll();
       state.issuedToken = data.token || "";
       state.issuedDevice = data.device || null;
+      await refreshAll();
       $("#issued-token").value = state.issuedToken;
       $("#issued-token-context").textContent = `${data.device?.label || "Dispositivo"} · ${accountById(data.device?.accountId)?.label || data.device?.accountId || "conta"} · teto ${data.device?.weeklyLimitPercent ?? weeklyLimitPercent}% · expira ${formatDate(data.device?.expiresAt || expiresAt)}`;
       $("#copy-status").textContent = "Copie o token ou o comando antes de fechar.";
@@ -689,7 +780,7 @@
     $("#copy-token").addEventListener("click", () => copyText(state.issuedToken, "Token copiado."));
     $("#copy-env").addEventListener("click", () => copyText(`$env:CODEX_REMOTE_TOKEN = "${state.issuedToken}"`, "Variável PowerShell copiada."));
     $("#copy-command").addEventListener("click", () => copyText(`$env:CODEX_REMOTE_TOKEN = "${state.issuedToken}"\ncodex --remote "${remoteWebSocketAddress()}" --remote-auth-token-env CODEX_REMOTE_TOKEN`, "Comando Codex copiado."));
-    $("#token-dialog").addEventListener("close", () => { state.issuedToken = ""; state.issuedDevice = null; $("#issued-token").value = ""; $("#copy-status").textContent = ""; });
+    $("#token-dialog").addEventListener("close", () => { $("#issued-token").value = ""; $("#copy-status").textContent = ""; renderDevicesSimple({ stale: false }); });
     $("#admin-search").addEventListener("input", (event) => filterPanel(event.target.value));
     document.querySelectorAll("[data-tab]").forEach((button) => button.addEventListener("click", () => setActiveTab(button.dataset.tab)));
   }

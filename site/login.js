@@ -2,7 +2,7 @@
   "use strict";
 
   const $ = (selector) => document.querySelector(selector);
-  const state = { config: null, role: "user" };
+  const state = { config: null };
 
   function setConfigState(error = null) {
     const unavailable = Boolean(error);
@@ -14,7 +14,7 @@
     securityNote.hidden = unavailable;
     note.hidden = false;
     $("#login-config-message").textContent = unavailable
-      ? "Configure o relay central antes de liberar o login."
+      ? "Configure o relay central antes de liberar o acesso."
       : "";
     $("#login-error").textContent = "";
     formControls.forEach((control) => { control.disabled = unavailable; });
@@ -38,25 +38,6 @@
     const digest = await crypto.subtle.digest("SHA-256", bytes);
     const hex = [...new Uint8Array(digest)].map((value) => value.toString(16).padStart(2, "0")).join("");
     return `user-${hex}@remote-codex.invalid`;
-  }
-
-  function selectRole(role) {
-    state.role = role;
-    document.querySelectorAll("[data-role]").forEach((button) => {
-      const active = button.dataset.role === role;
-      button.classList.toggle("active", active);
-      button.setAttribute("aria-selected", String(active));
-    });
-    const admin = role === "admin";
-    $("#login-title").textContent = admin ? "Controle central" : "Acesse sua agenda";
-    $("#login-description").textContent = admin ? "Use seu email administrativo autorizado." : "Entre com o nome e a senha da sua equipe.";
-    $("#login-identity-label").textContent = admin ? "Email" : "Usuário";
-    const input = $("#login-identity");
-    input.type = admin ? "email" : "text";
-    input.placeholder = admin ? "voce@exemplo.com" : "nome da equipe";
-    input.value = "";
-    $("#login-error").textContent = "";
-    input.focus();
   }
 
   async function routeExistingSession() {
@@ -88,18 +69,24 @@
       if (!state.config) throw new Error("Configure o relay antes de entrar.");
       const identity = $("#login-identity").value.trim();
       const password = $("#login-password").value;
-      const email = state.role === "admin" ? identity.toLowerCase() : await loginEmailForUsername(identity);
+      const isEmail = identity.includes("@");
+      const email = isEmail ? identity.toLowerCase() : await loginEmailForUsername(identity);
       await window.RemoteCodexAuth.passwordLogin(state.config, email, password);
-      const target = state.role === "admin" ? "/api/admin/accounts" : "/api/user/dashboard";
-      const response = await fetch(target, {
-        headers: { Authorization: `Bearer ${window.RemoteCodexAuth.getSession().access_token}` },
-        cache: "no-store",
-      });
-      if (!response.ok) {
-        window.RemoteCodexAuth.clearSession();
-        throw new Error(state.role === "admin" ? "Este login não possui acesso administrativo." : "Usuário não habilitado ou ainda não migrado.");
+      const targets = isEmail
+        ? [["/api/admin/accounts", "/admin"], ["/api/user/dashboard", "/dashboard"]]
+        : [["/api/user/dashboard", "/dashboard"], ["/api/admin/accounts", "/admin"]];
+      for (const [target, destination] of targets) {
+        const response = await fetch(target, {
+          headers: { Authorization: `Bearer ${window.RemoteCodexAuth.getSession().access_token}` },
+          cache: "no-store",
+        });
+        if (response.ok) {
+          window.location.replace(destination);
+          return;
+        }
       }
-      window.location.replace(state.role === "admin" ? "/admin" : "/dashboard");
+      window.RemoteCodexAuth.clearSession();
+      throw new Error("Esta credencial não possui acesso habilitado.");
     } catch (caught) {
       error.textContent = caught instanceof Error ? caught.message : "Não foi possível entrar.";
     } finally {
@@ -110,9 +97,7 @@
 
   async function init() {
     const params = new URLSearchParams(window.location.search);
-    if (params.get("mode") === "admin") selectRole("admin");
     if (params.get("expired") === "1") $("#login-note").textContent = "Sua sessão expirou. Entre novamente.";
-    document.querySelectorAll("[data-role]").forEach((button) => button.addEventListener("click", () => selectRole(button.dataset.role)));
     $("#toggle-password").addEventListener("click", () => {
       const input = $("#login-password");
       const visible = input.type === "text";

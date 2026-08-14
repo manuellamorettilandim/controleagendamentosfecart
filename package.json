@@ -20,6 +20,7 @@
     "dev:host": "tsx server/src/host-agent.ts"
   },
   "dependencies": {
+    "@picocss/pico": "^2.1.1",
     "fullcalendar": "^7.0.2",
     "ws": "^8.18.0"
   },

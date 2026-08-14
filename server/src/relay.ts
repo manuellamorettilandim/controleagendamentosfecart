@@ -54,6 +54,7 @@ const STATIC_ROUTES: Record<string, string> = {
   "/dashboard.js": "dashboard.js",
   "/calendar.js": "calendar.js",
   "/styles.css": "styles.css",
+  "/vendor/pico.min.css": "vendor/pico.min.css",
   "/vendor/fullcalendar.js": "vendor/fullcalendar.js",
   "/vendor/fullcalendar.css": "vendor/fullcalendar.css",
   "/vendor/fullcalendar-theme-classic.js": "vendor/fullcalendar-theme-classic.js",
