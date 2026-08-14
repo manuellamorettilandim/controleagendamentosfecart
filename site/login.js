@@ -4,6 +4,34 @@
   const $ = (selector) => document.querySelector(selector);
   const state = { config: null, role: "user" };
 
+  function setConfigState(error = null) {
+    const unavailable = Boolean(error);
+    const alert = $("#login-config-alert");
+    const note = $("#login-note");
+    const securityNote = $("#login-security-note");
+    const formControls = document.querySelectorAll("#login-form input, #login-form button");
+    alert.hidden = !unavailable;
+    securityNote.hidden = unavailable;
+    note.hidden = false;
+    $("#login-config-message").textContent = unavailable
+      ? "Configure o relay central antes de liberar o login."
+      : "";
+    $("#login-error").textContent = "";
+    formControls.forEach((control) => { control.disabled = unavailable; });
+  }
+
+  async function loadAuthConfig() {
+    try {
+      state.config = await window.RemoteCodexAuth.loadConfig();
+      setConfigState();
+      return true;
+    } catch (error) {
+      state.config = null;
+      setConfigState(error);
+      return false;
+    }
+  }
+
   async function loginEmailForUsername(username) {
     const normalized = username.normalize("NFKC").trim().toLowerCase();
     const bytes = new TextEncoder().encode(normalized);
@@ -57,6 +85,7 @@
     submitButton.disabled = true;
     submitButton.classList.add("loading");
     try {
+      if (!state.config) throw new Error("Configure o relay antes de entrar.");
       const identity = $("#login-identity").value.trim();
       const password = $("#login-password").value;
       const email = state.role === "admin" ? identity.toLowerCase() : await loginEmailForUsername(identity);
@@ -80,21 +109,30 @@
   }
 
   async function init() {
-    state.config = await window.RemoteCodexAuth.loadConfig();
     const params = new URLSearchParams(window.location.search);
     if (params.get("mode") === "admin") selectRole("admin");
     if (params.get("expired") === "1") $("#login-note").textContent = "Sua sessão expirou. Entre novamente.";
-    if (await routeExistingSession()) return;
     document.querySelectorAll("[data-role]").forEach((button) => button.addEventListener("click", () => selectRole(button.dataset.role)));
     $("#toggle-password").addEventListener("click", () => {
       const input = $("#login-password");
       const visible = input.type === "text";
       input.type = visible ? "password" : "text";
-      $("#toggle-password").textContent = visible ? "Mostrar" : "Ocultar";
+      $("#toggle-password .password-toggle-label").textContent = visible ? "Mostrar" : "Ocultar";
       $("#toggle-password").setAttribute("aria-label", visible ? "Mostrar senha" : "Ocultar senha");
     });
     $("#login-form").addEventListener("submit", submit);
+    $("#retry-config").addEventListener("click", async () => {
+      const retry = $("#retry-config");
+      retry.disabled = true;
+      retry.textContent = "Verificando…";
+      const ready = await loadAuthConfig();
+      retry.disabled = false;
+      retry.textContent = "Tentar novamente";
+      if (ready) await routeExistingSession();
+    });
+    if (!(await loadAuthConfig())) return;
+    if (await routeExistingSession()) return;
   }
 
-  init().catch((error) => { $("#login-error").textContent = error.message; });
+  init().catch((error) => { setConfigState(error); });
 })();

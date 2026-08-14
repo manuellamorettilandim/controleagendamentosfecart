@@ -9,11 +9,11 @@
   </head>
   <body class="admin-page">
     <!--
-      THESIS: uma central de operações com dados acionáveis, não uma coleção de cartões genéricos.
-      OWN-WORLD: carvão e verde mineral, navegação fixa, tabelas densas e estados explícitos.
-      STORY: acompanhar saúde e quota, administrar pessoas e reservas, e auditar cada credencial.
-      FIRST VIEWPORT: sidebar persistente, título largo e conta/quota em primeiro plano.
-      FORM: console administrativo existente ampliado com pessoas e agenda; seed 343bd3a1.
+      THESIS: a primeira vista responde o que está saudável, o que exige atenção e qual ação administrativa vem depois.
+      OWN-WORLD: atlas de operações de serviço; rail lateral, superfícies claras ou grafite, mint para pronto e coral/âmbar para atenção.
+      STORY: localizar uma conta, pessoa, reserva ou credencial, agir com segurança e manter a origem do dado visível.
+      FIRST VIEWPORT: navegação persistente, busca contextual, quatro sinais de operação e uma fila curta de atividade antes das tabelas.
+      FORM: atlas de operações, terceira direção fundamentada; seed 9019c2f2.
       FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
     -->
     <main id="app-view" class="admin-app">
@@ -24,34 +24,50 @@
         </a>
         <div class="admin-sidebar-label">Painel</div>
         <nav class="admin-sidebar-nav" aria-label="Áreas administrativas">
-          <button class="active" data-tab="accounts" type="button"><span aria-hidden="true">⌂</span> Visão geral</button>
-          <button data-tab="devices" type="button"><span aria-hidden="true">⌁</span> Dispositivos</button>
-          <button data-tab="users" type="button"><span aria-hidden="true">U</span> Usuários</button>
-          <button data-tab="reservations" type="button"><span aria-hidden="true">H</span> Agenda</button>
-          <button data-tab="admins" id="admins-tab" type="button"><span aria-hidden="true">♙</span> Administradores</button>
+          <button class="active" data-tab="accounts" type="button"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="3" width="7" height="7" rx="1"></rect><rect x="3" y="14" width="7" height="7" rx="1"></rect><rect x="14" y="14" width="7" height="7" rx="1"></rect></svg></span> Visão geral</button>
+          <button data-tab="devices" type="button"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"></rect><path d="M8 7h8M8 11h8M9 17h6"></path></svg></span> Dispositivos</button>
+          <button data-tab="users" type="button"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"></circle><circle cx="17" cy="10" r="2.5"></circle><path d="M3.5 19c.7-3 2.6-4.5 5.5-4.5S13.8 16 14.5 19M14 15.5c2.9-.8 5.2.5 6 3.5"></path></svg></span> Usuários</button>
+          <button data-tab="reservations" type="button"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M7 3v4M17 3v4M3 10h18M7 14h3M14 14h3M7 18h3"></path></svg></span> Agenda</button>
+          <button data-tab="admins" id="admins-tab" type="button"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3l2 4 4.5.7-3.2 3.2.8 4.6-4.1-2.2-4.1 2.2.8-4.6-3.2-3.2L10 7l2-4z"></path><path d="M5 20h14"></path></svg></span> Administradores</button>
         </nav>
+        <div class="admin-sidebar-tools"><button class="theme-toggle" data-theme-toggle type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"></path></svg><span class="theme-label">Tema</span></button></div>
         <div class="admin-sidebar-spacer"></div>
         <div class="admin-sidebar-note"><strong>Segurança primeiro</strong><span>O login OpenAI nunca sai do host central.</span></div>
         <div class="admin-sidebar-user">
           <div class="admin-user-avatar">R</div>
           <div class="admin-user-copy"><strong id="session-email">usuário autorizado</strong><span id="session-role" class="admin-badge"></span></div>
-          <button id="logout-button" class="icon-button" type="button" title="Sair">↪</button>
+          <button id="logout-button" class="icon-button" type="button" title="Sair"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5H5v14h5M14 8l4 4-4 4M9 12h9"></path></svg></button>
         </div>
       </aside>
 
       <section class="admin-main">
         <header class="admin-topbar">
-          <div><p class="admin-eyebrow">REMOTE CODEX · ADMIN</p><h1>Controle central.</h1></div>
-          <div id="global-status" class="admin-status" role="status"></div>
+          <div class="admin-topbar-copy"><h1 id="admin-page-title">Visão geral</h1><p id="admin-page-description">Saúde das contas, acessos e próximas sessões em um só lugar.</p></div>
+          <div class="admin-topbar-actions">
+            <label class="admin-search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"></circle><path d="m16 16 5 5"></path></svg><input id="admin-search" type="search" placeholder="Buscar neste painel" autocomplete="off"></label>
+            <button id="refresh-all" class="admin-button ghost" type="button">Atualizar</button>
+            <button class="theme-toggle" data-theme-toggle type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"></path></svg><span class="theme-label">Tema</span></button>
+            <div id="global-status" class="admin-status" role="status"></div>
+          </div>
         </header>
 
         <section id="tab-accounts" class="admin-tab-panel">
-          <div class="admin-section-head"><div><p class="admin-eyebrow">OVERVIEW</p><h2>Contas ChatGPT</h2><p class="admin-muted">Cada conta usa um <code>CODEX_HOME</code> isolado no host central. A troca do padrão só afeta novas sessões não vinculadas.</p></div><div class="admin-actions"><button id="refresh-accounts" class="admin-button ghost">Atualizar</button><button id="add-account" class="admin-button primary">Adicionar conta</button></div></div>
-          <div id="accounts-grid" class="admin-card-grid"></div>
+          <div id="overview-insights" class="overview-insights" aria-label="Resumo operacional">
+            <article class="overview-insight primary"><label>Host central</label><strong>Offline</strong><p>Configure o relay para sincronizar.</p></article>
+            <article class="overview-insight"><label>Contas prontas</label><strong>—</strong><p>Aguardando sincronização.</p></article>
+            <article class="overview-insight"><label>Sessões agora</label><strong>—</strong><p>Nenhum dado disponível.</p></article>
+            <article class="overview-insight"><label>Credenciais ativas</label><strong>—</strong><p>Aguardando o host.</p></article>
+          </div>
+          <div class="overview-layout">
+            <section class="overview-panel" aria-labelledby="overview-activity-title"><h3 id="overview-activity-title">Próximas sessões</h3><p>Reservas que pedem acompanhamento ou já estão em andamento.</p><div id="overview-activity" class="overview-list"><div class="admin-empty">Carregando agenda…</div></div></section>
+            <section class="overview-panel" aria-labelledby="overview-attention-title"><h3 id="overview-attention-title">Atenção</h3><p>Itens que podem bloquear a próxima sessão.</p><div id="overview-attention" class="overview-attention"><div class="attention-item"><i></i><span>Verificando o estado do host central…</span></div><button id="retry-overview" class="admin-button tiny ghost" type="button">Atualizar estado</button></div></section>
+          </div>
+          <div class="admin-section-head"><div><h2>Contas conectadas</h2><p class="admin-muted">Cada conta usa um <code>CODEX_HOME</code> isolado no host central. A troca do padrão só afeta novas sessões não vinculadas.</p></div><div class="admin-actions"><button id="refresh-accounts" class="admin-button ghost">Atualizar contas</button><button id="add-account" class="admin-button primary">Adicionar conta</button></div></div>
+          <div id="accounts-grid" class="admin-card-grid"><div class="admin-empty">Carregando contas conectadas…</div></div>
         </section>
 
         <section id="tab-devices" class="admin-tab-panel" hidden>
-          <div class="admin-section-head"><div><p class="admin-eyebrow">ACCESS TOKENS</p><h2>Dispositivos autorizados</h2><p class="admin-muted">Cada conta pode ter um token não revogado. O token bruto fica disponível apenas no modal de emissão; depois, apenas fingerprint, política e uso observado permanecem.</p></div><div class="admin-actions"><button id="refresh-devices" class="admin-button ghost">Atualizar</button><button id="issue-device" class="admin-button primary">Emitir token</button></div></div>
+          <div class="admin-section-head"><div><h2>Dispositivos autorizados</h2><p class="admin-muted">Cada conta pode ter um token não revogado. O token bruto fica disponível apenas no modal de emissão; depois, apenas fingerprint, política e uso observado permanecem.</p></div><div class="admin-actions"><button id="refresh-devices" class="admin-button ghost">Atualizar</button><button id="issue-device" class="admin-button primary">Emitir token</button></div></div>
           <div id="devices-note" class="admin-status"></div>
           <div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Dispositivo</th><th>Conta</th><th>Política</th><th>Uso observado</th><th>Status</th><th>Ações</th></tr></thead><tbody id="devices-body"></tbody></table></div>
         </section>
@@ -69,7 +85,7 @@
         </section>
 
         <section id="tab-admins" class="admin-tab-panel" hidden>
-          <div class="admin-section-head"><div><p class="admin-eyebrow">ACCESS CONTROL</p><h2>Administradores</h2><p class="admin-muted">Somente o owner pode convidar e alterar administradores.</p></div><button id="invite-admin" class="admin-button primary">Convidar administrador</button></div>
+          <div class="admin-section-head"><div><h2>Administradores</h2><p class="admin-muted">Somente o owner pode convidar e alterar administradores.</p></div><button id="invite-admin" class="admin-button primary">Convidar administrador</button></div>
           <div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Email</th><th>Papel</th><th>Status</th><th>Criado em</th><th>Ações</th></tr></thead><tbody id="admins-body"></tbody></table></div>
         </section>
       </section>
@@ -77,7 +93,7 @@
 
     <dialog id="device-dialog" class="admin-dialog">
       <form id="device-form" class="admin-dialog-card">
-        <p class="admin-eyebrow" id="device-dialog-eyebrow">NOVO DISPOSITIVO</p>
+        <p class="admin-dialog-label" id="device-dialog-eyebrow">NOVO DISPOSITIVO</p>
         <h2 id="device-dialog-title">Emitir token</h2>
         <p class="admin-muted">O token será vinculado à conta escolhida. Ele será bloqueado pelo primeiro limite atingido: expiração ou teto semanal.</p>
         <label class="admin-field">Nome do dispositivo<input id="device-label" type="text" maxlength="80" placeholder="pc-notebook" required></label>
@@ -93,7 +109,7 @@
 
     <dialog id="token-dialog" class="admin-dialog">
       <form method="dialog" class="admin-dialog-card">
-        <p class="admin-eyebrow">TOKEN EMITIDO</p><h2>Copie agora</h2>
+        <p class="admin-dialog-label">TOKEN EMITIDO</p><h2>Copie agora</h2>
         <p id="issued-token-context" class="admin-muted"></p>
         <p class="admin-callout">Por segurança, o token não é salvo no navegador, no Supabase, no Render ou no arquivo local. Enquanto esta janela estiver aberta, você pode copiá-lo novamente.</p>
         <div class="admin-token-row"><textarea id="issued-token" rows="3" readonly spellcheck="false" aria-label="Token emitido"></textarea><button id="copy-token" class="admin-button primary" type="button">Copiar token</button></div>
@@ -105,7 +121,7 @@
 
     <dialog id="login-dialog" class="admin-dialog">
       <form method="dialog" class="admin-dialog-card">
-        <p class="admin-eyebrow">LOGIN DA CONTA</p><h2 id="login-dialog-title">Confirme a conta</h2>
+        <p class="admin-dialog-label">LOGIN DA CONTA</p><h2 id="login-dialog-title">Confirme a conta</h2>
         <p class="admin-muted">Abra a URL exibida, informe o código e confirme a conta no navegador. O segredo permanece no host.</p>
         <p><a id="login-url" class="admin-login-url" href="#" target="_blank" rel="noreferrer"></a></p>
         <div class="admin-code" id="login-code"></div>
@@ -116,7 +132,7 @@
 
     <dialog id="account-dialog" class="admin-dialog">
       <form id="account-form" class="admin-dialog-card">
-        <p class="admin-eyebrow">NOVA CONTA</p><h2>Adicionar conta</h2>
+        <p class="admin-dialog-label">NOVA CONTA</p><h2>Adicionar conta</h2>
         <p class="admin-muted">O host criará um <code>CODEX_HOME</code> isolado e abrirá o login por device code em seguida.</p>
         <label class="admin-field">Nome da conta<input id="account-label" type="text" maxlength="80" placeholder="Conta Pro" required></label>
         <p id="account-form-error" class="admin-error" role="alert"></p>
@@ -126,7 +142,7 @@
 
     <dialog id="invite-dialog" class="admin-dialog">
       <form id="invite-form" class="admin-dialog-card">
-        <p class="admin-eyebrow">ACCESS CONTROL</p><h2>Convidar administrador</h2>
+        <p class="admin-dialog-label">ACCESS CONTROL</p><h2>Convidar administrador</h2>
         <p class="admin-muted">O convite será enviado pelo Supabase Auth. O novo usuário só terá acesso após concluir o cadastro.</p>
         <label class="admin-field">Email<input id="invite-email" type="email" autocomplete="email" required></label>
         <p id="invite-form-error" class="admin-error" role="alert"></p>
@@ -136,11 +152,12 @@
 
     <dialog id="action-dialog" class="admin-dialog">
       <form id="action-form" class="admin-dialog-card">
-        <p class="admin-eyebrow">CONFIRMAR AÇÃO</p><h2 id="action-dialog-title">Confirmar</h2>
+        <p class="admin-dialog-label">CONFIRMAR AÇÃO</p><h2 id="action-dialog-title">Confirmar</h2>
         <p id="action-dialog-copy" class="admin-muted"></p>
         <div class="admin-actions admin-dialog-actions"><button id="action-cancel" class="admin-button ghost" type="button">Cancelar</button><button id="action-confirm" class="admin-button danger" type="submit">Confirmar</button></div>
       </form>
     </dialog>
+    <script src="/site.js" defer></script>
     <script src="/auth.js" defer></script>
     <script src="/admin.js" defer></script>
   </body>

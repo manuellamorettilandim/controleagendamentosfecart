@@ -9,19 +9,22 @@
   </head>
   <body class="user-page">
     <!--
-      THESIS: o acesso é uma janela viva de tempo e cota, não um dashboard de métricas soltas.
-      OWN-WORLD: console de operações noturno, verde mineral, placas de estado, números tabulares e uma faixa horária contínua.
-      STORY: entender o estado agora, acompanhar a franquia, reservar uma janela e iniciar com um comando seguro.
-      FIRST VIEWPORT: relógio largo à esquerda, medidor quadrado à direita e ação de sessão entre o resumo e a agenda.
-      FORM: composição 2+1 e timeline fixada pelo brief; seed 343bd3a1.
+      THESIS: sua próxima sessão deve ser entendida e iniciada em poucos segundos, sem caçar estado em cards.
+      OWN-WORLD: atlas de operações de serviço; superfícies claras ou grafite, mint para disponibilidade, coral para conflito e uma agenda contínua.
+      STORY: confirmar o estado agora, escolher uma janela livre, gerar uma credencial temporária e copiar o comando certo.
+      FIRST VIEWPORT: relógio e estado dominam a coluna principal, quota e próxima ação ficam ao alcance imediato, agenda começa sem rolagem excessiva.
+      FORM: atlas de operações, terceira direção fundamentada; seed 9019c2f2.
       FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
     -->
     <header class="user-header">
       <a class="user-brand" href="/dashboard"><span class="brand-glyph">RC</span><span><strong>Remote Codex</strong><small>Sessão agendada</small></span></a>
-      <div class="user-account">
-        <span class="user-avatar" id="user-avatar">U</span>
-        <span><strong id="user-name">Carregando…</strong><small id="user-group">—</small></span>
-        <button id="user-logout" class="quiet-button" type="button">Sair</button>
+      <div class="user-header-actions">
+        <button class="theme-toggle" data-theme-toggle type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"></path></svg><span class="theme-label">Tema</span></button>
+        <div class="user-account">
+          <span class="user-avatar" id="user-avatar">U</span>
+          <span><strong id="user-name">Carregando…</strong><small id="user-group">—</small></span>
+          <button id="user-logout" class="quiet-button" type="button">Sair</button>
+        </div>
       </div>
     </header>
 
@@ -44,9 +47,10 @@
         </article>
 
         <article class="quota-console">
-          <div class="quota-heading"><h2>Franquia da sessão</h2><span id="quota-account-state">bloqueada</span></div>
-          <div id="quota-ring" class="quota-ring" style="--remaining: 100">
-            <div><strong id="quota-value">100%</strong><span>disponível</span></div>
+          <div class="quota-heading"><h2>Franquia da sessão</h2><span id="quota-account-state">aguardando reserva</span></div>
+          <div id="quota-ring" class="quota-meter" style="--remaining: 100" role="img" aria-label="100% da franquia disponível">
+            <div class="quota-meter-top"><strong id="quota-value">100%</strong><span>disponível</span></div>
+            <div class="quota-meter-track" aria-hidden="true"><i></i></div>
           </div>
           <p><strong id="quota-budget">5%</strong> da janela semanal da conta</p>
           <small id="quota-reset">Libera junto com o horário reservado.</small>
@@ -56,9 +60,9 @@
       <section id="quick-access" class="quick-access locked" aria-labelledby="quick-access-title">
         <div class="quick-access-copy">
           <span class="access-signal" aria-hidden="true"></span>
-          <div><h2 id="quick-access-title">Acesso rápido</h2><p id="quick-access-description">Agende um horário para liberar sua credencial temporária.</p></div>
+          <div><h2 id="quick-access-title">Acesso rápido</h2><p id="quick-access-description">Agende um horário para liberar sua credencial temporária.</p><div class="access-steps" aria-label="Etapas da sessão"><span><b>1</b> reservar</span><span><b>2</b> gerar</span><span><b>3</b> iniciar</span></div></div>
         </div>
-        <div id="credential-locked" class="credential-locked"><span>Credencial indisponível</span></div>
+        <div id="credential-locked" class="credential-locked"><span>Credencial indisponível</span><a class="secondary-button" href="#schedule-title">Ir para agenda</a></div>
         <div id="credential-ready" class="credential-ready" hidden>
           <code id="session-command">—</code>
           <div><button id="copy-command" class="action-button" type="button">Copiar comando</button><button id="copy-token" class="secondary-button" type="button">Copiar token</button></div>
@@ -74,6 +78,7 @@
           <div class="schedule-axis"><span>00h</span><span>06h</span><span>12h</span><span>18h</span><span>24h</span></div>
           <div id="hour-slots" class="hour-slots" aria-label="Escolha o horário"></div>
         </div>
+        <div class="schedule-legend" aria-label="Legenda da agenda"><span><i></i> livre</span><span class="selected"><i></i> selecionado</span><span class="busy"><i></i> ocupado</span></div>
         <div class="booking-controls">
           <fieldset><legend>Duração</legend><div class="duration-switch"><button type="button" data-duration="1" class="active">1 hora</button><button type="button" data-duration="2">2 horas</button><button type="button" data-duration="3">3 horas</button></div></fieldset>
           <div class="booking-summary"><span id="booking-summary">Selecione um horário livre</span><button id="book-slot" class="action-button" type="button" disabled>Agendar horário</button></div>
@@ -86,6 +91,7 @@
         <div id="reservation-list" class="reservation-list"></div>
       </section>
     </main>
+    <script src="/site.js" defer></script>
     <script src="/auth.js" defer></script>
     <script src="/dashboard.js" defer></script>
   </body>

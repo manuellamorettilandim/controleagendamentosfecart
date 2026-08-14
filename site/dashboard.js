@@ -94,7 +94,8 @@
     $("#quota-ring").style.setProperty("--remaining", String(remaining));
     $("#quota-value").textContent = `${remaining}%`;
     const limited = device?.status === "limited" || Boolean(device?.usage_limit_reached_at);
-    $("#quota-account-state").textContent = limited ? "limite atingido" : reservation ? "em uso" : "bloqueada";
+    $("#quota-account-state").textContent = limited ? "limite atingido" : reservation ? "em uso" : "aguardando reserva";
+    $("#quota-ring").setAttribute("aria-label", `${remaining}% da franquia disponível`);
     $("#quota-reset").textContent = device?.account_resets_at ? `Janela da conta reinicia em ${formatDateTime(device.account_resets_at)}.` : reservation ? "Uso observado em tempo real pelo host." : "Libera junto com o horário reservado.";
   }
 
@@ -104,7 +105,7 @@
     let stored = tokenFor(reservation);
     const unavailable = Boolean(device && ["limited", "revoked", "disabled", "expired"].includes(device.status));
     if (stored && unavailable) {
-      localStorage.removeItem(`remote-codex-session:${reservation.id}`);
+      localStorage.removeItem(localTokenKey(reservation.id));
       stored = null;
     }
     const quick = $("#quick-access");
@@ -219,5 +220,9 @@
     setInterval(() => loadDashboard(true).catch(() => undefined), 30_000);
   }
 
-  init().catch((error) => { $("#sync-status").textContent = error.message; });
+  init().catch((error) => {
+    const status = $("#sync-status");
+    status.innerHTML = `<span></span> ${error.message}`;
+    status.classList.add("offline");
+  });
 })();

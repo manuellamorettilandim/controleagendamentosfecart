@@ -42,6 +42,7 @@ O produto combina agendamento exclusivo, credenciais efêmeras e um relay que fa
 - Nome de trabalho: Remote Codex.
 - Interface em português do Brasil.
 - Tema escuro e linguagem direta, operacional e segura.
+- A interface deve oferecer tema claro e escuro, com preferência persistida por dispositivo.
 
 ## Evidence on Hand
 

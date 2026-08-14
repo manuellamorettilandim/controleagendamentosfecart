@@ -9,11 +9,11 @@
   </head>
   <body class="auth-page">
     <!--
-      THESIS: acesso remoto começa por tempo reservado, não por uma credencial permanente; recusa o formulário isolado no centro da tela.
-      OWN-WORLD: carvão profundo, verde mineral e branco frio; placas operacionais, números tabulares e linhas de tempo precisas.
-      STORY: identificar o tipo de acesso, entrar com segurança e seguir diretamente para agenda ou controle central.
-      FIRST VIEWPORT: narrativa operacional à esquerda e formulário compacto à direita, com o seletor de papel no topo da ação.
-      FORM: login bipartido, composição escolhida pelo brief; seed 343bd3a1.
+      THESIS: o acesso começa por uma janela autorizada, não por uma credencial permanente escondida em um formulário.
+      OWN-WORLD: atlas de operações de serviço; palco grafite, painel claro ou escuro e mint reservado para ação segura.
+      STORY: escolher o tipo de acesso, entrar com clareza e seguir direto para agenda ou controle central.
+      FIRST VIEWPORT: contexto do produto à esquerda no desktop, formulário curto à direita e alternância de tema sempre acessível.
+      FORM: login bipartido, terceira direção fundamentada; seed 9019c2f2.
       FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
     -->
     <main class="auth-shell">
@@ -36,7 +36,7 @@
       </section>
 
       <section class="auth-panel" aria-labelledby="login-title">
-        <div class="auth-mobile-brand"><span class="brand-glyph">RC</span><strong>Remote Codex</strong></div>
+        <div class="auth-panel-toolbar"><div class="auth-mobile-brand"><span class="brand-glyph">RC</span><strong>Remote Codex</strong></div><button class="theme-toggle" data-theme-toggle type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"></path></svg><span class="theme-label">Tema</span></button></div>
         <div class="role-switch" role="tablist" aria-label="Tipo de acesso">
           <button id="role-user" class="role-option active" type="button" role="tab" aria-selected="true" data-role="user">Usuário</button>
           <button id="role-admin" class="role-option" type="button" role="tab" aria-selected="false" data-role="admin">Administrador</button>
@@ -51,17 +51,23 @@
           <label for="login-password">Senha</label>
           <div class="password-field">
             <input id="login-password" type="password" autocomplete="current-password" placeholder="Sua senha" required>
-            <button id="toggle-password" type="button" aria-label="Mostrar senha">Mostrar</button>
+            <button id="toggle-password" type="button" aria-label="Mostrar senha"><span class="password-toggle-label">Mostrar</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12s3.2-5 9-5 9 5 9 5-3.2 5-9 5-9-5-9-5Z"></path><circle cx="12" cy="12" r="2.4"></circle></svg></button>
           </div>
           <button id="login-submit" class="auth-submit" type="submit"><span>Entrar</span><span aria-hidden="true">→</span></button>
           <p id="login-error" class="form-message error" role="alert"></p>
         </form>
-        <div class="auth-panel-foot">
+        <section id="login-config-alert" class="auth-config-alert" hidden role="alert" aria-live="polite">
+          <strong>O relay ainda não está pronto</strong>
+          <p id="login-config-message">Configure o relay central antes de liberar o login.</p>
+          <div class="auth-config-actions"><a class="secondary-button" href="/deploy">Configurar relay</a><button id="retry-config" class="secondary-button" type="button">Tentar novamente</button></div>
+        </section>
+        <div id="login-security-note" class="auth-panel-foot">
           <span class="secure-mark" aria-hidden="true"></span>
-          <p id="login-note">Sessão protegida pelo Supabase Auth.</p>
+          <p id="login-note">Login protegido pelo Supabase Auth quando o relay estiver ativo.</p>
         </div>
       </section>
     </main>
+    <script src="/site.js" defer></script>
     <script src="/auth.js" defer></script>
     <script src="/login.js" defer></script>
   </body>

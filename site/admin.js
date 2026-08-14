@@ -157,6 +157,7 @@
       renderDevices(devices);
       if (state.role === "owner") await loadAdmins();
       await Promise.all([loadUsers(), loadReservations()]);
+      renderOverview(accounts, devices);
       setStatus(accounts.stale ? "Host offline ou snapshot stale; os dados exibidos não garantem estado atual." : "Host conectado e sincronizado.", accounts.stale ? "warning" : "success");
     } catch (error) {
       setStatus(error.message, "error");
@@ -193,6 +194,77 @@
     grid.querySelectorAll("[data-login-account]").forEach((button) => button.addEventListener("click", () => startLogin(button.dataset.loginAccount)));
     grid.querySelectorAll("[data-refresh-account]").forEach((button) => button.addEventListener("click", () => refreshAccount(button.dataset.refreshAccount)));
     grid.querySelectorAll("[data-logout-account]").forEach((button) => button.addEventListener("click", () => requestAction("account-logout", button.dataset.logoutAccount)));
+  }
+
+  function renderOverview(accountsPayload, devicesPayload) {
+    const insights = $("#overview-insights");
+    if (!insights) return;
+    const now = Date.now();
+    const readyAccounts = state.accounts.filter((account) => account.status === "ready").length;
+    const activeDevices = state.devices.filter((device) => device.status === "active").length;
+    const activeReservations = state.reservations.filter((item) => item.status === "scheduled" && Date.parse(item.starts_at) <= now && Date.parse(item.ends_at) > now).length;
+    const accountLabel = state.accounts.length ? `${readyAccounts} de ${state.accounts.length} prontas` : "nenhuma conta cadastrada";
+    const deviceLabel = state.devices.length ? `${activeDevices} aceitando conexões` : "nenhum dispositivo emitido";
+    const sessionLabel = activeReservations ? "acompanhe a sessão agora" : "nenhuma janela em andamento";
+    const hostReady = Boolean(accountsPayload?.ready && accountsPayload?.hostConnected);
+    const hostLabel = hostReady ? "conectado e sincronizado" : accountsPayload?.stale ? "snapshot desatualizado" : "aguardando sincronização";
+    insights.innerHTML = `
+      <article class="overview-insight ${hostReady ? "primary" : "attention"}"><label>Host central</label><strong>${hostReady ? "Online" : "Offline"}</strong><p>${escapeHtml(hostLabel)}</p></article>
+      <article class="overview-insight"><label>Contas prontas</label><strong>${readyAccounts}/${state.accounts.length}</strong><p>${escapeHtml(accountLabel)}</p></article>
+      <article class="overview-insight"><label>Sessões agora</label><strong>${activeReservations}</strong><p>${escapeHtml(sessionLabel)}</p></article>
+      <article class="overview-insight"><label>Credenciais ativas</label><strong>${activeDevices}</strong><p>${escapeHtml(deviceLabel)}</p></article>`;
+
+    const activity = $("#overview-activity");
+    const upcoming = state.reservations
+      .filter((item) => item.status === "scheduled" && Date.parse(item.ends_at) > now)
+      .sort((left, right) => Date.parse(left.starts_at) - Date.parse(right.starts_at))
+      .slice(0, 5);
+    activity.innerHTML = upcoming.length ? upcoming.map((item) => {
+      const profile = state.users.find((user) => user.user_id === item.user_id) || {};
+      const start = new Date(item.starts_at);
+      const end = new Date(item.ends_at);
+      const date = start.toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "short" }).replace(".", "");
+      const time = `${start.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}–${end.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`;
+      const active = Date.parse(item.starts_at) <= now;
+      return `<div class="overview-list-item"><div><strong>${escapeHtml(profile.username || item.user_id)}</strong><span>${escapeHtml(profile.group_name || "turma indisponível")} · ${escapeHtml(date)} · ${active ? "em andamento" : "agendada"}</span></div><time>${escapeHtml(time)}</time></div>`;
+    }).join("") : `<div class="admin-empty">Nenhuma sessão futura registrada.</div>`;
+
+    const attention = [];
+    if (accountsPayload?.stale || devicesPayload?.stale) attention.push("O snapshot está desatualizado; confirme o host antes de emitir acesso.");
+    state.accounts.filter((account) => account.status !== "ready").slice(0, 2).forEach((account) => attention.push(`${account.label}: status ${account.status || "indisponível"}.`));
+    state.devices.filter((device) => ["limited", "disabled"].includes(device.status)).slice(0, 2).forEach((device) => attention.push(`${device.label}: acesso ${statusLabel(device.status)}.`));
+    state.devices.filter((device) => device.status === "active" && Date.parse(device.expiresAt) - now < 3 * 24 * 60 * 60_000).slice(0, 2).forEach((device) => attention.push(`${device.label}: expira em menos de três dias.`));
+    state.reservations.filter((item) => item.status === "scheduled" && Date.parse(item.starts_at) <= now && Date.parse(item.ends_at) > now && !item.device_id).slice(0, 2).forEach(() => attention.push("Há uma sessão ativa sem credencial emitida."));
+    $("#overview-attention").innerHTML = attention.length
+      ? `${attention.slice(0, 5).map((message) => `<div class="attention-item"><i></i><span>${escapeHtml(message)}</span></div>`).join("")}<button id="retry-overview" class="admin-button tiny ghost" type="button">Atualizar estado</button>`
+      : `<div class="attention-item good"><i></i><span>Nenhum bloqueio operacional aparente agora.</span></div>`;
+    $("#retry-overview")?.addEventListener("click", () => refreshAll().catch(() => undefined));
+  }
+
+  const tabCopy = {
+    accounts: ["Visão geral", "Saúde das contas, acessos e próximas sessões em um só lugar."],
+    devices: ["Dispositivos autorizados", "Controle políticas, uso observado e revogação de cada acesso."],
+    users: ["Usuários e turmas", "Veja quem pode reservar, qual conta usa e qual franquia recebeu."],
+    reservations: ["Agenda e sessões", "Acompanhe janelas futuras, ativações e credenciais emitidas."],
+    admins: ["Administradores", "Gerencie papéis e mantenha o acesso administrativo sob controle."],
+  };
+
+  function setActiveTab(tab) {
+    document.querySelectorAll("[data-tab]").forEach((button) => button.classList.toggle("active", button.dataset.tab === tab));
+    document.querySelectorAll(".admin-tab-panel").forEach((panel) => { panel.hidden = panel.id !== `tab-${tab}`; });
+    const copy = tabCopy[tab] || tabCopy.accounts;
+    $("#admin-page-title").textContent = copy[0];
+    $("#admin-page-description").textContent = copy[1];
+    const search = $("#admin-search");
+    if (search) { search.value = ""; filterPanel(""); }
+  }
+
+  function filterPanel(value) {
+    const term = String(value || "").trim().toLocaleLowerCase("pt-BR");
+    const panel = [...document.querySelectorAll(".admin-tab-panel")].find((candidate) => !candidate.hidden);
+    if (!panel) return;
+    const selector = panel.id === "tab-accounts" ? ".admin-account-card" : panel.id === "tab-devices" ? "#devices-body tr" : panel.id === "tab-users" ? "#users-body tr" : panel.id === "tab-reservations" ? "#reservations-body tr" : "#admins-body tr";
+    panel.querySelectorAll(selector).forEach((item) => { item.hidden = Boolean(term && !item.textContent.toLocaleLowerCase("pt-BR").includes(term)); });
   }
 
   function renderDevices(payload) {
@@ -339,7 +411,6 @@
     $("#device-label").value = device?.label || "";
     $("#device-label").disabled = Boolean(device);
     $("#device-weekly-limit").value = String(device?.weeklyLimitPercent ?? 100);
-    $("#device-percent-output").value = `${device?.weeklyLimitPercent ?? 100}%`;
     $("#device-percent-output").textContent = `${device?.weeklyLimitPercent ?? 100}%`;
     $("#device-expires-at").value = toDateTimeLocal(device?.expiresAt);
     $("#device-form-error").textContent = accounts.length || device ? "" : "Faça login em uma conta antes de emitir um token.";
@@ -435,6 +506,8 @@
 
   function bind() {
     $("#logout-button").addEventListener("click", () => void logout());
+    $("#refresh-all").addEventListener("click", () => refreshAll().catch(() => undefined));
+    $("#retry-overview")?.addEventListener("click", () => refreshAll().catch(() => undefined));
     $("#refresh-accounts").addEventListener("click", () => refreshAll().catch(() => undefined));
     $("#refresh-devices").addEventListener("click", () => refreshAll().catch(() => undefined));
     $("#refresh-users").addEventListener("click", () => loadUsers());
@@ -453,7 +526,8 @@
     $("#copy-env").addEventListener("click", () => copyText(`$env:CODEX_REMOTE_TOKEN = "${state.issuedToken}"`, "Variável PowerShell copiada."));
     $("#copy-command").addEventListener("click", () => copyText(`$env:CODEX_REMOTE_TOKEN = "${state.issuedToken}"\ncodex --remote "${remoteWebSocketAddress()}" --remote-auth-token-env CODEX_REMOTE_TOKEN`, "Comando Codex copiado."));
     $("#token-dialog").addEventListener("close", () => { state.issuedToken = ""; state.issuedDevice = null; $("#issued-token").value = ""; $("#copy-status").textContent = ""; });
-    document.querySelectorAll("[data-tab]").forEach((button) => button.addEventListener("click", () => { document.querySelectorAll("[data-tab]").forEach((item) => item.classList.toggle("active", item === button)); document.querySelectorAll(".admin-tab-panel").forEach((panel) => { panel.hidden = panel.id !== `tab-${button.dataset.tab}`; }); }));
+    $("#admin-search").addEventListener("input", (event) => filterPanel(event.target.value));
+    document.querySelectorAll("[data-tab]").forEach((button) => button.addEventListener("click", () => setActiveTab(button.dataset.tab)));
   }
 
   async function init() {
