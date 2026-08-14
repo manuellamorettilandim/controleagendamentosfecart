@@ -84,6 +84,7 @@
 html { min-height: 100%; overflow-x: hidden; background: var(--app-bg); scroll-behavior: smooth; }
 body { min-height: 100vh; margin: 0; overflow-x: hidden; background: var(--app-bg); color: var(--app-text); line-height: 1.55; }
 [hidden] { display: none !important; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
 body, button, input, select, textarea { font-family: inherit; }
 button, input, select, textarea { font-size: inherit; }
 button { -webkit-tap-highlight-color: transparent; }
@@ -157,7 +158,12 @@ li { margin: .45rem 0; color: var(--app-muted); }
 .auth-stage::before { right: -16%; bottom: -26%; width: min(65vw, 760px); aspect-ratio: 1; box-shadow: inset 0 0 120px rgba(114, 214, 162, .06); }
 .auth-stage::after { right: 7%; bottom: 4%; width: min(31vw, 360px); aspect-ratio: 1; border-color: rgba(150, 229, 189, .12); }
 .auth-brand, .user-brand { position: relative; z-index: 1; display: inline-flex; align-items: center; gap: .8rem; color: inherit; font-weight: 850; text-decoration: none; }
-.brand-glyph { display: grid; width: 2.65rem; height: 2.65rem; place-items: center; border-radius: 12px; background: var(--app-accent); color: var(--app-inverse); font-weight: 900; letter-spacing: -.06em; }
+.brand-logo { display: grid; width: 2.65rem; height: 2.65rem; flex: 0 0 auto; place-items: center; color: var(--app-accent); }
+.brand-logo svg { width: 100%; height: 100%; overflow: visible; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.9; }
+.brand-logo rect { fill: currentColor; opacity: .16; stroke: none; }
+.brand-logo path { fill: none; stroke: currentColor; }
+.brand-logo circle { fill: currentColor; stroke: none; }
+.auth-brand .brand-logo, .auth-mobile-brand .brand-logo, .admin-sidebar-brand .brand-logo { color: var(--app-accent); }
 .auth-stage-copy { position: relative; z-index: 1; max-width: 700px; margin: clamp(5rem, 14vh, 10rem) 0 3rem; }
 .auth-status-line { display: flex; align-items: center; gap: .6rem; margin: 0 0 1.5rem; color: #a8cdb7; font-size: .82rem; font-weight: 750; }
 .live-pip { width: .5rem; height: .5rem; border-radius: 50%; background: var(--app-accent); box-shadow: 0 0 0 5px rgba(114, 214, 162, .12); }
@@ -270,23 +276,6 @@ li { margin: .45rem 0; color: var(--app-muted); }
 .schedule-section, .reservations-section { margin-top: 1rem; padding: clamp(1.1rem, 3vw, 1.7rem); }
 .schedule-heading h2 { margin: 0; font-size: 1.65rem; }
 .schedule-heading .secondary-button { flex: 0 0 auto; }
-.date-strip { display: grid; grid-template-columns: repeat(7, minmax(72px, 1fr)); gap: .45rem; margin: 1.7rem 0 1.2rem; }
-.date-strip button { display: grid; min-width: 0; gap: .18rem; border: 1px solid var(--app-line); border-radius: 11px; padding: .65rem .35rem; background: var(--app-surface-2); color: var(--app-muted); cursor: pointer; text-align: center; transition: border-color .18s ease, background .18s ease, color .18s ease; }
-.date-strip button strong { color: var(--app-text); font-size: 1.2rem; }
-.date-strip button span, .date-strip button small { font-size: .64rem; text-transform: capitalize; }
-.date-strip button:hover { border-color: var(--app-accent); }
-.date-strip button.active { border-color: var(--app-accent); background: var(--app-accent-soft); color: var(--app-accent-strong); }
-.date-strip button.active strong { color: var(--app-accent-strong); }
-.schedule-board { overflow-x: auto; border: 1px solid var(--app-line); border-radius: 12px; background: var(--app-surface-2); }
-.schedule-axis { display: flex; min-width: 720px; justify-content: space-between; padding: .6rem 1rem; border-bottom: 1px solid var(--app-line); color: var(--app-muted); font-size: .6rem; font-variant-numeric: tabular-nums; }
-.hour-slots { display: grid; min-width: 720px; grid-template-columns: repeat(24, minmax(26px, 1fr)); min-height: 118px; }
-.hour-slots button { position: relative; min-width: 26px; border: 0; border-right: 1px solid var(--app-line); background: transparent; color: var(--app-muted); cursor: pointer; }
-.hour-slots button span { position: absolute; bottom: .5rem; left: 50%; font-size: .55rem; transform: translateX(-50%); }
-.hour-slots button i { position: absolute; top: 1rem; right: 25%; left: 25%; height: 2.7rem; border-radius: 5px; background: var(--app-surface-3); }
-.hour-slots button:hover:not(:disabled) i { background: var(--app-accent-soft); }
-.hour-slots button.selected i { background: var(--app-accent); box-shadow: 0 8px 18px rgba(39, 135, 100, .18); }
-.hour-slots button.busy i { background: var(--app-coral-soft); }
-.hour-slots button:disabled { cursor: not-allowed; opacity: .45; }
 .booking-controls { display: flex; align-items: flex-end; justify-content: space-between; gap: 1rem; margin-top: 1.2rem; }
 .booking-controls fieldset { margin: 0; border: 0; padding: 0; }
 .booking-controls legend { margin-bottom: .5rem; color: var(--app-muted); font-size: .67rem; font-weight: 850; }
@@ -300,6 +289,42 @@ li { margin: .45rem 0; color: var(--app-muted); }
 .schedule-legend i { width: .65rem; height: .65rem; border-radius: 3px; background: var(--app-surface-3); }
 .schedule-legend .selected i { background: var(--app-accent); }
 .schedule-legend .busy i { background: var(--app-coral); }
+.schedule-legend .mine i { background: var(--app-accent-strong); }
+
+.schedule-heading-actions { display: flex; flex-wrap: wrap; gap: .45rem; }
+.calendar-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin: 1.35rem 0 .7rem; }
+.calendar-toolbar > div:first-child { display: grid; gap: .2rem; min-width: 0; }
+.calendar-toolbar strong { color: var(--app-text); font-size: .82rem; }
+.calendar-toolbar span { color: var(--app-muted); font-size: .72rem; }
+.calendar-nav { display: flex; gap: .35rem; }
+.calendar-nav .icon-button { border-color: var(--app-line-strong); background: var(--app-surface); }
+.calendar-board { --calendar-row-height: 38px; display: grid; grid-template-columns: 64px repeat(7, minmax(118px, 1fr)); grid-template-rows: 58px auto; max-height: 730px; overflow: auto; border: 1px solid var(--app-line); border-radius: 13px; background: var(--app-surface-2); scrollbar-color: var(--app-line-strong) transparent; }
+.calendar-board > * { min-width: 0; }
+.calendar-corner, .calendar-day-head { position: sticky; top: 0; z-index: 5; border-bottom: 1px solid var(--app-line-strong); background: var(--app-surface); }
+.calendar-corner { left: 0; display: flex; align-items: center; justify-content: center; color: var(--app-muted); font-size: .58rem; font-weight: 900; letter-spacing: .08em; }
+.calendar-day-head { display: grid; align-content: center; justify-items: center; gap: .08rem; border-left: 1px solid var(--app-line); color: var(--app-muted); font-size: .62rem; text-transform: capitalize; }
+.calendar-day-head strong { color: var(--app-text); font-size: 1.05rem; line-height: 1; }
+.calendar-day-head small { color: var(--app-muted); font-size: .62rem; }
+.calendar-day-head.today { background: var(--app-accent-soft); color: var(--app-accent-strong); }
+.calendar-day-head.today strong { color: var(--app-accent-strong); }
+.calendar-time-column { position: sticky; left: 0; z-index: 3; display: grid; grid-template-rows: repeat(24, var(--calendar-row-height)); background: var(--app-surface); }
+.calendar-time-label { display: flex; align-items: flex-start; justify-content: center; padding-top: .35rem; border-bottom: 1px solid var(--app-line); color: var(--app-muted); font: 600 .58rem var(--app-mono); }
+.calendar-day-column { position: relative; display: grid; grid-template-rows: repeat(24, var(--calendar-row-height)); min-width: 118px; background: var(--app-surface-2); }
+.calendar-cell { position: relative; min-height: var(--calendar-row-height); border-bottom: 1px solid var(--app-line); border-left: 1px solid var(--app-line); }
+.calendar-cell button { position: absolute; inset: 3px 4px; z-index: 1; border: 1px solid transparent; border-radius: 6px; background: transparent; color: transparent; cursor: pointer; }
+.calendar-cell button:hover:not(:disabled) { border-color: var(--app-accent); background: var(--app-accent-soft); }
+.calendar-cell button:disabled { cursor: not-allowed; }
+.calendar-cell.past { background: color-mix(in srgb, var(--app-surface-3) 34%, transparent); }
+.calendar-cell.selected button { border-color: var(--app-accent); background: var(--app-accent); box-shadow: 0 4px 12px rgba(39, 135, 100, .18); }
+.calendar-cell.selected button::after { position: absolute; inset: 0; content: ""; background: rgba(255, 255, 255, .12); }
+.calendar-event { position: absolute; top: calc(var(--event-start) * var(--calendar-row-height) + 3px); right: 4px; left: 4px; z-index: 3; display: grid; align-content: start; gap: .12rem; min-height: 25px; height: calc(var(--event-span) * var(--calendar-row-height) - 6px); overflow: hidden; border: 1px solid var(--app-coral); border-radius: 6px; padding: .32rem .38rem; background: var(--app-coral-soft); color: var(--app-text); font-size: .62rem; line-height: 1.25; pointer-events: none; }
+.calendar-event strong, .calendar-event span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.calendar-event strong { color: var(--app-text); font-size: .64rem; }
+.calendar-event span { color: var(--app-muted-strong); }
+.calendar-event.mine { border-color: var(--app-accent); background: var(--app-accent-soft); }
+.calendar-event.mine strong { color: var(--app-accent-strong); }
+.calendar-now-line { position: absolute; top: calc(var(--now-position) * var(--calendar-row-height)); right: 0; left: 0; z-index: 4; height: 2px; background: var(--app-accent); pointer-events: none; }
+.calendar-now-line::before { position: absolute; top: -3px; left: -3px; width: 8px; height: 8px; border-radius: 50%; background: var(--app-accent); content: ""; }
 .reservation-list { display: grid; gap: .5rem; margin-top: 1.2rem; }
 .reservation-row { display: grid; grid-template-columns: 58px minmax(0, 1fr) auto auto; align-items: center; gap: 1rem; border: 1px solid var(--app-line); border-radius: 12px; padding: .75rem .9rem; background: var(--app-surface-2); }
 .reservation-row.active { border-color: var(--app-accent); background: var(--app-accent-soft); }
@@ -315,14 +340,12 @@ li { margin: .45rem 0; color: var(--app-muted); }
 /* Administrative console */
 .admin-page { background: var(--app-bg); }
 .admin-page code { background: var(--app-surface-3); color: var(--app-accent-strong); }
-.admin-app { display: grid; min-height: 100vh; grid-template-columns: 248px minmax(0, 1fr); }
-.admin-sidebar { position: sticky; top: 0; display: flex; min-height: 100vh; height: 100vh; flex-direction: column; gap: 1rem; padding: 1.2rem .9rem; border-right: 1px solid var(--app-line); background: var(--app-surface); }
+.admin-app { display: block; min-height: 100vh; }
+.admin-sidebar { position: fixed; inset: 0 auto 0 0; z-index: 20; display: flex; width: 248px; min-height: 100vh; height: 100dvh; flex-direction: column; gap: 1rem; overflow-y: auto; overscroll-behavior: contain; padding: 1.2rem .9rem; border-right: 1px solid var(--app-line); background: var(--app-surface); }
 .admin-sidebar-brand { display: flex; align-items: center; gap: .7rem; padding: .25rem .4rem 1rem; color: var(--app-text); text-decoration: none; }
-.admin-sidebar-brand .admin-brand-mark { display: grid; width: 2.55rem; height: 2.55rem; flex: 0 0 auto; place-items: center; border-radius: 12px; background: var(--app-accent); color: var(--app-inverse); font-weight: 900; letter-spacing: -.07em; }
 .admin-sidebar-brand strong, .admin-sidebar-brand small { display: block; }
 .admin-sidebar-brand strong { font-size: .94rem; letter-spacing: -.02em; }
 .admin-sidebar-brand small { margin-top: .15rem; color: var(--app-muted); font-size: .7rem; }
-.admin-sidebar-tools { display: flex; justify-content: flex-start; padding: 0 .4rem .6rem; }
 .admin-sidebar-label { padding: 0 .6rem; color: var(--app-muted); font-size: .65rem; font-weight: 850; letter-spacing: .12em; text-transform: uppercase; }
 .admin-sidebar-nav { display: grid; gap: .25rem; }
 .admin-sidebar-nav button { display: flex; min-height: 42px; align-items: center; gap: .7rem; width: 100%; border: 1px solid transparent; border-radius: 10px; padding: 0 .7rem; background: transparent; color: var(--app-muted); cursor: pointer; font: inherit; font-size: .84rem; font-weight: 800; text-align: left; transition: background .18s ease, color .18s ease, border-color .18s ease; }
@@ -339,7 +362,7 @@ li { margin: .45rem 0; color: var(--app-muted); }
 .admin-user-copy { min-width: 0; flex: 1; }
 .admin-user-copy strong { display: block; overflow: hidden; color: var(--app-text); font-size: .72rem; text-overflow: ellipsis; white-space: nowrap; }
 .admin-user-copy .admin-badge { margin-top: .2rem; }
-.admin-main { min-width: 0; padding: 2.1rem clamp(1rem, 4vw, 3.6rem) 5rem; }
+.admin-main { min-width: 0; margin-left: 248px; padding: 2.1rem clamp(1rem, 4vw, 3.6rem) 5rem; }
 .admin-topbar { display: flex; max-width: 1400px; align-items: flex-start; justify-content: space-between; gap: 2rem; margin: 0 auto 2.2rem; padding-bottom: 1.4rem; border-bottom: 1px solid var(--app-line); }
 .admin-topbar-copy { min-width: 0; }
 .admin-topbar-copy h1 { margin: 0; font-size: 2.65rem; line-height: 1; }
@@ -355,6 +378,10 @@ li { margin: .45rem 0; color: var(--app-muted); }
 .admin-section-head > div { min-width: 0; }
 .admin-section-head h2 { margin: 0; font-size: 1.7rem; }
 .admin-section-head .admin-muted { max-width: 720px; margin: .45rem 0 0; }
+.admin-panel-intro { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: .9rem; padding-bottom: .95rem; border-bottom: 1px solid var(--app-line); }
+.admin-panel-intro > div:first-child { min-width: 0; }
+.admin-context { display: block; color: var(--app-accent-strong); font-size: .62rem; font-weight: 900; letter-spacing: .14em; }
+.admin-panel-intro p { max-width: 70ch; margin: .35rem 0 0; font-size: .78rem; }
 .admin-actions, .admin-session { display: flex; flex-wrap: wrap; align-items: center; gap: .45rem; }
 .admin-button { min-height: 38px; border: 1px solid var(--app-line-strong); border-radius: 10px; padding: 0 .8rem; background: var(--app-surface); color: var(--app-muted-strong); cursor: pointer; font: inherit; font-size: .78rem; font-weight: 800; transition: border-color .18s ease, background .18s ease, color .18s ease, transform .18s ease; }
 .admin-button:hover { border-color: var(--app-accent); color: var(--app-accent-strong); transform: translateY(-1px); }
@@ -428,6 +455,17 @@ li { margin: .45rem 0; color: var(--app-muted); }
 .admin-table small { display: block; margin-top: .18rem; color: var(--app-muted); font-size: .67rem; line-height: 1.45; }
 .admin-limit-warning { color: var(--app-amber) !important; }
 .table-actions { display: flex; flex-wrap: wrap; gap: .35rem; }
+.admin-table .table-actions { min-width: 150px; }
+.usage-meter { width: min(170px, 100%); height: 6px; overflow: hidden; margin-top: .45rem; border-radius: 999px; background: var(--app-surface-3); }
+.usage-meter i { display: block; height: 100%; border-radius: inherit; background: var(--app-accent); }
+.admin-table-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; margin: 1.35rem 0 .7rem; }
+.admin-table-heading h3 { margin: 0; color: var(--app-text); font-size: 1rem; }
+.admin-table-heading span { color: var(--app-muted); font-size: .72rem; }
+.admin-table tbody tr.calendar-row-focus { background: var(--app-accent-soft); outline: 2px solid var(--app-accent); outline-offset: -2px; }
+.admin-calendar-toolbar { margin-top: 1rem; }
+.admin-calendar-board { max-height: 660px; }
+.admin-calendar-board .calendar-event { pointer-events: auto; cursor: pointer; }
+.admin-calendar-board .calendar-event button { display: grid; width: 100%; height: 100%; align-content: start; border: 0; padding: 0; background: transparent; color: inherit; cursor: pointer; text-align: left; }
 .admin-empty { padding: 2rem !important; color: var(--app-muted) !important; text-align: center !important; }
 .admin-summary-strip { display: flex; flex-wrap: wrap; gap: .55rem; margin: 0 0 1rem; }
 .admin-summary-strip span { border: 1px solid var(--app-line); border-radius: 10px; padding: .55rem .7rem; background: var(--app-surface); color: var(--app-muted); font-size: .72rem; }
@@ -470,14 +508,14 @@ li { margin: .45rem 0; color: var(--app-muted); }
   .site-header nav { order: 3; width: 100%; justify-content: flex-start; margin-left: 0; overflow-x: auto; flex-wrap: nowrap; }
   .grid.three, .split { grid-template-columns: 1fr; }
   .admin-app { display: block; }
-  .admin-sidebar { position: sticky; z-index: 5; min-height: auto; height: auto; padding: .8rem 1rem .7rem; border-right: 0; border-bottom: 1px solid var(--app-line); }
+  .admin-sidebar { position: sticky; z-index: 5; width: auto; min-height: auto; height: auto; overflow: visible; padding: .8rem 1rem .7rem; border-right: 0; border-bottom: 1px solid var(--app-line); }
   .admin-sidebar-brand { padding-bottom: .4rem; }
-  .admin-sidebar-tools, .admin-sidebar-label, .admin-sidebar-note, .admin-sidebar-spacer { display: none; }
+  .admin-sidebar-label, .admin-sidebar-note, .admin-sidebar-spacer { display: none; }
   .admin-sidebar-nav { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .3rem; padding-bottom: .1rem; }
   .admin-sidebar-nav button { width: 100%; min-height: 38px; white-space: nowrap; }
   .admin-sidebar-user { position: absolute; top: .75rem; right: 1rem; padding: 0; border-top: 0; }
   .admin-user-copy { display: none; }
-  .admin-main { padding-top: 1.7rem; }
+  .admin-main { margin-left: 0; padding-top: 1.7rem; }
   .admin-topbar { flex-direction: column; gap: 1rem; }
   .admin-topbar-actions { width: 100%; min-width: 0; }
 }
@@ -529,7 +567,12 @@ li { margin: .45rem 0; color: var(--app-muted); }
   .credential-ready code { white-space: normal; overflow-wrap: anywhere; }
   .credential-ready > div { width: 100%; }
   .credential-ready > div button { flex: 1; }
-  .date-strip { overflow-x: auto; grid-template-columns: repeat(7, minmax(68px, 1fr)); margin-right: -.2rem; padding-bottom: .25rem; }
+  .calendar-board { --calendar-row-height: 36px; grid-template-columns: 54px repeat(7, minmax(104px, 1fr)); max-height: 600px; }
+  .calendar-day-column { min-width: 104px; }
+  .calendar-toolbar, .admin-panel-intro, .admin-table-heading { align-items: flex-start; flex-direction: column; }
+  .calendar-nav { align-self: flex-end; }
+  .admin-panel-intro .admin-actions { width: 100%; }
+  .admin-panel-intro .admin-actions .admin-button { flex: 1; }
   .schedule-heading { align-items: flex-start; flex-direction: column; gap: .7rem; }
   .booking-controls { align-items: stretch; flex-direction: column; }
   .booking-summary { align-items: stretch; flex-direction: column; }
@@ -569,12 +612,11 @@ li { margin: .45rem 0; color: var(--app-muted); }
   .admin-table td { display: block; min-width: 0; padding: 0; border: 0; }
   .admin-table td:first-child, .admin-table td:last-child, .admin-table td.admin-empty { grid-column: 1 / -1; }
   .admin-table td:not(.admin-empty)::before { display: block; margin-bottom: .18rem; color: var(--app-muted); font-size: .6rem; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; }
-  #tab-devices .admin-table td:nth-child(1)::before { content: "Dispositivo"; }
-  #tab-devices .admin-table td:nth-child(2)::before { content: "Conta"; }
-  #tab-devices .admin-table td:nth-child(3)::before { content: "Política"; }
-  #tab-devices .admin-table td:nth-child(4)::before { content: "Uso observado"; }
-  #tab-devices .admin-table td:nth-child(5)::before { content: "Status"; }
-  #tab-devices .admin-table td:nth-child(6)::before { content: "Ações"; }
+   #tab-devices .admin-table td:nth-child(1)::before { content: "Acesso"; }
+   #tab-devices .admin-table td:nth-child(2)::before { content: "Conta e política"; }
+   #tab-devices .admin-table td:nth-child(3)::before { content: "Uso observado"; }
+   #tab-devices .admin-table td:nth-child(4)::before { content: "Status"; }
+   #tab-devices .admin-table td:nth-child(5)::before { content: "Ações"; }
   #tab-users .admin-table td:nth-child(1)::before { content: "Usuário"; }
   #tab-users .admin-table td:nth-child(2)::before { content: "Turma"; }
   #tab-users .admin-table td:nth-child(3)::before { content: "Conta"; }

@@ -162,6 +162,9 @@ test("AccessStore binds one token per account, records observed usage, and keeps
     assert.ok(revoked?.revokedAt);
     assert.equal((await store.list()).length, 1);
     assert.equal((await store.enable(issued.device.deviceId)), null);
+    const other = await store.issue("other account", 3_600_000, new Date("2026-08-12T13:00:00.000Z"), { accountId: "other" });
+    assert.equal(await store.revokeForAccount("other", new Date("2026-08-12T13:01:00.000Z")), 1);
+    assert.equal((await store.list()).find((device) => device.deviceId === other.device.deviceId)?.revokedAt, "2026-08-12T13:01:00.000Z");
   } finally {
     await fs.rm(directory, { recursive: true, force: true });
   }

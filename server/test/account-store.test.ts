@@ -27,6 +27,12 @@ test("AccountStore keeps separate CODEX_HOME paths and switches only the default
     assert.equal(await store.defaultId(), secondary.accountId);
     assert.equal((await store.getDefault())?.accountId, secondary.accountId);
     await assert.rejects(() => store.setEnabled(secondary.accountId, false));
+
+    await store.setDefault(primary.accountId);
+    await assert.rejects(() => store.remove(primary.accountId), /conta padrão/i);
+    await store.remove(secondary.accountId);
+    assert.equal(await store.get(secondary.accountId), null);
+    await assert.rejects(() => fs.access(secondary.codeHome));
   } finally {
     await fs.rm(directory, { recursive: true, force: true });
   }

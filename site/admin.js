@@ -14,6 +14,7 @@
     loginAccountId: "",
     editingDeviceId: null,
     pendingAction: null,
+    adminWeekStart: null,
   };
 
   const $ = (selector) => document.querySelector(selector);
@@ -66,6 +67,10 @@
 
   function statusLabel(status) {
     return ({ active: "ativo", disabled: "desabilitado", limited: "limite atingido", revoked: "revogado", expired: "expirado" }[status] || status || "indisponível");
+  }
+
+  function accountStatusLabel(status) {
+    return ({ ready: "pronta", login_required: "login necessário", offline: "offline", disabled: "desativada", error: "erro" }[status] || status || "indisponível");
   }
 
   function statusClass(status) {
@@ -156,7 +161,8 @@
       state.devices = devices.devices || [];
       renderDevices(devices);
       if (state.role === "owner") await loadAdmins();
-      await Promise.all([loadUsers(), loadReservations()]);
+      await loadUsers();
+      await loadReservations();
       renderOverview(accounts, devices);
       setStatus(accounts.stale ? "Host offline ou snapshot stale; os dados exibidos não garantem estado atual." : "Host conectado e sincronizado.", accounts.stale ? "warning" : "success");
     } catch (error) {
@@ -181,19 +187,20 @@
       const usage = account.usage?.dailyUsageBuckets?.slice(-7) || [];
       const usageText = usage.length ? `${usage.length} dias observados · ${usage.reduce((total, bucket) => total + Number(bucket.tokens || 0), 0).toLocaleString("pt-BR")} tokens` : "uso diário indisponível";
       const status = account.status || "offline";
-      const statusClassName = status === "ready" ? "success" : status === "login_required" ? "warning" : "error";
-      return `<article class="admin-account-card ${account.isDefault ? "default" : ""}">
-        <div class="admin-card-head"><div><span class="admin-badge ${statusClassName}">${escapeHtml(status)}</span>${account.isDefault ? `<span class="admin-badge default-badge">padrão</span>` : ""}</div><button class="icon-button" data-refresh-account="${escapeHtml(account.accountId)}" title="Atualizar">↻</button></div>
-        <h3>${escapeHtml(account.label)}</h3><p class="account-email">${escapeHtml(account.email || "email indisponível")} · ${escapeHtml(account.planType || "plano indisponível")}</p>
-        <div class="limit-list">${limitMarkup}</div><p class="usage-summary">${escapeHtml(usageText)} · última atualização ${escapeHtml(formatDate(account.updatedAt))}</p>
-        ${account.error ? `<p class="admin-inline-error">${escapeHtml(account.error)}</p>` : ""}
-        <div class="admin-actions">${status === "ready" && !account.isDefault ? `<button class="admin-button small primary" data-default-account="${escapeHtml(account.accountId)}">Usar como padrão</button>` : ""}<button class="admin-button small ghost" data-login-account="${escapeHtml(account.accountId)}">${status === "ready" ? "Atualizar login" : "Iniciar login"}</button>${status === "ready" ? `<button class="admin-button small danger" data-logout-account="${escapeHtml(account.accountId)}">Sair</button>` : ""}</div>
-      </article>`;
+       const statusClassName = status === "ready" ? "success" : status === "login_required" ? "warning" : "error";
+       return `<article class="admin-account-card ${account.isDefault ? "default" : ""}">
+         <div class="admin-card-head"><div><span class="admin-badge ${statusClassName}">${escapeHtml(accountStatusLabel(status))}</span>${account.isDefault ? `<span class="admin-badge default-badge">padrão</span>` : ""}</div><button class="icon-button" type="button" data-refresh-account="${escapeHtml(account.accountId)}" title="Atualizar conta">↻</button></div>
+         <h3>${escapeHtml(account.label)}</h3><p class="account-email">${escapeHtml(account.email || "email indisponível")} · ${escapeHtml(account.planType || "plano indisponível")}</p>
+         <div class="limit-list">${limitMarkup}</div><p class="usage-summary">${escapeHtml(usageText)} · última atualização ${escapeHtml(formatDate(account.updatedAt))}</p>
+         ${account.error ? `<p class="admin-inline-error">${escapeHtml(account.error)}</p>` : ""}
+         <div class="admin-actions">${status === "ready" && !account.isDefault ? `<button class="admin-button small primary" type="button" data-default-account="${escapeHtml(account.accountId)}">Usar como padrão</button>` : ""}<button class="admin-button small ghost" type="button" data-login-account="${escapeHtml(account.accountId)}">${status === "ready" ? "Atualizar login" : "Iniciar login"}</button>${status === "ready" ? `<button class="admin-button small danger" type="button" data-logout-account="${escapeHtml(account.accountId)}">Sair</button>` : ""}${!account.isDefault ? `<button class="admin-button small danger" type="button" data-delete-account="${escapeHtml(account.accountId)}">Excluir conta</button>` : ""}</div>
+       </article>`;
     }).join("");
     grid.querySelectorAll("[data-default-account]").forEach((button) => button.addEventListener("click", () => setDefault(button.dataset.defaultAccount)));
-    grid.querySelectorAll("[data-login-account]").forEach((button) => button.addEventListener("click", () => startLogin(button.dataset.loginAccount)));
+    grid.querySelectorAll("[data-login-account]").forEach((button) => button.addEventListener("click", () => startLogin(button.dataset.loginAccount, button)));
     grid.querySelectorAll("[data-refresh-account]").forEach((button) => button.addEventListener("click", () => refreshAccount(button.dataset.refreshAccount)));
     grid.querySelectorAll("[data-logout-account]").forEach((button) => button.addEventListener("click", () => requestAction("account-logout", button.dataset.logoutAccount)));
+    grid.querySelectorAll("[data-delete-account]").forEach((button) => button.addEventListener("click", () => requestAction("account-remove", button.dataset.deleteAccount)));
   }
 
   function renderOverview(accountsPayload, devicesPayload) {
@@ -268,28 +275,33 @@
   }
 
   function renderDevices(payload) {
-    $("#devices-note").textContent = payload.stale ? "Exibindo snapshot stale: o host central não está respondendo agora." : "Estado sincronizado com o host central.";
+    const active = state.devices.filter((device) => device.status === "active").length;
+    const attention = state.devices.filter((device) => ["limited", "disabled", "expired"].includes(device.status)).length;
+    $("#devices-summary").textContent = state.devices.length
+      ? `${active} ativos · ${attention} pedem atenção · ${state.devices.length} registros no histórico.`
+      : "Nenhum token temporário emitido ainda.";
+    $("#devices-note").textContent = payload.stale ? "Snapshot desatualizado: confirme o host antes de emitir ou revogar acesso." : "Sincronizado agora com o host central.";
     const body = $("#devices-body");
     if (!state.devices.length) {
-      body.innerHTML = `<tr><td colspan="6" class="admin-empty">Nenhum dispositivo registrado.</td></tr>`;
+      body.innerHTML = `<tr><td colspan="5" class="admin-empty">Nenhum dispositivo registrado.</td></tr>`;
       return;
     }
     body.innerHTML = state.devices.map((device) => {
       const account = accountById(device.accountId);
       const usage = device.usage || {};
-      const usedPercent = usage.accountUsedPercent === null || usage.accountUsedPercent === undefined ? "indisponível" : `${Number(usage.accountUsedPercent).toFixed(1)}% da conta`;
+      const accountPercent = Number(usage.accountUsedPercent);
+      const usageWidth = Number.isFinite(accountPercent) ? Math.max(0, Math.min(100, accountPercent)) : 0;
+      const usedPercent = Number.isFinite(accountPercent) ? `${accountPercent.toFixed(1)}% da conta` : "uso da conta indisponível";
       const windowText = usage.accountWindowDurationMins ? `janela ${formatDuration(usage.accountWindowDurationMins)}` : "janela indisponível";
       const resetText = usage.accountResetsAt ? `reset ${formatReset(usage.accountResetsAt)}` : "reset indisponível";
-      const breakdown = `entrada ${formatNumber(usage.observedInputTokens)} · cache ${formatNumber(usage.observedCachedInputTokens)} · saída ${formatNumber(usage.observedOutputTokens)} · raciocínio ${formatNumber(usage.observedReasoningTokens)}`;
       const policy = `${Number(device.weeklyLimitPercent ?? 100).toFixed(0)}% semanal`;
       const actionButtons = device.status === "revoked"
         ? `<span class="admin-muted">histórico</span>`
-        : `<button class="admin-button tiny ghost" data-device-edit="${escapeHtml(device.deviceId)}">Editar limites</button>${device.status === "disabled" ? `<button class="admin-button tiny ghost" data-device-action="enable" data-device-id="${escapeHtml(device.deviceId)}">Reabilitar</button>` : `<button class="admin-button tiny ghost" data-device-action="disable" data-device-id="${escapeHtml(device.deviceId)}">Desabilitar</button>`}<button class="admin-button tiny danger" data-device-action="revoke" data-device-id="${escapeHtml(device.deviceId)}">Revogar</button>`;
+        : `<button type="button" class="admin-button tiny ghost" data-device-edit="${escapeHtml(device.deviceId)}">Editar limites</button>${device.status === "disabled" ? `<button type="button" class="admin-button tiny ghost" data-device-action="enable" data-device-id="${escapeHtml(device.deviceId)}">Reabilitar</button>` : `<button type="button" class="admin-button tiny ghost" data-device-action="disable" data-device-id="${escapeHtml(device.deviceId)}">Desabilitar</button>`}<button type="button" class="admin-button tiny danger" data-device-action="revoke" data-device-id="${escapeHtml(device.deviceId)}">Revogar</button>`;
       return `<tr>
         <td><strong>${escapeHtml(device.label)}</strong><small>${escapeHtml(device.deviceId)} · fp ${escapeHtml(device.fingerprint || "indisponível")} · último acesso ${escapeHtml(formatDate(device.lastSeenAt))}</small></td>
-        <td><strong>${escapeHtml(account?.label || device.accountId || "padrão legado")}</strong><small>${escapeHtml(account?.email || "conta não disponível")}</small></td>
-        <td><strong>${escapeHtml(policy)}</strong><small>até ${escapeHtml(formatDate(device.expiresAt))}</small></td>
-        <td><strong>${escapeHtml(formatNumber(usage.observedTokens))} tokens observados</strong><small>${escapeHtml(breakdown)}</small><small>${escapeHtml(usedPercent)} · ${escapeHtml(windowText)} · ${escapeHtml(resetText)}</small><small>evento ${escapeHtml(formatDate(usage.lastUsageAt))}</small></td>
+        <td><strong>${escapeHtml(account?.label || device.accountId || "padrão legado")}</strong><small>${escapeHtml(account?.email || "conta não disponível")} · ${escapeHtml(policy)} · até ${escapeHtml(formatDate(device.expiresAt))}</small></td>
+        <td><strong>${escapeHtml(formatNumber(usage.observedTokens))} tokens</strong><div class="usage-meter" aria-hidden="true"><i style="width:${usageWidth}%"></i></div><small>${escapeHtml(usedPercent)} · ${escapeHtml(windowText)}</small><small>${escapeHtml(resetText)} · último evento ${escapeHtml(formatDate(usage.lastUsageAt))}</small></td>
         <td><span class="admin-badge ${statusClass(device.status)}">${escapeHtml(statusLabel(device.status))}</span>${usage.usageLimitReachedAt ? `<small class="admin-limit-warning">atingido em ${escapeHtml(formatDate(usage.usageLimitReachedAt))}</small>` : ""}</td>
         <td class="table-actions">${actionButtons}</td>
       </tr>`;
@@ -322,6 +334,75 @@
     }
   }
 
+  function startOfDay(value = new Date()) {
+    const date = new Date(value);
+    date.setHours(0, 0, 0, 0);
+    return date;
+  }
+
+  function adminWeekDays() {
+    return Array.from({ length: 7 }, (_, index) => {
+      const date = new Date(state.adminWeekStart);
+      date.setDate(date.getDate() + index);
+      return date;
+    });
+  }
+
+  function adminEventGeometry(day, startsAt, endsAt) {
+    const dayStart = startOfDay(day).getTime();
+    const dayEnd = dayStart + 24 * 3_600_000;
+    const start = Math.max(dayStart, Date.parse(startsAt));
+    const end = Math.min(dayEnd, Date.parse(endsAt));
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return null;
+    return { start: (start - dayStart) / 3_600_000, span: Math.max(.5, (end - start) / 3_600_000) };
+  }
+
+  function renderAdminCalendar() {
+    const board = $("#admin-calendar-board");
+    if (!board) return;
+    const today = startOfDay(new Date());
+    if (!state.adminWeekStart) state.adminWeekStart = today;
+    const days = adminWeekDays();
+    const now = Date.now();
+    const startText = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short" }).format(days[0]).replace(".", "");
+    const endText = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short", year: "numeric" }).format(days.at(-1)).replace(".", "");
+    $("#admin-schedule-range").textContent = `${startText} – ${endText}`;
+    $("#calendar-admin-prev").disabled = state.adminWeekStart.getTime() <= today.getTime();
+    const headers = days.map((date) => {
+      const isToday = date.getTime() === today.getTime();
+      const weekday = date.toLocaleDateString("pt-BR", { weekday: "short" }).replace(".", "");
+      const month = date.toLocaleDateString("pt-BR", { month: "short" }).replace(".", "");
+      return `<div class="calendar-day-head ${isToday ? "today" : ""}"><span>${isToday ? "Hoje" : weekday}</span><strong>${date.getDate()}</strong><small>${month}</small></div>`;
+    }).join("");
+    const times = Array.from({ length: 24 }, (_, hour) => `<div class="calendar-time-label">${String(hour).padStart(2, "0")}:00</div>`).join("");
+    const columns = days.map((date) => {
+      const cells = Array.from({ length: 24 }, () => `<div class="calendar-cell"></div>`).join("");
+      const events = state.reservations
+        .filter((item) => item.status === "scheduled")
+        .map((item) => ({ item, geometry: adminEventGeometry(date, item.starts_at, item.ends_at) }))
+        .filter(({ geometry }) => geometry)
+        .map(({ item, geometry }) => {
+          const profile = state.users.find((user) => user.user_id === item.user_id) || {};
+          const start = new Date(item.starts_at);
+          const end = new Date(item.ends_at);
+          const active = Date.parse(item.starts_at) <= now && Date.parse(item.ends_at) > now;
+          const time = `${start.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}–${end.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`;
+          return `<div class="calendar-event ${active ? "mine" : "busy"}" style="--event-start:${geometry.start};--event-span:${geometry.span}"><button type="button" data-calendar-reservation="${escapeHtml(item.id)}"><strong>${escapeHtml(profile.username || item.user_id)}</strong><span>${escapeHtml(time)}</span></button></div>`;
+        }).join("");
+      const nowLine = date.getTime() === today.getTime() ? `<div class="calendar-now-line" style="--now-position:${new Date().getHours() + new Date().getMinutes() / 60}"><span class="sr-only">Agora</span></div>` : "";
+      return `<div class="calendar-day-column">${cells}${events}${nowLine}</div>`;
+    }).join("");
+    board.innerHTML = `<div class="calendar-corner">HORA</div>${headers}<div class="calendar-time-column">${times}</div>${columns}`;
+    board.querySelectorAll("[data-calendar-reservation]").forEach((button) => button.addEventListener("click", () => {
+      const row = document.querySelector(`[data-reservation-id="${CSS.escape(button.dataset.calendarReservation)}"]`);
+      row?.scrollIntoView({ behavior: "smooth", block: "center" });
+      row?.classList.add("calendar-row-focus");
+      window.setTimeout(() => row?.classList.remove("calendar-row-focus"), 1400);
+      const item = state.reservations.find((reservation) => reservation.id === button.dataset.calendarReservation);
+      if (item) $("#admin-schedule-selection").textContent = `${formatDate(item.starts_at)} · ${formatDate(item.ends_at)}`;
+    }));
+  }
+
   async function loadReservations() {
     const body = $("#reservations-body");
     try {
@@ -331,35 +412,73 @@
       const active = state.reservations.filter((item) => item.status === "scheduled" && Date.parse(item.starts_at) <= now && Date.parse(item.ends_at) > now).length;
       const future = state.reservations.filter((item) => item.status === "scheduled" && Date.parse(item.starts_at) > now).length;
       $("#reservations-summary").innerHTML = `<span><strong>${active}</strong> em andamento</span><span><strong>${future}</strong> futuras</span><span><strong>${state.reservations.filter((item) => item.device_id).length}</strong> credenciais emitidas</span>`;
+      renderAdminCalendar();
       body.innerHTML = state.reservations.map((item) => {
         const profile = state.users.find((user) => user.user_id === item.user_id) || {};
         const start = new Date(item.starts_at);
         const end = new Date(item.ends_at);
         const status = item.status === "cancelled" ? "cancelada" : start <= new Date() && end > new Date() ? "ativa" : start > new Date() ? "agendada" : "encerrada";
-        return `<tr><td><strong>${escapeHtml(profile.username || item.user_id)}</strong><small>${escapeHtml(profile.group_name || "turma indisponível")}</small></td><td><strong>${escapeHtml(formatDate(item.starts_at))}</strong><small>até ${escapeHtml(formatDate(item.ends_at))}</small></td><td>${escapeHtml(accountById(item.account_id)?.label || item.account_id)}</td><td>${item.quota_budget_percent == null ? "aguardando ativação" : `${Number(item.quota_budget_percent).toFixed(1)}%`}<small>${item.quota_base_used_percent == null ? "" : `base da conta ${Number(item.quota_base_used_percent).toFixed(1)}%`}</small></td><td>${item.device_id ? `<strong>${escapeHtml(item.device_id)}</strong><small>ativada ${escapeHtml(formatDate(item.activated_at))}</small>` : "não emitida"}</td><td><span class="admin-badge ${status === "ativa" ? "success" : status === "agendada" ? "warning" : ""}">${status}</span></td></tr>`;
+        return `<tr data-reservation-id="${escapeHtml(item.id)}"><td><strong>${escapeHtml(profile.username || item.user_id)}</strong><small>${escapeHtml(profile.group_name || "turma indisponível")}</small></td><td><strong>${escapeHtml(formatDate(item.starts_at))}</strong><small>até ${escapeHtml(formatDate(item.ends_at))}</small></td><td>${escapeHtml(accountById(item.account_id)?.label || item.account_id)}</td><td>${item.quota_budget_percent == null ? "aguardando ativação" : `${Number(item.quota_budget_percent).toFixed(1)}%`}<small>${item.quota_base_used_percent == null ? "" : `base da conta ${Number(item.quota_base_used_percent).toFixed(1)}%`}</small></td><td>${item.device_id ? `<strong>${escapeHtml(item.device_id)}</strong><small>ativada ${escapeHtml(formatDate(item.activated_at))}</small>` : "não emitida"}</td><td><span class="admin-badge ${status === "ativa" ? "success" : status === "agendada" ? "warning" : ""}">${status}</span></td></tr>`;
       }).join("") || `<tr><td colspan="6" class="admin-empty">Nenhuma reserva registrada.</td></tr>`;
     } catch (error) {
       body.innerHTML = `<tr><td colspan="6" class="admin-empty">${escapeHtml(error.message)}</td></tr>`;
     }
   }
 
-  async function startLogin(accountId) {
+  async function startLogin(accountId, trigger = null) {
+    state.loginAccountId = accountId;
+    const dialog = $("#login-dialog");
+    const status = $("#login-dialog-status");
+    if (trigger) {
+      trigger.disabled = true;
+      trigger.dataset.previousLabel = trigger.textContent;
+      trigger.textContent = "Preparando…";
+    }
+    $("#login-dialog-title").textContent = "Preparando login…";
+    $("#login-url").href = "#";
+    $("#login-url").textContent = "Conectando ao host central…";
+    $("#login-code").textContent = "········";
+    status.textContent = "Solicitando um código seguro…";
+    status.className = "admin-status";
+    if (!dialog.open) dialog.showModal();
     try {
       const data = await api(`/api/admin/accounts/${encodeURIComponent(accountId)}/login/start`, { method: "POST", body: JSON.stringify({}) });
-      state.loginAccountId = accountId;
       const login = data.login || {};
       const url = login.verificationUrl || login.authUrl || "#";
       $("#login-dialog-title").textContent = `Login · ${data.snapshot?.label || accountId}`;
       const link = $("#login-url"); link.href = url; link.textContent = url === "#" ? "URL indisponível" : url;
       $("#login-code").textContent = login.userCode || "Código indisponível; confira a resposta do app-server.";
-      $("#login-dialog-status").textContent = "Conclua a confirmação e atualize o estado.";
-      $("#login-dialog").showModal();
-    } catch (error) { setStatus(error.message, "error"); }
+      status.textContent = login.userCode ? "Abra a URL, informe o código e depois atualize o estado." : "O host não retornou um código. Tente novamente.";
+      status.className = `admin-status ${login.userCode ? "success" : "warning"}`;
+    } catch (error) {
+      status.textContent = `Não foi possível iniciar: ${error.message}`;
+      status.className = "admin-status error";
+      setStatus(error.message, "error");
+    } finally {
+      if (trigger) {
+        trigger.disabled = false;
+        trigger.textContent = trigger.dataset.previousLabel || "Iniciar login";
+      }
+    }
   }
 
   async function refreshAccount(accountId) {
-    try { await api(`/api/admin/accounts/${encodeURIComponent(accountId)}/refresh`, { method: "POST", body: JSON.stringify({}) }); await refreshAll(); }
-    catch (error) { setStatus(error.message, "error"); }
+    const status = $("#login-dialog-status");
+    const inDialog = $("#login-dialog").open && state.loginAccountId === accountId;
+    if (inDialog) { status.textContent = "Consultando o host…"; status.className = "admin-status"; }
+    try {
+      const data = await api(`/api/admin/accounts/${encodeURIComponent(accountId)}/refresh`, { method: "POST", body: JSON.stringify({}) });
+      await refreshAll();
+      const snapshot = data.account || state.accounts.find((account) => account.accountId === accountId);
+      if (inDialog) {
+        const ready = snapshot?.status === "ready";
+        status.textContent = ready ? "Login confirmado. A conta já pode receber sessões." : "Ainda aguardando confirmação. Se você acabou de concluir, tente atualizar de novo.";
+        status.className = `admin-status ${ready ? "success" : "warning"}`;
+      }
+    } catch (error) {
+      if (inDialog) { status.textContent = `Não foi possível atualizar: ${error.message}`; status.className = "admin-status error"; }
+      setStatus(error.message, "error");
+    }
   }
 
   async function setDefault(accountId) {
@@ -378,8 +497,11 @@
     try {
       const data = await api("/api/admin/accounts", { method: "POST", body: JSON.stringify({ label: $("#account-label").value.trim() }) });
       $("#account-dialog").close();
-      await refreshAll();
-      await startLogin(data.account?.accountId);
+      const accountId = data.account?.accountId;
+      setStatus("Conta criada. Abrindo o login seguro…", "success");
+      await refreshAll().catch(() => undefined);
+      if (accountId) await startLogin(accountId);
+      else setStatus("Conta criada, mas o host não retornou o identificador para iniciar o login.", "warning");
     } catch (error) { $("#account-form-error").textContent = error.message; }
   }
 
@@ -453,17 +575,19 @@
     const admin = action.startsWith("admin-");
     const account = action === "account-logout" ? accountById(targetId) : null;
     const actionKind = action.startsWith("device-") ? action.slice(7) : action;
-    const labels = { disable: "Desabilitar acesso", enable: "Reabilitar acesso", revoke: "Revogar permanentemente", "account-logout": "Encerrar login", "admin-disable": "Desativar administrador", "admin-enable": "Ativar administrador" };
+    const labels = { disable: "Desabilitar acesso", enable: "Reabilitar acesso", revoke: "Revogar permanentemente", "account-logout": "Encerrar login", "account-remove": "Excluir conta", "admin-disable": "Desativar administrador", "admin-enable": "Ativar administrador" };
     const title = labels[action] || labels[actionKind] || "Confirmar ação";
     $("#action-dialog-title").textContent = title;
-    $("#action-confirm").textContent = action.includes("revoke") ? "Revogar permanentemente" : "Confirmar";
-    $("#action-confirm").className = `admin-button ${action.includes("revoke") || action.includes("disable") ? "danger" : "primary"}`;
+    $("#action-confirm").textContent = action.includes("revoke") ? "Revogar permanentemente" : action === "account-remove" ? "Excluir conta" : "Confirmar";
+    $("#action-confirm").className = `admin-button ${action.includes("revoke") || action.includes("disable") || action === "account-remove" ? "danger" : "primary"}`;
     $("#action-dialog-copy").textContent = device
       ? `${device.label} (${device.deviceId}). ${actionKind === "revoke" ? "O registro será mantido no histórico, mas este token nunca poderá ser reabilitado." : actionKind === "disable" ? "O bloqueio é temporário e pode ser reabilitado depois." : actionKind === "enable" ? "O token voltará a aceitar novas conexões se ainda não estiver expirado." : ""}`
       : admin
         ? "A alteração será registrada na auditoria administrativa."
         : account
           ? `Encerrar o login de ${account.label} no host central?`
+          : action === "account-remove"
+            ? `Excluir ${accountById(targetId)?.label || "esta conta"}? O CODEX_HOME isolado será removido e os dispositivos vinculados serão revogados. Esta ação não pode ser desfeita.`
           : "Confirme esta operação.";
     $("#action-dialog").showModal();
   }
@@ -476,6 +600,10 @@
       const { action, targetId } = pending;
       if (action.startsWith("device-")) await api(`/api/admin/devices/${encodeURIComponent(targetId)}/${action.slice(7)}`, { method: "POST", body: JSON.stringify({}) });
       else if (action === "account-logout") await api(`/api/admin/accounts/${encodeURIComponent(targetId)}/logout`, { method: "POST", body: JSON.stringify({}) });
+      else if (action === "account-remove") {
+        const result = await api(`/api/admin/accounts/${encodeURIComponent(targetId)}/remove`, { method: "POST", body: JSON.stringify({}) });
+        setStatus(`${result.label || "Conta"} excluída; ${result.revokedDevices || 0} credencial(is) revogada(s).`, "success");
+      }
       else if (action.startsWith("admin-")) await api(`/api/admin/admins/${encodeURIComponent(targetId)}/${action.slice(6)}`, { method: "POST", body: JSON.stringify({}) });
       $("#action-dialog").close();
       state.pendingAction = null;
@@ -521,6 +649,9 @@
     $("#action-form").addEventListener("submit", executeAction);
     ["#account-cancel", "#invite-cancel", "#device-cancel", "#action-cancel"].forEach((selector) => $(selector).addEventListener("click", () => $(selector.replace("-cancel", "-dialog")).close()));
     $("#login-refresh").addEventListener("click", () => refreshAccount(state.loginAccountId));
+    $("#calendar-admin-today").addEventListener("click", () => { state.adminWeekStart = startOfDay(); $("#admin-schedule-selection").textContent = "Selecione uma reserva para abrir os detalhes."; renderAdminCalendar(); });
+    $("#calendar-admin-prev").addEventListener("click", () => { const next = new Date(state.adminWeekStart); next.setDate(next.getDate() - 7); state.adminWeekStart = next < startOfDay() ? startOfDay() : startOfDay(next); renderAdminCalendar(); });
+    $("#calendar-admin-next").addEventListener("click", () => { const next = new Date(state.adminWeekStart); next.setDate(next.getDate() + 7); state.adminWeekStart = startOfDay(next); renderAdminCalendar(); });
     $("#device-weekly-limit").addEventListener("input", (event) => { $("#device-percent-output").textContent = `${event.target.value}%`; });
     $("#copy-token").addEventListener("click", () => copyText(state.issuedToken, "Token copiado."));
     $("#copy-env").addEventListener("click", () => copyText(`$env:CODEX_REMOTE_TOKEN = "${state.issuedToken}"`, "Variável PowerShell copiada."));
@@ -531,6 +662,7 @@
   }
 
   async function init() {
+    state.adminWeekStart = startOfDay();
     bind();
     try {
       state.config = await window.RemoteCodexAuth.loadConfig();

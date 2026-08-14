@@ -116,6 +116,7 @@ export type ControlCommand =
   | "account.refresh"
   | "account.set-default"
   | "account.logout"
+  | "account.remove"
   | "admin.list"
   | "admin.enable"
   | "admin.disable"
@@ -288,6 +289,7 @@ function validControlCommand(value: unknown): value is ControlCommand {
     value === "account.refresh" ||
     value === "account.set-default" ||
     value === "account.logout" ||
+    value === "account.remove" ||
     value === "admin.list" ||
     value === "admin.enable" ||
     value === "admin.disable" ||

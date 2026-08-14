@@ -16,6 +16,7 @@ import {
 import {
   AccountStore,
   defaultAccountRegistryPath,
+  defaultAccountTokenFile,
   defaultAccountsDirectory,
   primaryAccountOptions,
   type AccountRecord,
@@ -801,6 +802,30 @@ export class HostAgent {
         await this.syncAccounts();
         await this.audit(actorId, command, "account", accountId);
         return { accountId, result: sanitizeLoginResult(result), account: worker.snapshotForDefault(await this.accountStore.defaultId()) };
+      }
+      case "account.remove": {
+        const accountId = requestString(payload, "accountId");
+        if (accountId === this.config.primaryAccountId) {
+          throw new Error("A conta principal é gerenciada pela configuração do host e não pode ser excluída.");
+        }
+        const account = await this.accountStore.get(accountId);
+        if (!account) throw new Error("Conta não encontrada.");
+        if (await this.accountStore.defaultId() === accountId) {
+          throw new Error("Defina outra conta padrão antes de excluir esta conta.");
+        }
+        const worker = this.workers.get(accountId);
+        if (worker) {
+          await worker.stop();
+          this.workers.delete(accountId);
+        }
+        const revokedDevices = await this.accessStore.revokeForAccount(accountId);
+        const removed = await this.accountStore.remove(accountId);
+        const tokenFile = defaultAccountTokenFile(accountId, { REMOTE_CODEX_STATE_DIR: path.dirname(this.config.accountRegistryPath) });
+        await fs.rm(tokenFile, { force: true });
+        await this.syncAccess();
+        await this.syncAccounts();
+        await this.audit(actorId, command, "account", accountId, { label: removed.label, revokedDevices });
+        return { accountId, label: removed.label, revokedDevices };
       }
       case "admin.list":
         if (!this.supabase) throw new Error("Supabase central não está configurado.");

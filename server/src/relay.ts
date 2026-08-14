@@ -516,6 +516,7 @@ export class RelayServer {
       else if (parts.length === 5 && parts[2] === "accounts" && parts[4] === "refresh" && parts[3]) command = "account.refresh";
       else if (parts.length === 5 && parts[2] === "accounts" && parts[4] === "logout" && parts[3]) command = "account.logout";
       else if (parts.length === 5 && parts[2] === "accounts" && parts[4] === "default" && parts[3]) command = "account.set-default";
+      else if (parts.length === 5 && parts[2] === "accounts" && parts[4] === "remove" && parts[3]) command = "account.remove";
       else if (parts.length === 3 && parts[2] === "devices") command = "access.issue";
       else if (parts.length === 5 && parts[2] === "devices" && parts[4] === "policy" && parts[3]) command = "access.update-policy";
       else if (parts.length === 5 && parts[2] === "devices" && parts[4] === "disable" && parts[3]) command = "access.disable";
@@ -544,7 +545,7 @@ export class RelayServer {
         return;
       }
 
-      if (command === "account.login.start" || command === "account.refresh" || command === "account.logout") payload = { ...body, accountId: parts[3] };
+      if (command === "account.login.start" || command === "account.refresh" || command === "account.logout" || command === "account.remove") payload = { ...body, accountId: parts[3] };
       if (command === "account.set-default") payload = { ...body, accountId: typeof body.accountId === "string" ? body.accountId : parts[3] };
       if (command.startsWith("access.")) payload = { ...body, deviceId: parts.length >= 4 ? parts[3] : body.deviceId };
       if (command === "admin.enable" || command === "admin.disable") payload = { ...body, userId: parts[3] };

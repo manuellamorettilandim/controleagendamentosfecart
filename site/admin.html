@@ -19,7 +19,7 @@
     <main id="app-view" class="admin-app">
       <aside class="admin-sidebar">
         <a class="admin-sidebar-brand" href="/admin" aria-label="Remote Codex, início do painel">
-          <span class="admin-brand-mark">RC</span>
+          <span class="brand-logo" aria-hidden="true"><svg viewBox="0 0 32 32"><rect x="2" y="2" width="28" height="28" rx="9"></rect><path d="M11 9.5h5a6.5 6.5 0 0 1 0 13h-5a6.5 6.5 0 0 1 0-13Z"></path><path d="M15.5 16H23"></path><circle cx="23.5" cy="16" r="2.2"></circle></svg></span>
           <span><strong>Remote Codex</strong><small>Controle central</small></span>
         </a>
         <div class="admin-sidebar-label">Painel</div>
@@ -30,7 +30,6 @@
           <button data-tab="reservations" type="button"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M7 3v4M17 3v4M3 10h18M7 14h3M14 14h3M7 18h3"></path></svg></span> Agenda</button>
           <button data-tab="admins" id="admins-tab" type="button"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3l2 4 4.5.7-3.2 3.2.8 4.6-4.1-2.2-4.1 2.2.8-4.6-3.2-3.2L10 7l2-4z"></path><path d="M5 20h14"></path></svg></span> Administradores</button>
         </nav>
-        <div class="admin-sidebar-tools"><button class="theme-toggle" data-theme-toggle type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"></path></svg><span class="theme-label">Tema</span></button></div>
         <div class="admin-sidebar-spacer"></div>
         <div class="admin-sidebar-note"><strong>Segurança primeiro</strong><span>O login OpenAI nunca sai do host central.</span></div>
         <div class="admin-sidebar-user">
@@ -67,9 +66,9 @@
         </section>
 
         <section id="tab-devices" class="admin-tab-panel" hidden>
-          <div class="admin-section-head"><div><h2>Dispositivos autorizados</h2><p class="admin-muted">Cada conta pode ter um token não revogado. O token bruto fica disponível apenas no modal de emissão; depois, apenas fingerprint, política e uso observado permanecem.</p></div><div class="admin-actions"><button id="refresh-devices" class="admin-button ghost">Atualizar</button><button id="issue-device" class="admin-button primary">Emitir token</button></div></div>
+          <div class="admin-panel-intro"><div><span class="admin-context">CONTROLE DE ACESSO</span><p id="devices-summary" class="admin-muted">Tokens temporários, políticas e uso observado em um só lugar.</p></div><div class="admin-actions"><button id="refresh-devices" class="admin-button ghost" type="button">Atualizar</button><button id="issue-device" class="admin-button primary" type="button">Emitir token</button></div></div>
           <div id="devices-note" class="admin-status"></div>
-          <div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Dispositivo</th><th>Conta</th><th>Política</th><th>Uso observado</th><th>Status</th><th>Ações</th></tr></thead><tbody id="devices-body"></tbody></table></div>
+          <div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Acesso</th><th>Conta e política</th><th>Uso observado</th><th>Status</th><th>Ações</th></tr></thead><tbody id="devices-body"></tbody></table></div>
         </section>
 
         <section id="tab-users" class="admin-tab-panel" hidden>
@@ -79,8 +78,11 @@
         </section>
 
         <section id="tab-reservations" class="admin-tab-panel" hidden>
-          <div class="admin-section-head"><div><h2>Agenda e sessões</h2><p class="admin-muted">Reservas recentes, ativações e vínculo com credenciais temporárias emitidas pelo host.</p></div><button id="refresh-reservations" class="admin-button ghost">Atualizar</button></div>
+          <div class="admin-panel-intro"><div><span class="admin-context">OPERAÇÃO DA SEMANA</span><p class="admin-muted">Janelas ativas, futuras e credenciais emitidas pelo host central.</p></div><div class="admin-actions"><button id="calendar-admin-today" class="admin-button ghost" type="button">Hoje</button><button id="refresh-reservations" class="admin-button primary" type="button">Atualizar</button></div></div>
           <div id="reservations-summary" class="admin-summary-strip"></div>
+          <div class="calendar-toolbar admin-calendar-toolbar"><div><strong id="admin-schedule-range">Semana atual</strong><span id="admin-schedule-selection">Selecione uma reserva para abrir os detalhes.</span></div><div class="calendar-nav" aria-label="Navegar entre semanas"><button id="calendar-admin-prev" class="icon-button" type="button" aria-label="Semana anterior" title="Semana anterior">←</button><button id="calendar-admin-next" class="icon-button" type="button" aria-label="Próxima semana" title="Próxima semana">→</button></div></div>
+          <div id="admin-calendar-board" class="calendar-board admin-calendar-board" aria-label="Agenda operacional semanal"></div>
+          <div class="admin-table-heading"><h3>Detalhes das reservas</h3><span>Use a grade para entender a distribuição; a tabela mantém os dados completos.</span></div>
           <div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Usuário</th><th>Janela</th><th>Conta</th><th>Franquia</th><th>Sessão</th><th>Status</th></tr></thead><tbody id="reservations-body"></tbody></table></div>
         </section>
 

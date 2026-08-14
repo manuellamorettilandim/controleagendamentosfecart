@@ -17,7 +17,7 @@
       FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
     -->
     <header class="user-header">
-      <a class="user-brand" href="/dashboard"><span class="brand-glyph">RC</span><span><strong>Remote Codex</strong><small>Sessão agendada</small></span></a>
+      <a class="user-brand" href="/dashboard"><span class="brand-logo" aria-hidden="true"><svg viewBox="0 0 32 32"><rect x="2" y="2" width="28" height="28" rx="9"></rect><path d="M11 9.5h5a6.5 6.5 0 0 1 0 13h-5a6.5 6.5 0 0 1 0-13Z"></path><path d="M15.5 16H23"></path><circle cx="23.5" cy="16" r="2.2"></circle></svg></span><span><strong>Remote Codex</strong><small>Sessão agendada</small></span></a>
       <div class="user-header-actions">
         <button class="theme-toggle" data-theme-toggle type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"></path></svg><span class="theme-label">Tema</span></button>
         <div class="user-account">
@@ -72,13 +72,10 @@
       </section>
 
       <section class="schedule-section" aria-labelledby="schedule-title">
-        <div class="schedule-heading"><div><h2 id="schedule-title">Agenda de acesso</h2><p>Escolha uma hora livre. Cada reserva pode durar até três horas.</p></div><button id="refresh-dashboard" class="secondary-button" type="button">Atualizar</button></div>
-        <div id="date-strip" class="date-strip" role="tablist" aria-label="Escolha o dia"></div>
-        <div class="schedule-board">
-          <div class="schedule-axis"><span>00h</span><span>06h</span><span>12h</span><span>18h</span><span>24h</span></div>
-          <div id="hour-slots" class="hour-slots" aria-label="Escolha o horário"></div>
-        </div>
-        <div class="schedule-legend" aria-label="Legenda da agenda"><span><i></i> livre</span><span class="selected"><i></i> selecionado</span><span class="busy"><i></i> ocupado</span></div>
+        <div class="schedule-heading"><div><h2 id="schedule-title">Agenda de acesso</h2><p>Escolha uma célula livre. A semana fica visível para você comparar dias e horários antes de reservar.</p></div><div class="schedule-heading-actions"><button id="calendar-today" class="secondary-button" type="button">Hoje</button><button id="refresh-dashboard" class="secondary-button" type="button">Atualizar</button></div></div>
+        <div class="calendar-toolbar"><div><strong id="schedule-range">Semana atual</strong><span id="schedule-selection">Nenhum horário selecionado</span></div><div class="calendar-nav" aria-label="Navegar entre semanas"><button id="calendar-prev" class="icon-button" type="button" aria-label="Semana anterior" title="Semana anterior">←</button><button id="calendar-next" class="icon-button" type="button" aria-label="Próxima semana" title="Próxima semana">→</button></div></div>
+        <div id="calendar-board" class="calendar-board" aria-label="Agenda semanal de acesso"></div>
+        <div class="schedule-legend" aria-label="Legenda da agenda"><span><i></i> livre</span><span class="selected"><i></i> selecionado</span><span class="busy"><i></i> ocupado</span><span class="mine"><i></i> sua reserva</span></div>
         <div class="booking-controls">
           <fieldset><legend>Duração</legend><div class="duration-switch"><button type="button" data-duration="1" class="active">1 hora</button><button type="button" data-duration="2">2 horas</button><button type="button" data-duration="3">3 horas</button></div></fieldset>
           <div class="booking-summary"><span id="booking-summary">Selecione um horário livre</span><button id="book-slot" class="action-button" type="button" disabled>Agendar horário</button></div>

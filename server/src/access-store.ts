@@ -532,6 +532,21 @@ export class AccessStore {
     });
   }
 
+  public async revokeForAccount(accountId: string, now = new Date()): Promise<number> {
+    return withWriteLock(this.filePath, async () => {
+      const registry = await this.read();
+      const revokedAt = now.toISOString();
+      let count = 0;
+      for (const device of registry.devices) {
+        if (device.accountId !== accountId || device.revokedAt !== null) continue;
+        device.revokedAt = revokedAt;
+        count += 1;
+      }
+      if (count > 0) await this.write(registry);
+      return count;
+    });
+  }
+
   public async touch(deviceId: string, now = new Date()): Promise<void> {
     await withWriteLock(this.filePath, async () => {
       const registry = await this.read();

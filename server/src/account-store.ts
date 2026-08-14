@@ -237,6 +237,31 @@ export class AccountStore {
     });
   }
 
+  public async remove(accountId: string): Promise<AccountRecord> {
+    return withWriteLock(this.filePath, async () => {
+      const registry = await this.read();
+      const account = registry.accounts.find((candidate) => candidate.accountId === accountId);
+      if (!account) {
+        throw new Error("Account not found.");
+      }
+      if (registry.defaultAccountId === accountId) {
+        throw new Error("Defina outra conta padrão antes de excluir esta conta.");
+      }
+
+      registry.accounts = registry.accounts.filter((candidate) => candidate.accountId !== accountId);
+      await this.write(registry);
+
+      const accountsRoot = path.resolve(this.accountsDirectory);
+      const accountHome = path.resolve(account.codeHome);
+      const relativeHome = path.relative(accountsRoot, accountHome);
+      const isManagedHome = Boolean(relativeHome) && !relativeHome.startsWith(`..${path.sep}`) && !path.isAbsolute(relativeHome);
+      if (isManagedHome) {
+        await fs.rm(accountHome, { recursive: true, force: true });
+      }
+      return account;
+    });
+  }
+
   public async setDefault(accountId: string, now = new Date()): Promise<AccountRecord> {
     return withWriteLock(this.filePath, async () => {
       const registry = await this.read();
