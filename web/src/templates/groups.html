@@ -2,47 +2,22 @@
       <aside class="admin-sidebar" data-admin-sidebar aria-label="Navegação administrativa"></aside>
 
       <main class="admin-main">
-        <header class="admin-header groups-header">
+        <header class="admin-header">
           <div class="page-heading">
             <p class="eyebrow">Fecart AI Share</p>
             <h1>Grupos</h1>
             <p>Gerenciamento dos grupos, permissões e sessões da plataforma</p>
           </div>
 
-          <div class="admin-header-actions groups-header-actions">
-            <label class="admin-search groups-search" for="groups-search">
+          <div class="admin-header-actions">
+            <label class="admin-search" for="groups-search">
               <i class="ph ph-magnifying-glass" aria-hidden="true"></i>
               <input id="groups-search" type="search" placeholder="Buscar grupo, conta..." autocomplete="off">
-            </label>
-            <button id="groups-filter-toggle" class="groups-header-button" type="button" aria-expanded="false" aria-controls="groups-filter-panel">
-              <i class="ph ph-funnel" aria-hidden="true"></i><span>Filtros</span>
-            </button>
-            <label class="groups-status-select" for="groups-status">
-              <span class="sr-only">Filtrar por status</span>
-              <select id="groups-status">
-                <option value="all">Todos os status</option>
-                <option value="active">Token ativo</option>
-                <option value="inactive">Token inativo</option>
-                <option value="disabled">Token desabilitado</option>
-              </select>
-              <i class="ph ph-caret-down" aria-hidden="true"></i>
             </label>
             <button id="theme-toggle" class="admin-theme-toggle" type="button" aria-label="Ativar tema claro" aria-pressed="true" title="Ativar tema claro">
               <i class="ph ph-sun" aria-hidden="true"></i>
             </button>
-            <div class="groups-notification-anchor">
-              <button id="groups-notifications" class="groups-icon-button notification-button" type="button" aria-label="Abrir notificações" aria-expanded="false" aria-controls="groups-notification-popover">
-                <i class="ph ph-bell" aria-hidden="true"></i><span class="notification-dot" aria-hidden="true"></span>
-              </button>
-              <section id="groups-notification-popover" class="groups-popover" hidden aria-label="Notificações">
-                <header><strong>Notificações</strong><button type="button" data-close-notifications aria-label="Fechar notificações"><i class="ph ph-x" aria-hidden="true"></i></button></header>
-                <p><i class="ph ph-clock-countdown" aria-hidden="true"></i><span><strong>3 solicitações</strong><small>aguardam decisão</small></span></p>
-                <p><i class="ph ph-calendar-check" aria-hidden="true"></i><span><strong>Grupo 2</strong><small>sessão iniciada hoje às 10:00</small></span></p>
-              </section>
-            </div>
-            <div class="groups-avatar-wrap" aria-label="Administrador">
-              <div class="admin-avatar">AD</div><i class="ph ph-caret-down" aria-hidden="true"></i>
-            </div>
+            <div class="admin-avatar" aria-label="Administrador">AD</div>
           </div>
         </header>
 
@@ -84,6 +59,17 @@
                 <header class="groups-panel-header">
                   <div class="panel-title"><h2>Lista de grupos</h2><button class="info-button" type="button" aria-label="Sobre a lista de grupos" title="Grupos cadastrados na plataforma"><i class="ph ph-info" aria-hidden="true"></i></button></div>
                   <div class="groups-panel-actions">
+                    <button id="groups-filter-toggle" class="groups-header-button" type="button" aria-expanded="false" aria-controls="groups-filter-panel"><i class="ph ph-funnel" aria-hidden="true"></i><span>Filtros</span></button>
+                    <label class="groups-status-select" for="groups-status">
+                      <span class="sr-only">Filtrar por status</span>
+                      <select id="groups-status">
+                        <option value="all">Todos os status</option>
+                        <option value="active">Token ativo</option>
+                        <option value="inactive">Token inativo</option>
+                        <option value="disabled">Token desabilitado</option>
+                      </select>
+                      <i class="ph ph-caret-down" aria-hidden="true"></i>
+                    </label>
                     <button id="new-group-button" class="groups-primary-button" type="button"><i class="ph ph-plus" aria-hidden="true"></i>Novo grupo</button>
                     <button id="export-groups-button" class="groups-secondary-button" type="button"><i class="ph ph-download-simple" aria-hidden="true"></i>Exportar</button>
                   </div>

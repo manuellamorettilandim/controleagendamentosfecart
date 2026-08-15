@@ -341,6 +341,7 @@
   function setNotificationPopover(open) {
     const popover = $("#groups-notification-popover");
     const toggle = $("#groups-notifications");
+    if (!popover || !toggle) return;
     popover.hidden = !open;
     toggle.setAttribute("aria-expanded", String(open));
   }
