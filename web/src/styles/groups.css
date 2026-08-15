@@ -329,7 +329,7 @@
 
 .groups-workspace {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 444px;
+  grid-template-columns: minmax(0, 1fr);
   align-items: start;
   gap: 14px;
 }
@@ -638,6 +638,12 @@
   gap: 7px;
 }
 
+.groups-pagination-pages {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
 .page-button {
   display: grid;
   width: 29px;
@@ -764,6 +770,41 @@
 .group-detail-panel {
   min-height: 716px;
   padding: 18px 19px 20px;
+}
+
+.groups-detail-dialog {
+  width: min(560px, calc(100vw - 24px));
+  max-width: 560px;
+  max-height: calc(100vh - 24px);
+  padding: 0;
+  overflow: auto;
+}
+
+.groups-detail-dialog .group-detail-modal-content {
+  padding: 18px 19px 20px;
+}
+
+.groups-detail-dialog .group-detail-header {
+  display: block;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+}
+
+.group-detail-modal-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 22px;
+}
+
+.group-detail-modal-heading .panel-title h2 {
+  font-size: 15px;
+}
+
+.group-detail-modal-heading .groups-dialog-close {
+  flex: 0 0 auto;
 }
 
 .group-detail-header > .panel-title {
@@ -1193,6 +1234,17 @@
   border-top: 1px solid var(--admin-line);
 }
 
+.groups-detail-dialog .recent-history > header {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+}
+
+.groups-detail-dialog .recent-history > header .panel-title h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
 .sr-only {
   position: absolute;
   width: 1px;
@@ -1520,5 +1572,3 @@
     width: 100%;
   }
 }
-
-

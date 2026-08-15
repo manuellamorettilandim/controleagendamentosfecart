@@ -25,22 +25,22 @@
           <section class="groups-stats-grid" aria-label="Resumo dos grupos">
             <article class="groups-stat-card">
               <div class="groups-stat-icon groups-stat-icon-blue"><i class="ph ph-users-three" aria-hidden="true"></i></div>
-              <div class="groups-stat-copy"><span>Grupos cadastrados</span><strong id="groups-total-count">12</strong><small class="trend-positive"><i class="ph ph-arrow-up" aria-hidden="true"></i><b>2</b> vs. últimos 7 dias</small></div>
+              <div class="groups-stat-copy"><span>Grupos cadastrados</span><strong id="groups-total-count">0</strong><small>Dados atuais do servidor</small></div>
               <i class="ph ph-chart-line-up groups-stat-chart groups-stat-chart-blue" aria-hidden="true"></i>
             </article>
             <article class="groups-stat-card">
               <div class="groups-stat-icon groups-stat-icon-green"><i class="ph ph-activity" aria-hidden="true"></i></div>
-              <div class="groups-stat-copy"><span>Com sessão ativa</span><strong id="groups-active-count">4</strong><small class="trend-positive"><i class="ph ph-arrow-up" aria-hidden="true"></i><b>1</b> vs. últimos 7 dias</small></div>
+              <div class="groups-stat-copy"><span>Com sessão ativa</span><strong id="groups-active-count">0</strong><small>Dados atuais do servidor</small></div>
               <i class="ph ph-chart-line-up groups-stat-chart groups-stat-chart-green" aria-hidden="true"></i>
             </article>
             <article class="groups-stat-card">
               <div class="groups-stat-icon groups-stat-icon-blue"><i class="ph ph-calendar-blank" aria-hidden="true"></i></div>
-              <div class="groups-stat-copy"><span>Com próximo agendamento</span><strong id="groups-upcoming-count">6</strong><small class="trend-neutral"><i class="ph ph-minus" aria-hidden="true"></i> estável vs. últimos 7 dias</small></div>
+              <div class="groups-stat-copy"><span>Com próximo agendamento</span><strong id="groups-upcoming-count">0</strong><small>Dados atuais do servidor</small></div>
               <i class="ph ph-chart-line-up groups-stat-chart groups-stat-chart-blue" aria-hidden="true"></i>
             </article>
             <article class="groups-stat-card">
               <div class="groups-stat-icon groups-stat-icon-red"><i class="ph ph-lock-key" aria-hidden="true"></i></div>
-              <div class="groups-stat-copy"><span>Bloqueados / token desabilitado</span><strong id="groups-blocked-count">2</strong><small class="trend-negative"><i class="ph ph-arrow-up" aria-hidden="true"></i><b>1</b> vs. últimos 7 dias</small></div>
+              <div class="groups-stat-copy"><span>Bloqueados / token desabilitado</span><strong id="groups-blocked-count">0</strong><small>Dados atuais do servidor</small></div>
               <i class="ph ph-chart-line-up groups-stat-chart groups-stat-chart-red" aria-hidden="true"></i>
             </article>
           </section>
@@ -70,7 +70,6 @@
                       </select>
                       <i class="ph ph-caret-down" aria-hidden="true"></i>
                     </label>
-                    <button id="new-group-button" class="groups-primary-button" type="button"><i class="ph ph-plus" aria-hidden="true"></i>Novo grupo</button>
                     <button id="export-groups-button" class="groups-secondary-button" type="button"><i class="ph ph-download-simple" aria-hidden="true"></i>Exportar</button>
                   </div>
                 </header>
@@ -83,20 +82,19 @@
                   </table>
                 </div>
                 <footer class="groups-list-footer">
-                  <span id="groups-pagination-label">Mostrando 1 a 7 de 12 grupos</span>
+                  <span id="groups-pagination-label">Carregando…</span>
                   <div class="groups-pagination">
                     <button id="groups-page-prev" class="page-button" type="button" aria-label="Página anterior"><i class="ph ph-caret-left" aria-hidden="true"></i></button>
-                    <button class="page-button is-active" type="button" data-page-number="1">1</button>
-                    <button class="page-button" type="button" data-page-number="2">2</button>
+                    <div id="groups-pagination-pages" class="groups-pagination-pages" aria-label="Páginas"></div>
                     <button id="groups-page-next" class="page-button" type="button" aria-label="Próxima página"><i class="ph ph-caret-right" aria-hidden="true"></i></button>
-                    <label class="groups-page-size"><select id="groups-page-size" aria-label="Grupos por página"><option value="7" selected>10 por página</option></select><i class="ph ph-caret-down" aria-hidden="true"></i></label>
+                    <label class="groups-page-size"><select id="groups-page-size" aria-label="Grupos por página"><option value="7" selected>7 por página</option></select><i class="ph ph-caret-down" aria-hidden="true"></i></label>
                   </div>
                 </footer>
               </article>
 
               <article class="panel groups-panel pending-groups-panel">
                 <header class="groups-panel-header pending-panel-header">
-                  <div class="panel-title"><h2>Solicitações pendentes do grupo</h2><button class="info-button" type="button" aria-label="Sobre solicitações pendentes" title="Solicitações aguardando aprovação"><i class="ph ph-info" aria-hidden="true"></i></button></div>
+                  <div class="panel-title"><h2>Solicitações pendentes</h2><button class="info-button" type="button" aria-label="Sobre solicitações pendentes" title="Solicitações aguardando aprovação"><i class="ph ph-info" aria-hidden="true"></i></button></div>
                 </header>
                 <div class="pending-table-wrap">
                   <table class="pending-table">
@@ -104,54 +102,48 @@
                     <tbody id="pending-table-body"></tbody>
                   </table>
                 </div>
-                <button id="pending-all-button" class="pending-all-button" type="button">Ver todas as solicitações pendentes (3)<i class="ph ph-caret-right" aria-hidden="true"></i></button>
+                <button id="pending-all-button" class="pending-all-button" type="button">Ver todas as solicitações pendentes <span id="pending-all-count">(0)</span><i class="ph ph-caret-right" aria-hidden="true"></i></button>
               </article>
             </div>
 
-            <aside class="panel group-detail-panel" aria-labelledby="group-detail-title">
-              <header class="group-detail-header">
-                <div class="panel-title"><h2>Detalhes do grupo</h2><button class="info-button" type="button" aria-label="Sobre os detalhes do grupo" title="Informações e ações do grupo"><i class="ph ph-info" aria-hidden="true"></i></button></div>
-                <div class="group-detail-identity">
-                  <div class="group-detail-icon"><i class="ph ph-users-three" aria-hidden="true"></i></div>
-                  <div><div class="group-detail-name-row"><h2 id="group-detail-title">Grupo 2</h2><span id="group-detail-status" class="group-status-pill is-active">Ativo</span></div></div>
-                </div>
-              </header>
-
-              <dl class="group-detail-list">
-                <div><dt>Conta vinculada</dt><dd id="detail-account">Conta 1</dd></div>
-                <div><dt>Status do token</dt><dd id="detail-token"><span class="detail-status-dot is-active"></span>Token ativo</dd></div>
-                <div><dt>Permissão de agendar</dt><dd id="detail-permission"><span class="permission-pill is-allowed">Pode agendar</span></dd></div>
-                <div><dt>Sessão atual</dt><dd id="detail-session"><span class="detail-status-dot is-active"></span><span><strong>Sessão ativa hoje</strong><small>10:00 – 11:30</small></span></dd></div>
-                <div><dt>Quota reservada atual</dt><dd id="detail-quota"><span>12%</span><span class="detail-quota-bar"><i></i></span></dd></div>
-                <div><dt>Última atividade</dt><dd id="detail-last-activity">Hoje 11:20</dd></div>
-              </dl>
-
-              <section class="recent-history" aria-labelledby="recent-history-title">
-                <header><div class="panel-title"><h3 id="recent-history-title">Histórico recente</h3><button class="info-button" type="button" aria-label="Sobre o histórico recente" title="Últimas ações do grupo"><i class="ph ph-info" aria-hidden="true"></i></button></div><button id="full-history-button" class="detail-link-button" type="button">Ver histórico completo</button></header>
-                <ul id="recent-history-list"></ul>
-              </section>
-
-              <div class="group-detail-actions">
-                <button id="detail-disable-button" class="detail-action detail-action-danger" type="button"><i class="ph ph-lock-key" aria-hidden="true"></i><span>Desabilitar token</span></button>
-                <button id="detail-block-button" class="detail-action detail-action-danger-outline" type="button"><i class="ph ph-prohibit" aria-hidden="true"></i><span>Bloquear agendamento</span></button>
-                <button id="detail-requests-button" class="detail-action detail-action-secondary" type="button"><i class="ph ph-clipboard-text" aria-hidden="true"></i><span>Ver solicitações do grupo</span></button>
-              </div>
-            </aside>
           </section>
         </div>
       </main>
     </div>
 
-    <dialog id="group-modal" class="groups-dialog" aria-labelledby="group-modal-title">
-      <form id="group-form" method="dialog">
-        <header><div><p class="modal-eyebrow">Novo cadastro</p><h2 id="group-modal-title">Adicionar grupo</h2><p>Crie um grupo e defina a conta responsável pelo atendimento.</p></div><button class="groups-dialog-close" type="button" data-close-group-modal aria-label="Fechar"><i class="ph ph-x" aria-hidden="true"></i></button></header>
-        <div class="groups-dialog-body">
-          <label>Nome do grupo<input id="new-group-name" required maxlength="40" placeholder="Ex.: Grupo 13"></label>
-          <label>Conta vinculada<select id="new-group-account"><option>Conta 1</option><option>Conta 2</option><option>Conta 3</option></select></label>
-          <label class="groups-dialog-check"><input type="checkbox" checked> Permitir agendamento para este grupo</label>
+    <dialog id="group-detail-modal" class="groups-dialog groups-detail-dialog" aria-labelledby="group-detail-title">
+      <div class="group-detail-modal-content">
+        <header class="group-detail-header">
+          <div class="group-detail-modal-heading">
+            <div class="panel-title"><h2>Detalhes do grupo</h2><button class="info-button" type="button" aria-label="Sobre os detalhes do grupo" title="Informações do grupo"><i class="ph ph-info" aria-hidden="true"></i></button></div>
+            <button class="groups-dialog-close" type="button" data-close-group-detail-modal aria-label="Fechar detalhes"><i class="ph ph-x" aria-hidden="true"></i></button>
+          </div>
+          <div class="group-detail-identity">
+            <div class="group-detail-icon"><i class="ph ph-users-three" aria-hidden="true"></i></div>
+            <div><div class="group-detail-name-row"><h2 id="group-detail-title">—</h2><span id="group-detail-status" class="group-status-pill">—</span></div></div>
+          </div>
+        </header>
+
+        <dl class="group-detail-list">
+          <div><dt>Conta vinculada</dt><dd id="detail-account">—</dd></div>
+          <div><dt>Usuários do grupo</dt><dd id="detail-members">—</dd></div>
+          <div><dt>Status do token</dt><dd id="detail-token">—</dd></div>
+          <div><dt>Permissão de agendar</dt><dd id="detail-permission">—</dd></div>
+          <div><dt>Sessão atual</dt><dd id="detail-session">—</dd></div>
+          <div><dt>Quota reservada atual</dt><dd id="detail-quota">—</dd></div>
+          <div><dt>Última atividade</dt><dd id="detail-last-activity">—</dd></div>
+        </dl>
+
+        <section class="recent-history" aria-labelledby="recent-history-title">
+          <header><div class="panel-title"><h3 id="recent-history-title">Histórico recente</h3><button class="info-button" type="button" aria-label="Sobre o histórico recente" title="Atividades reais do grupo"><i class="ph ph-info" aria-hidden="true"></i></button></div><button id="full-history-button" class="detail-link-button" type="button">Ver histórico completo</button></header>
+          <ul id="recent-history-list"></ul>
+        </section>
+
+        <div class="group-detail-actions">
+          <button id="detail-refresh-button" class="detail-action detail-action-secondary" type="button"><i class="ph ph-arrows-clockwise" aria-hidden="true"></i><span>Atualizar dados</span></button>
+          <button id="detail-requests-button" class="detail-action detail-action-secondary" type="button"><i class="ph ph-clipboard-text" aria-hidden="true"></i><span>Ver solicitações do grupo</span></button>
         </div>
-        <footer><button class="groups-secondary-button" type="button" data-close-group-modal>Cancelar</button><button class="groups-primary-button" type="submit"><i class="ph ph-plus" aria-hidden="true"></i>Criar grupo</button></footer>
-      </form>
+      </div>
     </dialog>
 
     <div id="groups-toast" class="admin-toast" role="status" aria-live="polite" aria-atomic="true"></div>
