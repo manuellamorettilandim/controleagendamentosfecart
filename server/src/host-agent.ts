@@ -559,7 +559,8 @@ export class HostAgent {
         void this.handleControlRequest(message);
         return;
       case "heartbeat":
-        this.send({ v: PROTOCOL_VERSION, type: "heartbeat", timestamp: Date.now() });
+        // Heartbeats are unidirectional from the host. The relay records the
+        // received frame to refresh liveness, so do not echo it back.
         return;
       case "access.seen":
         void this.accessStore.touch(message.deviceId).then(() => this.syncDeviceSnapshots()).catch((error) => this.logError("access.seen", error));

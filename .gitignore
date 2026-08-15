@@ -4,6 +4,7 @@ site/vendor/
 .env
 .env.*
 !.env.example
+.codex/
 .codex/remote-access.json
 .codex/remote-access.json.*
 *.token

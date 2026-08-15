@@ -95,7 +95,7 @@
         });
       }
     } catch {
-      // The local session must still be cleared if Supabase is temporarily unavailable.
+      // A sessão local inválida ainda precisa ser removida.
     } finally {
       clearSession();
     }

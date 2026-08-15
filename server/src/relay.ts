@@ -28,8 +28,8 @@ const DEFAULT_HEARTBEAT_TIMEOUT_MS = 20_000;
 const DEFAULT_MAX_PAYLOAD = 8 * 1024 * 1024;
 
 const STATIC_ROUTES: Record<string, string> = {
-  "/": "index.html",
-  "/index.html": "index.html",
+  "/": "login.html",
+  "/index.html": "login.html",
   "/cli": "cli.html",
   "/cli.html": "cli.html",
   "/app": "app.html",
@@ -44,14 +44,27 @@ const STATIC_ROUTES: Record<string, string> = {
   "/security.html": "security.html",
   "/login": "login.html",
   "/login.html": "login.html",
+  "/login.css": "login.css",
+  "/dashboard.css": "dashboard.css",
+  "/admin.css": "admin.css",
+  "/groups.css": "groups.css",
+  "/assets/fecart-logo.png": "assets/fecart-logo.png",
+  "/vendor/phosphor.css": "vendor/phosphor.css",
+  "/vendor/Phosphor.woff2": "vendor/Phosphor.woff2",
   "/admin": "admin.html",
   "/admin.html": "admin.html",
+  "/groups": "groups.html",
+  "/groups.html": "groups.html",
   "/dashboard": "dashboard.html",
   "/dashboard.html": "dashboard.html",
   "/auth.js": "auth.js",
+  "/components.js": "components.js",
+  "/admin-shell.js": "admin-shell.js",
   "/login.js": "login.js",
   "/admin.js": "admin.js",
+  "/groups.js": "groups.js",
   "/dashboard.js": "dashboard.js",
+  "/schedule-calendar.js": "schedule-calendar.js",
   "/calendar.js": "calendar.js",
   "/styles.css": "styles.css",
   "/vendor/pico.min.css": "vendor/pico.min.css",
@@ -61,6 +74,16 @@ const STATIC_ROUTES: Record<string, string> = {
   "/vendor/fullcalendar-theme-classic.css": "vendor/fullcalendar-theme-classic.css",
   "/vendor/fullcalendar-palette-classic.css": "vendor/fullcalendar-palette-classic.css",
   "/vendor/fullcalendar-locale-pt-br.js": "vendor/fullcalendar-locale-pt-br.js",
+  "/vendor/preact.min.js": "vendor/preact.min.js",
+  "/vendor/preact-hooks.umd.js": "vendor/preact-hooks.umd.js",
+  "/vendor/preact-signals-core.min.js": "vendor/preact-signals-core.min.js",
+  "/vendor/preact-signals.min.js": "vendor/preact-signals.min.js",
+  "/vendor/preact-jsx-runtime.umd.js": "vendor/preact-jsx-runtime.umd.js",
+  "/vendor/preact-compat.umd.js": "vendor/preact-compat.umd.js",
+  "/vendor/schedule-x-calendar.js": "vendor/schedule-x-calendar.js",
+  "/vendor/schedule-x-events.js": "vendor/schedule-x-events.js",
+  "/vendor/schedule-x-controls.js": "vendor/schedule-x-controls.js",
+  "/vendor/schedule-x.css": "vendor/schedule-x.css",
   "/site.js": "site.js",
 };
 
@@ -154,6 +177,12 @@ function dataError(value: unknown, fallback: string): string {
 
 function urlHasQuery(rawUrl: string | undefined): boolean {
   return Boolean(rawUrl && new URL(rawUrl, "http://relay.invalid").search);
+}
+
+function isAllowedLoginQuery(url: URL): boolean {
+  if (!["/", "/login", "/login.html"].includes(url.pathname)) return false;
+  const entries = [...url.searchParams.entries()];
+  return entries.length === 1 && entries[0]?.[0] === "expired" && entries[0]?.[1] === "1";
 }
 
 function closeCode(code: number | undefined, fallback: number): number {
@@ -406,7 +435,7 @@ export class RelayServer {
       return;
     }
 
-    if (url.search) {
+    if (url.search && !isAllowedLoginQuery(url)) {
       response.statusCode = 400;
       response.end("Query strings are not used by this service.\n");
       return;
@@ -430,11 +459,21 @@ export class RelayServer {
     try {
       const contents = await fs.readFile(filePath);
       const extension = path.extname(filePath).toLowerCase();
-      const contentType = extension === ".html" ? "text/html; charset=utf-8" : extension === ".css" ? "text/css; charset=utf-8" : "application/javascript; charset=utf-8";
+      const contentType = extension === ".html"
+        ? "text/html; charset=utf-8"
+        : extension === ".css"
+          ? "text/css; charset=utf-8"
+          : extension === ".png"
+            ? "image/png"
+            : extension === ".woff2"
+              ? "font/woff2"
+              : extension === ".woff"
+                ? "font/woff"
+                : "application/javascript; charset=utf-8";
       response.statusCode = 200;
       response.setHeader("Content-Type", contentType);
       response.setHeader("X-Content-Type-Options", "nosniff");
-      response.setHeader("Content-Security-Policy", "default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:; connect-src 'self' https://*.supabase.co https://*.supabase.in");
+      response.setHeader("Content-Security-Policy", "default-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'; script-src 'self'; img-src 'self' data:; connect-src 'self' https://*.supabase.co https://*.supabase.in");
       if (request.method === "HEAD") {
         response.end();
       } else {
@@ -475,6 +514,14 @@ export class RelayServer {
     const parts = routeParts(pathname);
     const method = request.method ?? "GET";
     try {
+      if (method === "GET" && parts.length === 3 && parts[2] === "session") {
+        jsonResponse(response, 200, {
+          userId: identity.userId,
+          email: identity.email,
+          role: identity.role,
+        });
+        return;
+      }
       if (method === "GET" && parts.length === 3 && parts[2] === "accounts") {
         jsonResponse(response, 200, await this.adminAccounts(token, identity));
         return;
@@ -502,7 +549,7 @@ export class RelayServer {
       }
       if (method === "GET" && parts.length === 3 && parts[2] === "reservations") {
         const reservations = await this.authClient.queryAdmin<Record<string, unknown>>(token, "codex_reservations", {
-          select: "id,user_id,account_id,starts_at,ends_at,status,device_id,quota_base_used_percent,quota_budget_percent,activated_at,cancelled_at,created_at",
+          select: "id,user_id,account_id,starts_at,ends_at,status,approval_status,requested_quota_percent,reviewed_by,reviewed_at,review_note,device_id,quota_base_used_percent,quota_budget_percent,activated_at,cancelled_at,created_at",
           order: "starts_at.desc",
           limit: "250",
         });
@@ -517,6 +564,31 @@ export class RelayServer {
       }
 
       const body = await readJsonBody(request);
+      if (parts.length === 5 && parts[2] === "reservations" && parts[3] && ["approve", "reject"].includes(parts[4])) {
+        const approvalStatus = parts[4] === "approve" ? "approved" : "rejected";
+        const reviewNote = typeof body.note === "string" ? body.note.trim().slice(0, 500) : null;
+        const reviewed = await this.authClient.rest(token, "codex_reservations", {
+          id: `eq.${parts[3]}`,
+          status: "eq.scheduled",
+          approval_status: "eq.pending",
+        }, {
+          method: "PATCH",
+          body: {
+            approval_status: approvalStatus,
+            reviewed_by: identity.userId,
+            reviewed_at: new Date().toISOString(),
+            review_note: reviewNote || null,
+            ...(approvalStatus === "rejected" ? { status: "cancelled", cancelled_at: new Date().toISOString() } : {}),
+          },
+          headers: { Prefer: "return=representation" },
+        });
+        if (!reviewed.ok || !Array.isArray(reviewed.data) || reviewed.data.length !== 1) {
+          jsonResponse(response, 409, { error: "A solicitação já foi revisada ou não está mais disponível." });
+          return;
+        }
+        jsonResponse(response, 200, { reservation: reviewed.data[0] });
+        return;
+      }
       let command: ControlCommand;
       let payload = body;
       if (parts.length === 3 && parts[2] === "accounts") command = "account.add";
@@ -608,7 +680,7 @@ export class RelayServer {
         const rangeEnd = new Date(rangeStart.getTime() + 14 * 24 * 60 * 60_000);
         const [reservationsResult, accountResult, devicesResult, busyResult] = await Promise.all([
           this.authClient.rest(token, "codex_reservations", {
-            select: "id,account_id,starts_at,ends_at,status,device_id,quota_base_used_percent,quota_budget_percent,activated_at,cancelled_at,created_at",
+            select: "id,account_id,starts_at,ends_at,status,approval_status,requested_quota_percent,reviewed_at,review_note,device_id,quota_base_used_percent,quota_budget_percent,activated_at,cancelled_at,created_at",
             order: "starts_at.asc",
             limit: "120",
           }),
@@ -618,13 +690,13 @@ export class RelayServer {
             limit: "1",
           }),
           this.authClient.rest(token, "codex_device_snapshots", {
-            select: "device_id,reservation_id,status,expires_at,last_seen_at,observed_tokens,observed_input_tokens,observed_output_tokens,account_used_percent,account_resets_at,quota_base_used_percent,quota_budget_percent,usage_limit_reached_at",
+            select: "device_id,reservation_id,status,expires_at,last_seen_at,observed_tokens,observed_input_tokens,observed_cached_input_tokens,observed_output_tokens,observed_reasoning_tokens,usage_last_seen_at,account_used_percent,account_window_duration_mins,account_resets_at,quota_base_used_percent,quota_budget_percent,usage_limit_reached_at",
             user_id: `eq.${identity.userId}`,
             order: "created_at.desc",
             limit: "30",
           }),
           this.authClient.rest(token, "codex_busy_slots", {
-            select: "starts_at,ends_at",
+            select: "account_id,starts_at,ends_at",
             starts_at: `lt.${rangeEnd.toISOString()}`,
             ends_at: `gt.${rangeStart.toISOString()}`,
             order: "starts_at.asc",
@@ -635,6 +707,7 @@ export class RelayServer {
           relay: this.status(),
           profile,
           reservations: reservationsResult.ok && Array.isArray(reservationsResult.data) ? reservationsResult.data : [],
+          accounts: accountResult.ok && Array.isArray(accountResult.data) ? accountResult.data : [],
           account: accountResult.ok && Array.isArray(accountResult.data) ? accountResult.data[0] ?? null : null,
           devices: devicesResult.ok && Array.isArray(devicesResult.data) ? devicesResult.data : [],
           busySlots: busyResult.ok && Array.isArray(busyResult.data) ? busyResult.data : [],
@@ -650,12 +723,31 @@ export class RelayServer {
       if (parts.length === 3 && parts[2] === "reservations") {
         const startsAt = typeof body.startsAt === "string" ? new Date(body.startsAt) : new Date(Number.NaN);
         const durationHours = Number(body.durationHours);
+        const accountId = typeof body.accountId === "string" ? body.accountId.trim() : "";
+        const requestedQuotaPercent = Number(body.requestedQuotaPercent);
         if (Number.isNaN(startsAt.getTime()) || !Number.isInteger(durationHours) || durationHours < 1 || durationHours > 3) {
           jsonResponse(response, 400, { error: "Escolha um horário válido e duração de uma a três horas." });
           return;
         }
-        if (startsAt.getTime() < Date.now() || startsAt.getMinutes() !== 0 || startsAt.getSeconds() !== 0) {
-          jsonResponse(response, 400, { error: "A reserva deve começar em uma hora cheia futura." });
+        if (!accountId || accountId !== String(profile.account_id) || !Number.isInteger(requestedQuotaPercent) || requestedQuotaPercent < 5 || requestedQuotaPercent > 20 || requestedQuotaPercent % 5 !== 0) {
+          jsonResponse(response, 400, { error: "Escolha uma conta e uma cota de 5%, 10%, 15% ou 20%." });
+          return;
+        }
+        const availableAccount = await this.authClient.rest(token, "codex_account_snapshots", {
+          select: "account_id,status",
+          account_id: `eq.${accountId}`,
+          status: "eq.ready",
+          limit: "1",
+        });
+        if (!availableAccount.ok || !Array.isArray(availableAccount.data) || availableAccount.data.length !== 1) {
+          jsonResponse(response, 409, { error: "Essa conta não está pronta para receber agendamentos." });
+          return;
+        }
+        const currentHour = new Date();
+        currentHour.setMinutes(0, 0, 0);
+        currentHour.setMilliseconds(0);
+        if (startsAt.getTime() < currentHour.getTime() || startsAt.getMinutes() !== 0 || startsAt.getSeconds() !== 0) {
+          jsonResponse(response, 400, { error: "A reserva deve começar no horário atual ou em uma hora cheia futura." });
           return;
         }
         const endsAt = new Date(startsAt.getTime() + durationHours * 60 * 60_000);
@@ -663,10 +755,12 @@ export class RelayServer {
           method: "POST",
           body: {
             user_id: identity.userId,
-            account_id: profile.account_id,
+            account_id: accountId,
             starts_at: startsAt.toISOString(),
             ends_at: endsAt.toISOString(),
             status: "scheduled",
+            approval_status: "approved",
+            requested_quota_percent: requestedQuotaPercent,
           },
           headers: { Prefer: "return=representation" },
         });
@@ -675,7 +769,7 @@ export class RelayServer {
           jsonResponse(response, conflict ? 409 : 400, { error: conflict ? "Esse horário já está reservado." : dataError(inserted.data, "Não foi possível criar a reserva.") });
           return;
         }
-        jsonResponse(response, 201, { reservation: Array.isArray(inserted.data) ? inserted.data[0] : inserted.data });
+        jsonResponse(response, 201, { reservation: Array.isArray(inserted.data) ? inserted.data[0] : inserted.data, message: "Agendamento aprovado. O token será gerado automaticamente quando o horário começar." });
         return;
       }
 
@@ -685,7 +779,7 @@ export class RelayServer {
         return;
       }
       const reservationResult = await this.authClient.rest(token, "codex_reservations", {
-        select: "id,user_id,account_id,starts_at,ends_at,status,device_id",
+        select: "id,user_id,account_id,starts_at,ends_at,status,approval_status,requested_quota_percent,device_id",
         id: `eq.${reservationId}`,
         user_id: `eq.${identity.userId}`,
         limit: "1",
@@ -712,11 +806,24 @@ export class RelayServer {
         return;
       }
 
+      if (parts[4] === "end") {
+        const now = Date.now();
+        const startsAt = Date.parse(String(reservation.starts_at));
+        const endsAt = Date.parse(String(reservation.ends_at));
+        if (reservation.status !== "scheduled" || reservation.approval_status !== "approved" || now < startsAt || now >= endsAt || !reservation.device_id) {
+          jsonResponse(response, 409, { error: "Somente sessões ativas podem ser encerradas." });
+          return;
+        }
+        await this.sendControlRequest("access.revoke", { deviceId: String(reservation.device_id) }, identity.userId);
+        jsonResponse(response, 200, { message: "Sessão encerrada.", reservationId });
+        return;
+      }
+
       if (parts[4] === "session") {
         const now = Date.now();
         const startsAt = Date.parse(String(reservation.starts_at));
         const endsAt = Date.parse(String(reservation.ends_at));
-        if (reservation.status !== "scheduled" || now < startsAt || now >= endsAt) {
+        if (reservation.status !== "scheduled" || reservation.approval_status !== "approved" || now < startsAt || now >= endsAt) {
           jsonResponse(response, 409, { error: "A credencial só fica disponível durante o horário reservado." });
           return;
         }
@@ -729,7 +836,7 @@ export class RelayServer {
           userId: identity.userId,
           reservationId,
           expiresAt: new Date(endsAt).toISOString(),
-          quotaBudgetPercent: Number(profile.weekly_quota_percent ?? 5),
+          quotaBudgetPercent: Number(reservation.requested_quota_percent ?? profile.weekly_quota_percent ?? 5),
         }, identity.userId) as Record<string, unknown>;
         const device = result.device as Record<string, unknown> | undefined;
         const updated = await this.authClient.rest(token, "codex_reservations", {
@@ -741,7 +848,7 @@ export class RelayServer {
           body: {
             device_id: device?.deviceId ?? null,
             quota_base_used_percent: device?.quotaBaseUsedPercent ?? null,
-            quota_budget_percent: device?.quotaBudgetPercent ?? profile.weekly_quota_percent,
+            quota_budget_percent: device?.quotaBudgetPercent ?? reservation.requested_quota_percent ?? profile.weekly_quota_percent,
             activated_at: new Date().toISOString(),
           },
           headers: { Prefer: "return=representation" },
@@ -970,7 +1077,8 @@ export class RelayServer {
         this.closeStream(message.streamId, closeCode(message.code, 1000), closeReason(message.reason, "Host encerrou a sessão"), false);
         return;
       case "heartbeat":
-        this.sendToTunnel({ v: PROTOCOL_VERSION, type: "heartbeat", timestamp: Date.now() });
+        // The host emits heartbeats periodically. Receiving one is enough to
+        // refresh liveness; replying would create an endless heartbeat loop.
         return;
       case "access.seen":
       case "stream.open":

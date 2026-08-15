@@ -1,159 +1,205 @@
 <!doctype html>
-<html lang="pt-BR">
+<html lang="pt-BR" data-theme="dark">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="Painel administrativo.">
-    <title>Painel</title>
-    <link rel="stylesheet" href="/vendor/pico.min.css">
-    <link rel="stylesheet" href="/vendor/fullcalendar.css">
-    <link rel="stylesheet" href="/vendor/fullcalendar-theme-classic.css">
-    <link rel="stylesheet" href="/vendor/fullcalendar-palette-classic.css">
-    <link rel="stylesheet" href="/styles.css">
+    <meta name="color-scheme" content="dark light">
+    <meta name="description" content="Painel administrativo do Fecart AI Share.">
+    <title>Painel administrativo | Fecart AI Share</title>
+    <link rel="preload" as="image" href="/assets/fecart-logo.png">
+    <link rel="stylesheet" href="/vendor/phosphor.css">
+    <link rel="stylesheet" href="/admin.css">
   </head>
-  <body class="admin-page">
-    <!--
-      THESIS: o painel serve para decidir rápido sobre contas, sessões e acessos; cada linha mostra o dado necessário para agir.
-      OWN-WORLD: interface administrativa neutra, de alto contraste e baseada em tabela; cor identifica estado, não enfeita a tela.
-      STORY: ver o estado atual, localizar o próximo problema e executar a ação na mesma linha.
-      FIRST VIEWPORT: menu simples, quatro métricas reais, próximas sessões e atenção operacional sem cards decorativos.
-      FORM: painel operacional direto, sem marca ou ilustração; a agenda usa FullCalendar como componente dedicado.
-      FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
-    -->
-    <main id="app-view" class="admin-app">
-      <aside class="admin-sidebar">
-        <div class="admin-sidebar-label">Menu</div>
-        <nav class="admin-sidebar-nav" aria-label="Áreas administrativas">
-          <button class="active" data-tab="accounts" aria-controls="tab-accounts" aria-current="page" type="button">Visão geral</button>
-          <button data-tab="devices" aria-controls="tab-devices" type="button">Dispositivos</button>
-          <button data-tab="users" aria-controls="tab-users" type="button">Usuários</button>
-          <button data-tab="reservations" aria-controls="tab-reservations" type="button">Agenda</button>
-          <button data-tab="admins" id="admins-tab" aria-controls="tab-admins" type="button">Administradores</button>
-        </nav>
-        <div class="admin-sidebar-spacer"></div>
-        <div class="admin-sidebar-user">
-          <div class="admin-user-avatar">R</div>
-          <div class="admin-user-copy"><strong id="session-email">usuário autorizado</strong><span id="session-role" class="admin-badge"></span></div>
-          <button id="logout-button" class="icon-button" type="button" title="Sair" aria-label="Sair">Sair</button>
-        </div>
-      </aside>
+  <body class="admin-page admin-auth-pending" data-admin-section="overview">
+    <div class="admin-shell">
+      <aside class="admin-sidebar" data-admin-sidebar aria-label="Navegação administrativa"></aside>
 
-      <section class="admin-main">
-        <header class="admin-topbar">
-          <div class="admin-topbar-copy"><h1 id="admin-page-title">Visão geral</h1><p id="admin-page-description">Contas, sessões e acessos em um só lugar.</p></div>
-          <div class="admin-topbar-actions">
-            <label class="admin-search"><input id="admin-search" type="search" placeholder="Buscar" autocomplete="off"></label>
-            <button id="refresh-all" class="admin-button ghost" type="button">Atualizar</button>
-            <button class="theme-toggle" data-theme-toggle type="button"><span class="theme-label">Tema</span></button>
-            <div id="global-status" class="admin-status" role="status"></div>
+      <main class="admin-main">
+        <header class="admin-header">
+          <div class="page-heading">
+            <p class="eyebrow">Fecart AI Share</p>
+            <h1>Painel administrativo</h1>
+            <p>Visão geral e administração da plataforma</p>
+          </div>
+          <div class="admin-header-actions">
+            <label class="admin-search" for="admin-search">
+              <i class="ph ph-magnifying-glass" aria-hidden="true"></i>
+              <input id="admin-search" type="search" placeholder="Buscar grupo, conta..." autocomplete="off">
+            </label>
+            <button id="theme-toggle" class="admin-theme-toggle" type="button" aria-label="Ativar tema claro" aria-pressed="true" title="Ativar tema claro">
+              <i class="ph ph-sun" aria-hidden="true"></i>
+            </button>
+            <div class="admin-avatar" aria-label="Administrador">AD</div>
           </div>
         </header>
 
-        <section id="tab-accounts" class="admin-tab-panel">
-          <div id="overview-insights" class="overview-insights" aria-label="Resumo operacional"><div class="overview-loading">Carregando…</div></div>
-          <div class="admin-section-head"><div><h2>Contas</h2><p class="admin-muted">Estado de login e uso retornado pelo host.</p></div><div class="admin-actions"><button id="refresh-accounts" class="admin-button ghost" type="button">Atualizar</button><button id="add-account" class="admin-button primary" type="button">Adicionar conta</button></div></div>
-          <div id="accounts-grid" class="account-list-wrap"><div class="admin-empty">Carregando contas…</div></div>
-        </section>
+        <div class="admin-content">
+          <section class="metrics-grid" aria-label="Resumo da plataforma">
+            <article class="metric-card">
+              <div class="metric-icon metric-icon-blue"><i class="ph ph-users-three" aria-hidden="true"></i></div>
+              <div class="metric-copy"><span>Contas ativas</span><strong id="metric-active-accounts">3</strong><small>de <b id="metric-total-accounts">10</b></small></div>
+              <div class="metric-progress"><span id="metric-active-progress" style="width: 30%"></span></div>
+            </article>
+            <article class="metric-card">
+              <div class="metric-icon metric-icon-blue"><i class="ph ph-gauge" aria-hidden="true"></i></div>
+              <div class="metric-copy"><span>Quota remanescente <em>(agregada)</em></span><strong id="metric-quota">64%</strong><small>64% de 100%</small></div>
+              <div class="metric-progress"><span id="metric-quota-progress" style="width: 64%"></span></div>
+            </article>
+            <article class="metric-card">
+              <div class="metric-icon metric-icon-blue"><i class="ph ph-calendar-blank" aria-hidden="true"></i></div>
+              <div class="metric-copy"><span>Agendamentos hoje</span><strong id="metric-today">18</strong><small>em <b id="metric-today-accounts">3</b> contas</small></div>
+              <div class="metric-progress"><span id="metric-today-progress" style="width: 25%"></span></div>
+            </article>
+            <article class="metric-card metric-card-warning">
+              <div class="metric-icon metric-icon-amber"><i class="ph ph-clock" aria-hidden="true"></i></div>
+              <div class="metric-copy"><span>Aprovações pendentes</span><strong id="metric-pending">7</strong><small>requerem decisão</small></div>
+              <div class="metric-progress metric-progress-warning"><span id="metric-pending-progress" style="width: 62%"></span></div>
+            </article>
+          </section>
 
-        <section id="tab-devices" class="admin-tab-panel" hidden>
-          <div class="admin-panel-intro"><div><h2>Dispositivos autorizados</h2><p id="devices-summary" class="admin-muted">Tokens emitidos e quem está usando cada um.</p></div><div class="admin-actions"><button id="refresh-devices" class="admin-button ghost" type="button">Atualizar</button><button id="issue-device" class="admin-button primary" type="button">Emitir token</button></div></div>
-          <div id="devices-note" class="admin-status"></div>
-          <div class="admin-table-wrap"><table class="admin-table devices-table"><thead><tr><th>Dispositivo</th><th>Conta</th><th>Usuário</th><th>Uso</th><th>Status</th><th>Ações</th></tr></thead><tbody id="devices-body"></tbody></table></div>
-        </section>
+          <section class="overview-grid" aria-label="Contas gerenciadas">
+            <article class="panel managed-accounts-panel">
+              <header class="panel-header">
+                <div class="panel-title"><h2>Contas gerenciadas</h2><button class="info-button" type="button" aria-label="Sobre contas gerenciadas" title="Cada conta possui sua própria capacidade"><i class="ph ph-info" aria-hidden="true"></i></button></div>
+              </header>
+              <div id="managed-accounts" class="managed-accounts-grid"></div>
+            </article>
+          </section>
 
-        <section id="tab-users" class="admin-tab-panel" hidden>
-          <div class="admin-section-head"><div><h2>Usuários</h2><p class="admin-muted">Conta vinculada, turma e limite de cada login.</p></div><button id="refresh-users" class="admin-button ghost" type="button">Atualizar</button></div>
-          <div id="users-summary" class="admin-summary-strip"></div>
-          <div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Usuário</th><th>Turma</th><th>Conta</th><th>Franquia</th><th>Status</th><th>Criado em</th></tr></thead><tbody id="users-body"></tbody></table></div>
-        </section>
+          <section class="workspace-grid" aria-label="Agenda e aprovações administrativas">
+            <article class="panel agenda-panel">
+              <header class="agenda-header">
+                <div class="panel-title agenda-title"><h2>Agenda por conta <span>(visão administrativa)</span></h2><button class="info-button" type="button" aria-label="Sobre a agenda administrativa" title="Clique em um horário existente para gerenciar"><i class="ph ph-info" aria-hidden="true"></i></button></div>
+                <div id="account-tabs" class="account-tabs" role="tablist" aria-label="Contas da agenda"></div>
+              </header>
 
-        <section id="tab-reservations" class="admin-tab-panel" hidden>
-          <div class="admin-panel-intro"><div><h2>Agenda</h2><p class="admin-muted">Reservas ativas e próximas sessões.</p></div><div class="admin-actions"><button id="calendar-admin-today" class="admin-button ghost" type="button">Hoje</button><button id="refresh-reservations" class="admin-button primary" type="button">Atualizar</button></div></div>
-          <div id="reservations-summary" class="admin-summary-strip"></div>
-          <div class="calendar-toolbar admin-calendar-toolbar"><div><strong id="admin-schedule-range">Semana atual</strong><span id="admin-schedule-selection">Selecione uma reserva para abrir os detalhes.</span></div><div class="calendar-nav" aria-label="Navegar entre semanas"><button id="calendar-admin-prev" class="icon-button" type="button" aria-label="Semana anterior" title="Semana anterior">←</button><button id="calendar-admin-next" class="icon-button" type="button" aria-label="Próxima semana" title="Próxima semana">→</button></div></div>
-          <div id="admin-calendar-board" class="calendar-board admin-calendar-board" aria-label="Agenda operacional semanal"></div>
-          <div class="admin-table-heading"><h3>Reservas</h3><span>Dados completos da agenda.</span></div>
-          <div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Usuário</th><th>Janela</th><th>Conta</th><th>Franquia</th><th>Sessão</th><th>Status</th></tr></thead><tbody id="reservations-body"></tbody></table></div>
-        </section>
+              <div class="agenda-toolbar">
+                <div class="agenda-nav">
+                  <button id="agenda-prev" class="small-icon-button" type="button" aria-label="Semana anterior"><i class="ph ph-caret-left" aria-hidden="true"></i></button>
+                  <button id="agenda-next" class="small-icon-button" type="button" aria-label="Próxima semana"><i class="ph ph-caret-right" aria-hidden="true"></i></button>
+                  <button id="agenda-today" class="today-button" type="button">Hoje</button>
+                </div>
+                <strong id="agenda-range" class="agenda-range">—</strong>
+                <div class="agenda-view-actions">
+                  <button class="small-icon-button" type="button" aria-label="Escolher data" title="Escolher data"><i class="ph ph-calendar-blank" aria-hidden="true"></i></button>
+                  <div id="agenda-view-switch" class="segmented-control" role="group" aria-label="Visualização da agenda">
+                    <button class="is-active" type="button" data-agenda-view="week">Semana</button>
+                    <button type="button" data-agenda-view="day">Dia</button>
+                    <button type="button" data-agenda-view="list">Lista</button>
+                  </div>
+                </div>
+              </div>
 
-        <section id="tab-admins" class="admin-tab-panel" hidden>
-          <div class="admin-section-head"><div><h2>Administradores</h2><p class="admin-muted">Controle de acesso ao painel.</p></div><button id="invite-admin" class="admin-button primary" type="button">Convidar</button></div>
-          <div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Email</th><th>Papel</th><th>Status</th><th>Criado em</th><th>Ações</th></tr></thead><tbody id="admins-body"></tbody></table></div>
-        </section>
-      </section>
-    </main>
+              <div id="admin-agenda-board" class="admin-agenda-board" aria-label="Agenda semanal administrativa"></div>
+              <footer class="agenda-footer"><i class="ph ph-info" aria-hidden="true"></i><span>Clique em um agendamento para editar, aprovar, recusar ou ajustar.</span></footer>
+            </article>
 
-    <dialog id="device-dialog" class="admin-dialog">
-      <form id="device-form" class="admin-dialog-card">
-        <p class="admin-dialog-label" id="device-dialog-eyebrow">NOVO DISPOSITIVO</p>
-        <h2 id="device-dialog-title">Emitir token</h2>
-        <p class="admin-muted">Escolha a conta, o limite semanal e a validade.</p>
-        <label class="admin-field">Nome do dispositivo<input id="device-label" type="text" maxlength="80" placeholder="pc-notebook" required></label>
-        <label class="admin-field">Conta<select id="device-account" required></select></label>
-        <div class="admin-policy-grid">
-          <label class="admin-field"><span class="admin-label-row">Teto semanal <output id="device-percent-output">100%</output></span><input id="device-weekly-limit" type="range" min="0" max="100" step="1" value="100"></label>
-          <label class="admin-field">Expira em<input id="device-expires-at" type="datetime-local" required></label>
+            <article class="panel approvals-panel" aria-labelledby="approvals-title">
+              <header class="panel-header approvals-header">
+                <div class="panel-title"><span class="approvals-heading-icon"><i class="ph ph-clock-countdown" aria-hidden="true"></i></span><div><h2 id="approvals-title">Fila de aprovações</h2><p class="panel-subtitle">Solicitações aguardando decisão</p></div></div>
+                <button id="view-all-approvals" class="text-button" type="button">Ver todas (<span id="approval-count">7</span>)</button>
+              </header>
+              <div class="approval-list-wrap">
+                <div id="approval-body" class="approval-list" role="list" aria-live="polite"></div>
+              </div>
+            </article>
+          </section>
         </div>
-        <p id="device-form-error" class="admin-error" role="alert"></p>
-        <div class="admin-actions admin-dialog-actions"><button id="device-cancel" class="admin-button ghost" type="button">Cancelar</button><button id="device-submit" class="admin-button primary" type="submit">Emitir token</button></div>
+      </main>
+    </div>
+
+    <dialog id="review-modal" class="admin-modal" aria-labelledby="review-title">
+      <form id="review-form" class="modal-card review-modal-card">
+        <header class="modal-header"><div class="modal-title-row"><span class="modal-step">1</span><h2 id="review-title">Revisar solicitação</h2></div><button class="modal-close" type="button" data-close-modal aria-label="Fechar modal"><i class="ph ph-x" aria-hidden="true"></i></button></header>
+        <div class="modal-body review-body">
+          <div class="review-summary">
+            <dl class="detail-list">
+              <div><dt><i class="ph ph-users-three" aria-hidden="true"></i>Grupo</dt><dd id="review-group">Grupo 2</dd></div>
+              <div><dt><i class="ph ph-user" aria-hidden="true"></i>Conta</dt><dd id="review-account">Conta 1</dd></div>
+              <div><dt><i class="ph ph-calendar-blank" aria-hidden="true"></i>Período solicitado</dt><dd id="review-period">14/05/2025 – 14/05/2025</dd></div>
+              <div><dt><i class="ph ph-chart-pie-slice" aria-hidden="true"></i>Cota solicitada</dt><dd id="review-requested-quota">20%</dd></div>
+              <div><dt><i class="ph ph-chart-donut" aria-hidden="true"></i>Cota restante</dt><dd id="review-remaining-quota">22%</dd></div>
+            </dl>
+          </div>
+          <div class="review-fields">
+            <div class="field-row"><label>Início<input id="review-start" type="date"></label><label>Fim<input id="review-end" type="date"></label></div>
+            <label class="range-field"><span><span>Cota (%)</span><output id="review-quota-value">20%</output></span><input id="review-quota" type="range" min="5" max="100" step="1" value="20"><span class="range-limits"><small>5%</small><small>100%</small></span></label>
+            <label class="textarea-field">Justificativa da decisão<textarea id="review-note" maxlength="200" rows="3" placeholder="Explique o motivo da decisão..."></textarea><small><span id="review-note-count">0</span>/200</small></label>
+          </div>
+          <div class="modal-callout"><i class="ph ph-info" aria-hidden="true"></i><span>Se você alterar o horário ou a cota, esta será uma aprovação com ajuste.</span></div>
+        </div>
+        <footer class="modal-actions modal-actions-three"><button id="review-approve" class="modal-button primary" type="button"><i class="ph ph-check" aria-hidden="true"></i>Aprovar</button><button id="review-adjust" class="modal-button warning" type="button"><i class="ph ph-pencil-simple" aria-hidden="true"></i>Aprovar com ajuste</button><button id="review-reject" class="modal-button danger" type="button"><i class="ph ph-x" aria-hidden="true"></i>Recusar</button></footer>
       </form>
     </dialog>
 
-    <dialog id="token-dialog" class="admin-dialog">
-      <form method="dialog" class="admin-dialog-card">
-        <p class="admin-dialog-label">TOKEN EMITIDO</p><h2>Copie o token</h2>
-        <p id="issued-token-context" class="admin-muted"></p>
-        <p class="admin-callout">O token aparece somente nesta janela. Você pode copiar novamente antes de fechar.</p>
-        <div class="admin-token-row"><textarea id="issued-token" rows="3" readonly spellcheck="false" aria-label="Token emitido"></textarea><button id="copy-token" class="admin-button primary" type="button">Copiar token novamente</button></div>
-        <div class="admin-copy-actions"><button id="copy-command" class="admin-button ghost" type="button">Copiar comando</button><button id="copy-env" class="admin-button ghost" type="button">Copiar variável</button></div>
-        <p id="copy-status" class="admin-status"></p>
-        <button class="admin-button ghost" value="close">Fechar</button>
+    <dialog id="disable-modal" class="admin-modal" aria-labelledby="disable-title">
+      <form id="disable-form" class="modal-card">
+        <header class="modal-header"><div class="modal-title-row"><span class="modal-step">2</span><h2 id="disable-title">Desabilitar token</h2></div><button class="modal-close" type="button" data-close-modal aria-label="Fechar modal"><i class="ph ph-x" aria-hidden="true"></i></button></header>
+        <div class="modal-body split-modal-body">
+          <dl class="detail-list"><div><dt><i class="ph ph-users-three" aria-hidden="true"></i>Grupo</dt><dd id="disable-group">Grupo 2</dd></div><div><dt><i class="ph ph-user" aria-hidden="true"></i>Conta</dt><dd id="disable-account">Conta 1</dd></div><div><dt><i class="ph ph-calendar-blank" aria-hidden="true"></i>Sessão ativa desde</dt><dd id="disable-start">14/05/2025 10:02</dd></div><div><dt><i class="ph ph-chart-pie-slice" aria-hidden="true"></i>Cota em uso</dt><dd id="disable-quota">15%</dd></div></dl>
+          <label class="textarea-field">Justificativa<textarea id="disable-note" maxlength="180" rows="7" placeholder="Explique o motivo da desabilitação do token..."></textarea><small><span id="disable-note-count">0</span>/180</small></label>
+        </div>
+        <footer class="modal-actions modal-actions-two"><button class="modal-button secondary" type="button" data-close-modal>Cancelar</button><button id="disable-confirm" class="modal-button danger" type="button"><i class="ph ph-x" aria-hidden="true"></i>Desabilitar token</button></footer>
       </form>
     </dialog>
 
-    <dialog id="login-dialog" class="admin-dialog">
-      <form method="dialog" class="admin-dialog-card">
-        <p class="admin-dialog-label">LOGIN DA CONTA</p><h2 id="login-dialog-title">Confirme a conta</h2>
-        <p class="admin-muted">Abra o endereço, informe o código e atualize o estado.</p>
-        <p><a id="login-url" class="admin-login-url" href="#" target="_blank" rel="noreferrer"></a></p>
-        <div class="admin-code" id="login-code"></div>
-        <p id="login-dialog-status" class="admin-status"></p>
-        <div class="admin-actions"><button id="login-refresh" class="admin-button primary" type="button">Atualizar estado</button><button class="admin-button ghost" value="close">Fechar</button></div>
+    <dialog id="cancel-modal" class="admin-modal" aria-labelledby="cancel-title">
+      <form id="cancel-form" class="modal-card">
+        <header class="modal-header"><div class="modal-title-row"><span class="modal-step">3</span><h2 id="cancel-title">Cancelar sessão futura</h2></div><button class="modal-close" type="button" data-close-modal aria-label="Fechar modal"><i class="ph ph-x" aria-hidden="true"></i></button></header>
+        <div class="modal-body split-modal-body">
+          <dl class="detail-list"><div><dt><i class="ph ph-users-three" aria-hidden="true"></i>Grupo</dt><dd id="cancel-group">Grupo 2</dd></div><div><dt><i class="ph ph-user" aria-hidden="true"></i>Conta</dt><dd id="cancel-account">Conta 1</dd></div><div><dt><i class="ph ph-calendar-blank" aria-hidden="true"></i>Agendado para</dt><dd id="cancel-scheduled">14/05/2025 10:00</dd></div><div><dt><i class="ph ph-chart-pie-slice" aria-hidden="true"></i>Cota reservada</dt><dd id="cancel-quota">12%</dd></div></dl>
+          <label class="textarea-field">Justificativa<textarea id="cancel-note" maxlength="180" rows="7" placeholder="Informe o motivo do cancelamento..."></textarea><small><span id="cancel-note-count">0</span>/180</small></label>
+        </div>
+        <footer class="modal-actions modal-actions-two"><button class="modal-button secondary" type="button" data-close-modal>Fechar</button><button id="cancel-confirm" class="modal-button danger" type="button"><i class="ph ph-x" aria-hidden="true"></i>Cancelar sessão</button></footer>
       </form>
     </dialog>
 
-    <dialog id="account-dialog" class="admin-dialog">
-      <form id="account-form" class="admin-dialog-card">
-        <p class="admin-dialog-label">NOVA CONTA</p><h2>Adicionar conta</h2>
-        <p class="admin-muted">Depois de criar, o login da conta será iniciado.</p>
-        <label class="admin-field">Nome da conta<input id="account-label" type="text" maxlength="80" placeholder="Conta principal" required></label>
-        <p id="account-form-error" class="admin-error" role="alert"></p>
-        <div class="admin-actions admin-dialog-actions"><button id="account-cancel" class="admin-button ghost" type="button">Cancelar</button><button class="admin-button primary" type="submit">Criar e iniciar login</button></div>
+    <dialog id="history-modal" class="admin-modal" aria-labelledby="history-title">
+      <form class="modal-card history-modal-card">
+        <header class="modal-header"><div class="modal-title-row"><span class="modal-step">4</span><h2 id="history-title">Histórico da ação</h2></div><button class="modal-close" type="button" data-close-modal aria-label="Fechar modal"><i class="ph ph-x" aria-hidden="true"></i></button></header>
+        <div class="modal-body history-body"><div class="history-meta"><div class="history-avatar">AO</div><strong id="history-admin">Administrador</strong><time id="history-date">14/05/2025 11:45</time></div><dl class="detail-list history-list"><div><dt><i class="ph ph-user-circle" aria-hidden="true"></i>Ação realizada</dt><dd><span id="history-action" class="status-badge approved">Aprovação com ajuste</span></dd></div><div><dt><i class="ph ph-calendar-check" aria-hidden="true"></i>Período aprovado</dt><dd id="history-period">14/05/2025 – 14/05/2025</dd></div><div><dt><i class="ph ph-chart-pie-slice" aria-hidden="true"></i>Cota solicitada</dt><dd id="history-requested">20%</dd></div><div><dt><i class="ph ph-chart-donut" aria-hidden="true"></i>Cota ajustada</dt><dd id="history-adjusted">15%</dd></div><div><dt><i class="ph ph-note" aria-hidden="true"></i>Justificativa</dt><dd id="history-note">Ajuste realizado para otimizar o uso da capacidade disponível.</dd></div></dl></div>
+        <footer class="modal-actions"><button class="modal-button secondary" type="button" data-close-modal>Fechar</button></footer>
       </form>
     </dialog>
 
-    <dialog id="invite-dialog" class="admin-dialog">
-      <form id="invite-form" class="admin-dialog-card">
-        <p class="admin-dialog-label">ADMINISTRADOR</p><h2>Convidar</h2>
-        <label class="admin-field">Email<input id="invite-email" type="email" autocomplete="email" required></label>
-        <p id="invite-form-error" class="admin-error" role="alert"></p>
-        <div class="admin-actions admin-dialog-actions"><button id="invite-cancel" class="admin-button ghost" type="button">Cancelar</button><button class="admin-button primary" type="submit">Enviar convite</button></div>
+    <dialog id="account-modal" class="admin-modal" aria-labelledby="account-modal-title">
+      <form id="account-form" class="modal-card compact-modal-card">
+        <header class="modal-header"><div><p class="modal-eyebrow">NOVA CONTA</p><h2 id="account-modal-title">Adicionar conta</h2></div><button class="modal-close" type="button" data-close-modal aria-label="Fechar modal"><i class="ph ph-x" aria-hidden="true"></i></button></header>
+        <div class="modal-body">
+          <div id="account-create-fields">
+            <label class="textarea-field">Nome da conta<input id="new-account-label" type="text" maxlength="60" placeholder="Conta 4" required></label>
+            <p class="modal-helper">A conta será criada no host configurado e o login OAuth do Codex será aberto em seguida.</p>
+          </div>
+          <div id="account-oauth-panel" class="account-oauth-panel" hidden>
+            <div class="modal-callout"><i class="ph ph-shield-check" aria-hidden="true"></i><span><strong id="account-oauth-title">Login OAuth iniciado</strong><span id="account-oauth-message">Conclua a autenticação para liberar esta conta.</span></span></div>
+            <div class="account-oauth-code-row"><span>Código de verificação</span><code id="account-oauth-code">—</code></div>
+            <a id="account-oauth-link" class="modal-button primary account-oauth-link" href="#" target="_blank" rel="noopener noreferrer" hidden><i class="ph ph-arrow-square-out" aria-hidden="true"></i>Abrir login OAuth</a>
+            <p id="account-oauth-progress" class="modal-helper">Aguardando a confirmação do login no Codex…</p>
+          </div>
+        </div>
+        <footer class="modal-actions modal-actions-three"><button class="modal-button secondary" type="button" data-close-modal>Fechar</button><button id="account-oauth-check" class="modal-button secondary" type="button" hidden><i class="ph ph-arrows-clockwise" aria-hidden="true"></i>Verificar</button><button id="account-form-submit" class="modal-button primary" type="submit"><i class="ph ph-plus" aria-hidden="true"></i>Criar e abrir OAuth</button></footer>
       </form>
     </dialog>
 
-    <dialog id="action-dialog" class="admin-dialog">
-      <form id="action-form" class="admin-dialog-card">
-        <p class="admin-dialog-label">CONFIRMAR</p><h2 id="action-dialog-title">Confirmar</h2>
-        <p id="action-dialog-copy" class="admin-muted"></p>
-        <div class="admin-actions admin-dialog-actions"><button id="action-cancel" class="admin-button ghost" type="button">Cancelar</button><button id="action-confirm" class="admin-button danger" type="submit">Confirmar</button></div>
+    <dialog id="remove-account-modal" class="admin-modal" aria-labelledby="remove-account-title">
+      <form id="remove-account-form" class="modal-card compact-modal-card">
+        <header class="modal-header"><div><p class="modal-eyebrow">REMOÇÃO DE CONTA</p><h2 id="remove-account-title">Remover conta</h2></div><button class="modal-close" type="button" data-close-modal aria-label="Fechar modal"><i class="ph ph-x" aria-hidden="true"></i></button></header>
+        <div class="modal-body">
+          <dl class="detail-list">
+            <div><dt><i class="ph ph-user" aria-hidden="true"></i>Conta</dt><dd id="remove-account-label">Conta 1</dd></div>
+            <div><dt><i class="ph ph-calendar-blank" aria-hidden="true"></i>Agendamentos vinculados</dt><dd id="remove-account-count">0 agendamentos</dd></div>
+          </dl>
+          <div class="modal-callout remove-account-callout"><i class="ph ph-warning" aria-hidden="true"></i><span>Esta ação <strong>não pode ser desfeita</strong>. A conta será removida do host e todos os seus agendamentos e acessos ativos serão encerrados.</span></div>
+        </div>
+        <footer class="modal-actions modal-actions-two"><button class="modal-button secondary" type="button" data-close-modal>Cancelar</button><button id="remove-account-confirm" class="modal-button danger" type="button"><i class="ph ph-trash" aria-hidden="true"></i>Remover conta</button></footer>
       </form>
     </dialog>
-    <script src="/site.js" defer></script>
+
+    <div id="admin-toast" class="admin-toast" role="status" aria-live="polite" aria-atomic="true"></div>
+
     <script src="/auth.js" defer></script>
-    <script src="/vendor/fullcalendar.js" defer></script>
-    <script src="/vendor/fullcalendar-theme-classic.js" defer></script>
-    <script src="/vendor/fullcalendar-locale-pt-br.js" defer></script>
-    <script src="/calendar.js" defer></script>
+    <script src="/components.js" defer></script>
+    <script src="/admin-shell.js" defer></script>
     <script src="/admin.js" defer></script>
   </body>
 </html>

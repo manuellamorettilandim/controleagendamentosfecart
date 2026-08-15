@@ -13,6 +13,8 @@
     "test": "npm run build && node --test dist/test/access-store.test.js dist/test/account-store.test.js dist/test/relay.test.js dist/test/host-agent.test.js dist/test/supabase.test.js dist/test/user-identity.test.js",
     "relay": "node dist/src/relay-main.js",
     "host": "node --env-file=.env dist/src/host-agent.js",
+    "local": "npm run build && node --env-file=.env scripts/run-local.mjs",
+    "local:tunnel": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-local-tunnel.ps1",
     "access": "node dist/src/access-cli.js",
     "admin": "node --env-file=.env dist/src/admin-cli.js",
     "users": "node --env-file=.env dist/src/user-cli.js",
@@ -20,7 +22,12 @@
     "dev:host": "tsx server/src/host-agent.ts"
   },
   "dependencies": {
+    "@phosphor-icons/web": "^2.1.2",
     "@picocss/pico": "^2.1.1",
+    "@schedule-x/calendar": "^2.2.0",
+    "@schedule-x/calendar-controls": "^2.2.0",
+    "@schedule-x/events-service": "^2.2.0",
+    "@schedule-x/theme-default": "^2.2.0",
     "fullcalendar": "^7.0.2",
     "ws": "^8.18.0"
   },
