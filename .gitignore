@@ -1,6 +1,7 @@
 node_modules/
 dist/
-site/vendor/
+site/
+site-next/
 .env
 .env.*
 !.env.example

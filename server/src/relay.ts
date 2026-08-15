@@ -30,61 +30,14 @@ const DEFAULT_MAX_PAYLOAD = 8 * 1024 * 1024;
 const STATIC_ROUTES: Record<string, string> = {
   "/": "login.html",
   "/index.html": "login.html",
-  "/cli": "cli.html",
-  "/cli.html": "cli.html",
-  "/app": "app.html",
-  "/app.html": "app.html",
-  "/opencode": "opencode.html",
-  "/opencode.html": "opencode.html",
-  "/access": "access.html",
-  "/access.html": "access.html",
-  "/deploy": "deploy.html",
-  "/deploy.html": "deploy.html",
-  "/security": "security.html",
-  "/security.html": "security.html",
   "/login": "login.html",
   "/login.html": "login.html",
-  "/login.css": "login.css",
-  "/dashboard.css": "dashboard.css",
-  "/admin.css": "admin.css",
-  "/groups.css": "groups.css",
-  "/assets/fecart-logo.png": "assets/fecart-logo.png",
-  "/vendor/phosphor.css": "vendor/phosphor.css",
-  "/vendor/Phosphor.woff2": "vendor/Phosphor.woff2",
   "/admin": "admin.html",
   "/admin.html": "admin.html",
   "/groups": "groups.html",
   "/groups.html": "groups.html",
   "/dashboard": "dashboard.html",
   "/dashboard.html": "dashboard.html",
-  "/auth.js": "auth.js",
-  "/components.js": "components.js",
-  "/admin-shell.js": "admin-shell.js",
-  "/login.js": "login.js",
-  "/admin.js": "admin.js",
-  "/groups.js": "groups.js",
-  "/dashboard.js": "dashboard.js",
-  "/schedule-calendar.js": "schedule-calendar.js",
-  "/calendar.js": "calendar.js",
-  "/styles.css": "styles.css",
-  "/vendor/pico.min.css": "vendor/pico.min.css",
-  "/vendor/fullcalendar.js": "vendor/fullcalendar.js",
-  "/vendor/fullcalendar.css": "vendor/fullcalendar.css",
-  "/vendor/fullcalendar-theme-classic.js": "vendor/fullcalendar-theme-classic.js",
-  "/vendor/fullcalendar-theme-classic.css": "vendor/fullcalendar-theme-classic.css",
-  "/vendor/fullcalendar-palette-classic.css": "vendor/fullcalendar-palette-classic.css",
-  "/vendor/fullcalendar-locale-pt-br.js": "vendor/fullcalendar-locale-pt-br.js",
-  "/vendor/preact.min.js": "vendor/preact.min.js",
-  "/vendor/preact-hooks.umd.js": "vendor/preact-hooks.umd.js",
-  "/vendor/preact-signals-core.min.js": "vendor/preact-signals-core.min.js",
-  "/vendor/preact-signals.min.js": "vendor/preact-signals.min.js",
-  "/vendor/preact-jsx-runtime.umd.js": "vendor/preact-jsx-runtime.umd.js",
-  "/vendor/preact-compat.umd.js": "vendor/preact-compat.umd.js",
-  "/vendor/schedule-x-calendar.js": "vendor/schedule-x-calendar.js",
-  "/vendor/schedule-x-events.js": "vendor/schedule-x-events.js",
-  "/vendor/schedule-x-controls.js": "vendor/schedule-x-controls.js",
-  "/vendor/schedule-x.css": "vendor/schedule-x.css",
-  "/site.js": "site.js",
 };
 
 export interface RelayOptions {
@@ -183,6 +136,13 @@ function isAllowedLoginQuery(url: URL): boolean {
   if (!["/", "/login", "/login.html"].includes(url.pathname)) return false;
   const entries = [...url.searchParams.entries()];
   return entries.length === 1 && entries[0]?.[0] === "expired" && entries[0]?.[1] === "1";
+}
+
+function staticRelativePath(pathname: string): string | null {
+  const directPath = STATIC_ROUTES[pathname];
+  if (directPath) return directPath;
+  if (pathname.startsWith("/assets/") && pathname.length > "/assets/".length) return pathname.slice(1);
+  return null;
 }
 
 function closeCode(code: number | undefined, fallback: number): number {
@@ -441,7 +401,7 @@ export class RelayServer {
       return;
     }
 
-    const relativePath = STATIC_ROUTES[url.pathname];
+    const relativePath = staticRelativePath(url.pathname);
     if (!relativePath) {
       response.statusCode = 404;
       response.end("Not Found\n");
@@ -469,7 +429,11 @@ export class RelayServer {
               ? "font/woff2"
               : extension === ".woff"
                 ? "font/woff"
-                : "application/javascript; charset=utf-8";
+                : extension === ".svg"
+                  ? "image/svg+xml"
+                  : extension === ".json" || extension === ".map"
+                    ? "application/json; charset=utf-8"
+                    : "application/javascript; charset=utf-8";
       response.statusCode = 200;
       response.setHeader("Content-Type", contentType);
       response.setHeader("X-Content-Type-Options", "nosniff");

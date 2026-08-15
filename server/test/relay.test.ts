@@ -358,13 +358,20 @@ test("health and readiness endpoints expose no secret material", async () => {
     assert.equal(body.includes(deviceToken), false);
     const admin = await fetch(`http://127.0.0.1:${port}/admin`);
     assert.equal(admin.status, 200);
-    assert.match(await admin.text(), /Painel|Controle/);
+    const adminHtml = await admin.text();
+    assert.match(adminHtml, /Painel administrativo/);
+    const adminScriptPath = adminHtml.match(/src="([^"]+\.js)"/)?.[1];
+    assert.ok(adminScriptPath);
+    const adminScript = await fetch(`http://127.0.0.1:${port}${adminScriptPath}`);
+    assert.equal(adminScript.status, 200);
+    assert.match(adminScript.headers.get("content-type") || "", /javascript/);
     const login = await fetch(`http://127.0.0.1:${port}/login`);
     assert.equal(login.status, 200);
-    assert.match(await login.text(), /login-form|Entrar/);
-    const authScript = await fetch(`http://127.0.0.1:${port}/auth.js`);
-    assert.equal(authScript.status, 200);
-    assert.match(await authScript.text(), /RemoteCodexAuth/);
+    assert.match(await login.text(), /Entrar/);
+    const missingLegacyAsset = await fetch(`http://127.0.0.1:${port}/auth.js`);
+    assert.equal(missingLegacyAsset.status, 404);
+    const missingGeneratedAsset = await fetch(`http://127.0.0.1:${port}/assets/missing.js`);
+    assert.equal(missingGeneratedAsset.status, 404);
     const adminConfig = await fetch(`http://127.0.0.1:${port}/api/admin/config`);
     assert.equal(adminConfig.status, 503);
   } finally {

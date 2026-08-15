@@ -52,6 +52,10 @@ npm.cmd run build
 npm.cmd test
 ```
 
+O frontend atual usa React com Vite em modo multipágina. As entradas são `web/login.html`, `web/dashboard.html`, `web/admin.html` e `web/groups.html`; o build gera somente o artefato publicado em `site/`, que não é versionado.
+
+Para desenvolver a interface com hot reload, execute `npm.cmd run dev:web`. A saída de produção continua sendo servida pelo relay com `SITE_DIR=site`.
+
 Para testar tudo em uma única máquina (relay, host-agent e os app-servers locais), configure o `.env` com o Supabase externo, `RELAY_AGENT_TOKEN` e o `codex` instalado/logado, depois execute:
 
 ```powershell
@@ -112,4 +116,4 @@ npm.cmd run access -- revoke device-XXXXXXXX
 npm.cmd run access -- revoke-all
 ```
 
-Veja o [guia de segurança](SECURITY.md) e as páginas em [`site/`](site/index.html) antes de expor o relay à internet.
+Veja o [guia de segurança](SECURITY.md) e o frontend em [`web/`](web/) antes de expor o relay à internet.
