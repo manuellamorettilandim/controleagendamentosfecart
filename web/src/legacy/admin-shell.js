@@ -13,7 +13,7 @@
 
   sidebar.innerHTML = `
     <div class="sidebar-brand-row">
-      <a class="admin-brand" href="/admin.html" aria-label="Fecart AI Share — painel administrativo">
+      <a class="admin-brand" href="/admin" aria-label="Fecart AI Share — painel administrativo">
         <img src="/assets/fecart-logo.png" alt="">
         <span>Fecart <strong>AI</strong> Share</span>
       </a>

@@ -366,7 +366,7 @@
     } catch {
       window.RemoteCodexAuth?.clearSession?.();
     } finally {
-      window.location.replace("/login.html");
+      window.location.replace("/login");
     }
   }
 
@@ -510,7 +510,7 @@
     $$('[data-section]').forEach((button) => button.addEventListener("click", () => {
       const section = button.dataset.section;
       if (section === "overview") {
-        window.location.replace("/admin.html");
+        window.location.replace("/admin");
         return;
       }
       if (section === "groups") return;

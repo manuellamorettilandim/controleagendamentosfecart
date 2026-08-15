@@ -1023,7 +1023,7 @@
     $$('[data-section]').forEach((button) => button.addEventListener("click", () => {
       if (button.dataset.section === "overview") return;
       if (button.dataset.section === "groups") {
-        window.location.replace("/groups.html");
+        window.location.replace("/groups");
         return;
       }
       showToast("Esta visão operacional está concentrada no painel Geral.");

@@ -137,7 +137,7 @@
     const headers = { Authorization: `Bearer ${session.access_token}` };
     const admin = await fetch("/api/admin/session", { headers, cache: "no-store" });
     if (admin.ok) {
-      window.location.replace("/admin.html");
+      window.location.replace("/admin");
       return true;
     }
     const user = await fetch("/api/user/dashboard", { headers, cache: "no-store" });
@@ -163,7 +163,7 @@
       await window.RemoteCodexAuth.passwordLogin(state.config, email, password);
       const token = window.RemoteCodexAuth.getSession()?.access_token;
       const targets = [
-        ["/api/admin/session", "/admin.html"],
+        ["/api/admin/session", "/admin"],
         ["/api/user/dashboard", "/dashboard"],
       ];
       for (const [target, destination] of targets) {
