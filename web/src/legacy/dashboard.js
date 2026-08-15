@@ -269,6 +269,14 @@
     state.bookingMax = new Date(Math.min(visibleEnd.getTime(), bookingMax.getTime()));
   }
 
+  function calendarRangeStart() {
+    // Keep the current week's history visible; isBookable still rejects past slots.
+    const start = calendarTools().startOfDay(now());
+    const daysSinceMonday = (start.getDay() + 6) % 7;
+    start.setDate(start.getDate() - daysSinceMonday);
+    return start;
+  }
+
   function calendarRangeEnd() {
     const end = calendarTools().startOfDay(state.visibleEnd);
     end.setDate(end.getDate() + 1);
@@ -551,8 +559,9 @@
     hideCalendarHover();
     const rangeStart = calendarTools().startOfDay(info.start);
     const rangeEnd = new Date(info.end.getTime() - 1);
+    const minimumRangeStart = calendarRangeStart();
     $("#calendar-range").textContent = calendarTools().formatRange(rangeStart, calendarTools().startOfDay(rangeEnd));
-    $("#calendar-prev").disabled = rangeStart.getTime() <= calendarTools().startOfDay(now()).getTime();
+    $("#calendar-prev").disabled = rangeStart.getTime() <= minimumRangeStart.getTime();
     $("#calendar-next").disabled = rangeEnd.getTime() >= state.visibleEnd.getTime();
     document.querySelectorAll("[data-calendar-view]").forEach((button) => button.classList.toggle("is-active", button.dataset.calendarView === state.calendarView));
   }
@@ -651,7 +660,7 @@
         events: calendarEvents(),
         selectable: true,
         selectOverlap: false,
-        validRange: { start: calendarTools().startOfDay(now()), end: calendarRangeEnd() },
+        validRange: { start: calendarRangeStart(), end: calendarRangeEnd() },
         selectAllow: (info) => {
           const duration = (info.end.getTime() - info.start.getTime()) / 3_600_000;
           return duration >= 1 && duration <= 3 && isBookable(info.start, duration);
@@ -700,7 +709,7 @@
     } else {
       hideCalendarHover();
       calendarTools().syncEvents(state.calendar, calendarEvents());
-      state.calendar.setOption("validRange", { start: calendarTools().startOfDay(now()), end: calendarRangeEnd() });
+      state.calendar.setOption("validRange", { start: calendarRangeStart(), end: calendarRangeEnd() });
       state.calendar.updateSize?.();
     }
     bindCalendarHover(board);

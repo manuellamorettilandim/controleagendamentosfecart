@@ -641,7 +641,9 @@ export class RelayServer {
       if (method === "GET" && parts.length === 3 && parts[2] === "dashboard") {
         const rangeStart = new Date();
         rangeStart.setHours(0, 0, 0, 0);
-        const rangeEnd = new Date(rangeStart.getTime() + 14 * 24 * 60 * 60_000);
+        // Include the current week's past sessions so the user calendar matches admin history.
+        rangeStart.setDate(rangeStart.getDate() - 7);
+        const rangeEnd = new Date(rangeStart.getTime() + 21 * 24 * 60 * 60_000);
         const [reservationsResult, accountResult, devicesResult, busyResult] = await Promise.all([
           this.authClient.rest(token, "codex_reservations", {
             select: "id,account_id,starts_at,ends_at,status,approval_status,requested_quota_percent,reviewed_at,review_note,device_id,quota_base_used_percent,quota_budget_percent,activated_at,cancelled_at,created_at",
