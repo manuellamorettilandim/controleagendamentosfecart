@@ -27,6 +27,10 @@ describe("CalendarHost", () => {
 
     const { Calendar } = await import("fullcalendar/all");
     expect(Calendar).toHaveBeenCalledTimes(1);
+    const calendarOptions = (Calendar as any).mock.calls[0][1];
+    expect(calendarOptions.plugins).toEqual([
+      expect.objectContaining({ name: "theme-classic" }),
+    ]);
     expect(calendarMocks.render).toHaveBeenCalledTimes(1);
     expect(calendarMocks.setOption).toHaveBeenCalledWith("slotMinHeight", 48);
     expect(container.querySelector(".calendar-react-host")).not.toBeNull();

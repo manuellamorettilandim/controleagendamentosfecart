@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { useLayoutEffect, useRef } from "react";
 import { Calendar } from "fullcalendar/all";
 import type { CalendarOptions } from "fullcalendar";
+import classicThemePlugin from "fullcalendar/themes/classic";
 
 const CALENDAR_SLOT_HEIGHT = 48;
 type CalendarInstance = InstanceType<typeof Calendar>;
@@ -157,6 +158,7 @@ export function CalendarHost({ options = {}, onReady, onDestroy }: CalendarHostP
       eventOrder: "start,-duration,title",
       eventContent: defaultEventContent,
       ...options,
+      plugins: [classicThemePlugin, ...(options.plugins || [])],
     });
 
     calendar.render();
