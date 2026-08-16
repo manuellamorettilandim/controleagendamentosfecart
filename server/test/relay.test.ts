@@ -427,7 +427,7 @@ test("admin API validates Supabase identity before exposing account snapshots", 
     assert.equal(payload.accounts[0].accountId, "primary");
     const session = await fetch(`http://127.0.0.1:${port}/api/admin/session`, { headers: { Authorization: "Bearer supabase-access" } });
     assert.equal(session.status, 200);
-    assert.deepEqual(await session.json(), { userId: "owner-user", email: "owner@example.com", role: "owner" });
+    assert.deepEqual(await session.json(), { userId: "owner-user", email: "owner@example.com", login: "owner@example.com", role: "owner" });
   } finally {
     tunnel?.terminate();
     await relay.close();

@@ -4,7 +4,7 @@ Referência oficial do protocolo: [Codex app-server README](https://github.com/o
 
 ## Política e uso por dispositivo
 
-Prefira o painel em `/admin` para emitir tokens administrativos ou operar contas. A emissão permite selecionar a conta, definir o percentual máximo da janela semanal e escolher a data de expiração. O painel também copia o token, a variável PowerShell ou o comando completo enquanto o modal de emissão estiver aberto; usuários comuns recebem o token automaticamente no dashboard quando sua janela começa.
+Prefira o painel em `/admin` para emitir tokens administrativos ou operar contas. A emissão permite selecionar a conta e escolher a data de expiração. O painel também copia o token, a variável PowerShell ou o comando completo enquanto o modal de emissão estiver aberto; usuários comuns recebem o token automaticamente no dashboard quando sua janela começa.
 
 Cada conta pode ter um token não revogado. `disable` é temporário; `revoke` é permanente e preserva o registro para auditoria, mas nunca permite reabilitação. O token revogado precisa ser substituído por uma nova emissão.
 
@@ -14,15 +14,15 @@ O host observa as notificações `thread/tokenUsage/updated` do app-server e reg
 
 O login unificado fica em `/login`: administradores entram com email e usuários comuns com o nome da equipe. A página `/dashboard` permite reservar uma janela exclusiva de uma a três horas. A credencial do relay só pode ser emitida quando a reserva está ativa e expira automaticamente no fim da janela.
 
-A franquia comum padrão é 5 pontos percentuais da janela semanal da conta. Para o usuário, essa parcela aparece como 100% disponível; o host registra o percentual da conta no início da sessão e bloqueia o token quando a conta avançar os pontos concedidos. Como o app-server informa quota somente por conta, uso paralelo fora do relay pode consumir essa parcela e antecipar o bloqueio. Enquanto o painel administrativo é finalizado, novas reservas são aprovadas automaticamente; ao entrar na janela ativa, o dashboard emite o token real, mostra o uso observado e oferece o comando PowerShell completo para iniciar o Codex CLI.
+Os grupos não possuem franquia individual. Cada pedido escolhe uma das contas disponíveis e entra como `pending`; somente `owner` ou `admin` pode aprovar ou recusar. Ao entrar em uma janela aprovada, o dashboard emite o token real e mostra o uso observado sem bloquear por percentual de quota.
 
 Depois de aplicar a migration `codex_user_scheduling`, importe os logins do protótipo para usuários reais do Supabase Auth:
 
 ```powershell
-npm.cmd run users -- import-legacy --account primary --quota 5
+npm.cmd run users -- import-legacy
 ```
 
-O comando atualiza as senhas de demonstração existentes. Para uso real, rotacione-as após a importação. O SQL legado e suas políticas públicas não são reativados.
+O comando importa cada equipe do SQL como um grupo real, ignora o login de teste e aliases duplicados e atualiza as credenciais no Supabase Auth. O SQL legado e suas políticas públicas não são reativados.
 
 Este repositório contém um relay experimental para usar o `codex app-server` da máquina central a partir de outro computador sem copiar o login ChatGPT/OpenAI.
 
@@ -98,6 +98,15 @@ $env:SUPABASE_SECRET_KEY = "SB_SECRET_SOMENTE_NO_HOST"
 npm.cmd run admin -- bootstrap --email owner@example.com
 ```
 
+Para criar um login individual com senha forte aleatória (exibida uma única vez), execute um comando por pessoa. `--login` permite entrar com um nome curto, sem expor o e-mail interno do Supabase Auth:
+
+```powershell
+npm.cmd run admin -- create --login professor --role owner
+npm.cmd run admin -- create --login raissa --role admin
+```
+
+Somente `owner` visualiza telemetria; `owner` e `admin` podem revisar pedidos, bloquear agendamentos de um grupo e revogar seu token ativo.
+
 Depois abra `https://SEU_RELAY.onrender.com/admin`. O host inicia um app-server por conta, cada um em seu próprio `CODEX_HOME`; novas contas podem ser adicionadas no painel e o login device-code é exibido ali.
 
 Em outro computador, o token de dispositivo é usado somente para o relay:
@@ -106,6 +115,8 @@ Em outro computador, o token de dispositivo é usado somente para o relay:
 $env:CODEX_REMOTE_TOKEN = "TOKEN_DO_DISPOSITIVO"
 codex --remote wss://SEU_RELAY.onrender.com:443 --remote-auth-token-env CODEX_REMOTE_TOKEN
 ```
+
+O Codex App usa o fluxo SSH oficial. Durante uma sessão ativa, selecione **Codex App** no dashboard, baixe a chave Ed25519 temporária e copie a entrada gerada para `~/.ssh/config`. O host inicia `codex app-server` com o `CODEX_HOME` da conta reservada; a chave pública é removida ao desabilitar, revogar ou expirar a sessão.
 
 O token do dispositivo não é um login OpenAI. Ele deve ser emitido, copiado uma única vez e revogado pelo host central:
 

@@ -30,7 +30,6 @@ CREATE TABLE IF NOT EXISTS public.appointments (
 -- 3. Inserir Todos os Usuários e Senhas da Lista Inicial
 INSERT INTO public.users (username, password, turma) VALUES
   -- 1IA - A
-  ('1IA', '"A"'::jsonb, '1IA - A'),
   ('fecurity', '"joao01@"'::jsonb, '1IA - A'),
   ('itech', '"luis02@"'::jsonb, '1IA - A'),
   ('olhardasmaquinas', '"arthur03@"'::jsonb, '1IA - A'),
@@ -42,7 +41,6 @@ INSERT INTO public.users (username, password, turma) VALUES
   ('lgm', '"leonardo01@"'::jsonb, '1IA - B'),
   ('miladys', '"ana02@"'::jsonb, '1IA - B'),
   ('inteligência', '"leonardo01@"'::jsonb, '1IA - B'),
-  ('inteligencia', '"leonardo01@"'::jsonb, '1IA - B'),
   ('intelectuai', '"giancarlo04@"'::jsonb, '1IA - B'),
   ('urbia', '"vitor01@"'::jsonb, '1IA - B'),
   ('smartflow', '"thiago01@"'::jsonb, '1IA - B'),
@@ -69,11 +67,10 @@ INSERT INTO public.users (username, password, turma) VALUES
   ('eclipse', '"afonso01@"'::jsonb, '2IA - B'),
   ('smartciv', '"enzo05@"'::jsonb, '2IA - B'),
   ('neuraltrio', '"gabriel08@"'::jsonb, '2IA - B'),
-  ('trigêmeos', '"lucas08@"'::jsonb, '2IA - B'),
-  ('trigemeos', '"lucas08@"'::jsonb, '2IA - B'),
+  ('trigêmeos', '"lucas08@"'::jsonb, '2IA - B')
 
-  -- Administrador
-  ('admin', '["raissa", "melissa", "beatriz", "manuella"]'::jsonb, 'Administrador')
+  -- Administradores não são mantidos nesta tabela. Cada pessoa deve ter um
+  -- usuário próprio no Supabase Auth, com papel owner ou admin.
 ON CONFLICT (username) DO NOTHING;
 
 -- 4. Habilitar Permissões de Leitura e Escrita Públicas (RLS)

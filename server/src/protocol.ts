@@ -109,6 +109,7 @@ export type ControlCommand =
   | "access.disable"
   | "access.enable"
   | "access.revoke"
+  | "access.reactivate"
   | "session.issue"
   | "account.add"
   | "account.list"
@@ -120,7 +121,8 @@ export type ControlCommand =
   | "admin.list"
   | "admin.enable"
   | "admin.disable"
-  | "admin.invite";
+  | "admin.invite"
+  | "audit.write";
 
 export interface ControlRequestMessage {
   v: typeof PROTOCOL_VERSION;
@@ -282,6 +284,7 @@ function validControlCommand(value: unknown): value is ControlCommand {
     value === "access.disable" ||
     value === "access.enable" ||
     value === "access.revoke" ||
+    value === "access.reactivate" ||
     value === "session.issue" ||
     value === "account.add" ||
     value === "account.list" ||
@@ -293,7 +296,8 @@ function validControlCommand(value: unknown): value is ControlCommand {
     value === "admin.list" ||
     value === "admin.enable" ||
     value === "admin.disable" ||
-    value === "admin.invite"
+    value === "admin.invite" ||
+    value === "audit.write"
   );
 }
 

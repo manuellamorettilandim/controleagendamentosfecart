@@ -16,7 +16,6 @@
             <button id="theme-toggle" class="admin-theme-toggle" type="button" aria-label="Ativar tema claro" aria-pressed="true" title="Ativar tema claro">
               <i class="ph ph-sun" aria-hidden="true"></i>
             </button>
-            <div class="admin-avatar" aria-label="Administrador">AD</div>
           </div>
         </header>
 
@@ -24,23 +23,23 @@
           <section class="metrics-grid" aria-label="Resumo da plataforma">
             <article class="metric-card">
               <div class="metric-icon metric-icon-blue"><i class="ph ph-users-three" aria-hidden="true"></i></div>
-              <div class="metric-copy"><span>Contas ativas</span><strong id="metric-active-accounts">3</strong><small>de <b id="metric-total-accounts">10</b></small></div>
-              <div class="metric-progress"><span id="metric-active-progress" style="width: 30%"></span></div>
+              <div class="metric-copy"><span>Contas ativas</span><strong id="metric-active-accounts">—</strong><small>de <b id="metric-total-accounts">—</b></small></div>
+              <div class="metric-progress"><span id="metric-active-progress" style="width: 0%"></span></div>
             </article>
             <article class="metric-card">
               <div class="metric-icon metric-icon-blue"><i class="ph ph-gauge" aria-hidden="true"></i></div>
-              <div class="metric-copy"><span>Quota remanescente <em>(agregada)</em></span><strong id="metric-quota">64%</strong><small>64% de 100%</small></div>
-              <div class="metric-progress"><span id="metric-quota-progress" style="width: 64%"></span></div>
+              <div class="metric-copy"><span>Quota remanescente <em>(agregada)</em></span><strong id="metric-quota">—</strong><small id="metric-quota-detail">carregando dados reais</small></div>
+              <div class="metric-progress"><span id="metric-quota-progress" style="width: 0%"></span></div>
             </article>
             <article class="metric-card">
               <div class="metric-icon metric-icon-blue"><i class="ph ph-calendar-blank" aria-hidden="true"></i></div>
-              <div class="metric-copy"><span>Agendamentos hoje</span><strong id="metric-today">18</strong><small>em <b id="metric-today-accounts">3</b> contas</small></div>
-              <div class="metric-progress"><span id="metric-today-progress" style="width: 25%"></span></div>
+              <div class="metric-copy"><span>Agendamentos hoje</span><strong id="metric-today">—</strong><small>em <b id="metric-today-accounts">—</b> contas</small></div>
+              <div class="metric-progress"><span id="metric-today-progress" style="width: 0%"></span></div>
             </article>
             <article class="metric-card metric-card-warning">
               <div class="metric-icon metric-icon-amber"><i class="ph ph-clock" aria-hidden="true"></i></div>
-              <div class="metric-copy"><span>Aprovações pendentes</span><strong id="metric-pending">7</strong><small>requerem decisão</small></div>
-              <div class="metric-progress metric-progress-warning"><span id="metric-pending-progress" style="width: 62%"></span></div>
+              <div class="metric-copy"><span>Aprovações pendentes</span><strong id="metric-pending">—</strong><small id="metric-pending-detail">carregando dados reais</small></div>
+              <div class="metric-progress metric-progress-warning"><span id="metric-pending-progress" style="width: 0%"></span></div>
             </article>
           </section>
 
@@ -104,29 +103,31 @@
               <div><dt><i class="ph ph-users-three" aria-hidden="true"></i>Grupo</dt><dd id="review-group">Grupo 2</dd></div>
               <div><dt><i class="ph ph-user" aria-hidden="true"></i>Conta</dt><dd id="review-account">Conta 1</dd></div>
               <div><dt><i class="ph ph-calendar-blank" aria-hidden="true"></i>Período solicitado</dt><dd id="review-period">14/05/2025 – 14/05/2025</dd></div>
-              <div><dt><i class="ph ph-chart-pie-slice" aria-hidden="true"></i>Cota solicitada</dt><dd id="review-requested-quota">20%</dd></div>
-              <div><dt><i class="ph ph-chart-donut" aria-hidden="true"></i>Cota restante</dt><dd id="review-remaining-quota">22%</dd></div>
             </dl>
           </div>
           <div class="review-fields">
-            <div class="field-row"><label>Início<input id="review-start" type="date"></label><label>Fim<input id="review-end" type="date"></label></div>
-            <label class="range-field"><span><span>Cota (%)</span><output id="review-quota-value">20%</output></span><input id="review-quota" type="range" min="5" max="100" step="1" value="20"><span class="range-limits"><small>5%</small><small>100%</small></span></label>
+            <div class="field-row"><label>Início aprovado<input id="review-start" type="datetime-local" step="900"></label><label>Fim aprovado<input id="review-end" type="datetime-local" step="900"></label></div>
+            <label class="range-field" for="review-quota">
+              <span><span>Uso aprovado <small id="review-requested-quota">solicitado: —</small></span><output id="review-quota-output" for="review-quota">5%</output></span>
+              <input id="review-quota" type="range" min="5" max="20" step="5" value="5">
+              <small id="review-adjustment-label">Sem ajuste de uso</small>
+            </label>
             <label class="textarea-field">Justificativa da decisão<textarea id="review-note" maxlength="200" rows="3" placeholder="Explique o motivo da decisão..."></textarea><small><span id="review-note-count">0</span>/200</small></label>
           </div>
-          <div class="modal-callout"><i class="ph ph-info" aria-hidden="true"></i><span>Se você alterar o horário ou a cota, esta será uma aprovação com ajuste.</span></div>
+          <div class="modal-callout"><i class="ph ph-info" aria-hidden="true"></i><span>O pedido só libera a sessão depois da aprovação administrativa.</span></div>
         </div>
-        <footer class="modal-actions modal-actions-three"><button id="review-approve" class="modal-button primary" type="button"><i class="ph ph-check" aria-hidden="true"></i>Aprovar</button><button id="review-adjust" class="modal-button warning" type="button"><i class="ph ph-pencil-simple" aria-hidden="true"></i>Aprovar com ajuste</button><button id="review-reject" class="modal-button danger" type="button"><i class="ph ph-x" aria-hidden="true"></i>Recusar</button></footer>
+        <footer class="modal-actions modal-actions-two"><button id="review-approve" class="modal-button primary" type="button"><i class="ph ph-check" aria-hidden="true"></i>Aprovar</button><button id="review-reject" class="modal-button danger" type="button"><i class="ph ph-x" aria-hidden="true"></i>Recusar</button></footer>
       </form>
     </dialog>
 
     <dialog id="disable-modal" class="admin-modal" aria-labelledby="disable-title">
       <form id="disable-form" class="modal-card">
-        <header class="modal-header"><div class="modal-title-row"><span class="modal-step">2</span><h2 id="disable-title">Desabilitar token</h2></div><button class="modal-close" type="button" data-close-modal aria-label="Fechar modal"><i class="ph ph-x" aria-hidden="true"></i></button></header>
+        <header class="modal-header"><div class="modal-title-row"><span class="modal-step">2</span><h2 id="disable-title">Revogar token ativo</h2></div><button class="modal-close" type="button" data-close-modal aria-label="Fechar modal"><i class="ph ph-x" aria-hidden="true"></i></button></header>
         <div class="modal-body split-modal-body">
-          <dl class="detail-list"><div><dt><i class="ph ph-users-three" aria-hidden="true"></i>Grupo</dt><dd id="disable-group">Grupo 2</dd></div><div><dt><i class="ph ph-user" aria-hidden="true"></i>Conta</dt><dd id="disable-account">Conta 1</dd></div><div><dt><i class="ph ph-calendar-blank" aria-hidden="true"></i>Sessão ativa desde</dt><dd id="disable-start">14/05/2025 10:02</dd></div><div><dt><i class="ph ph-chart-pie-slice" aria-hidden="true"></i>Cota em uso</dt><dd id="disable-quota">15%</dd></div></dl>
-          <label class="textarea-field">Justificativa<textarea id="disable-note" maxlength="180" rows="7" placeholder="Explique o motivo da desabilitação do token..."></textarea><small><span id="disable-note-count">0</span>/180</small></label>
+          <dl class="detail-list"><div><dt><i class="ph ph-users-three" aria-hidden="true"></i>Grupo</dt><dd id="disable-group">Grupo 2</dd></div><div><dt><i class="ph ph-user" aria-hidden="true"></i>Conta</dt><dd id="disable-account">Conta 1</dd></div><div><dt><i class="ph ph-calendar-blank" aria-hidden="true"></i>Sessão ativa desde</dt><dd id="disable-start">14/05/2025 10:02</dd></div></dl>
+          <label class="textarea-field">Justificativa<textarea id="disable-note" maxlength="180" rows="7" placeholder="Explique o motivo da revogação do token..."></textarea><small><span id="disable-note-count">0</span>/180</small></label>
         </div>
-        <footer class="modal-actions modal-actions-two"><button class="modal-button secondary" type="button" data-close-modal>Cancelar</button><button id="disable-confirm" class="modal-button danger" type="button"><i class="ph ph-x" aria-hidden="true"></i>Desabilitar token</button></footer>
+        <footer class="modal-actions modal-actions-two"><button class="modal-button secondary" type="button" data-close-modal>Cancelar</button><button id="disable-confirm" class="modal-button danger" type="button"><i class="ph ph-key" aria-hidden="true"></i>Revogar token</button></footer>
       </form>
     </dialog>
 
@@ -134,7 +135,7 @@
       <form id="cancel-form" class="modal-card">
         <header class="modal-header"><div class="modal-title-row"><span class="modal-step">3</span><h2 id="cancel-title">Cancelar sessão futura</h2></div><button class="modal-close" type="button" data-close-modal aria-label="Fechar modal"><i class="ph ph-x" aria-hidden="true"></i></button></header>
         <div class="modal-body split-modal-body">
-          <dl class="detail-list"><div><dt><i class="ph ph-users-three" aria-hidden="true"></i>Grupo</dt><dd id="cancel-group">Grupo 2</dd></div><div><dt><i class="ph ph-user" aria-hidden="true"></i>Conta</dt><dd id="cancel-account">Conta 1</dd></div><div><dt><i class="ph ph-calendar-blank" aria-hidden="true"></i>Agendado para</dt><dd id="cancel-scheduled">14/05/2025 10:00</dd></div><div><dt><i class="ph ph-chart-pie-slice" aria-hidden="true"></i>Cota reservada</dt><dd id="cancel-quota">12%</dd></div></dl>
+          <dl class="detail-list"><div><dt><i class="ph ph-users-three" aria-hidden="true"></i>Grupo</dt><dd id="cancel-group">Grupo 2</dd></div><div><dt><i class="ph ph-user" aria-hidden="true"></i>Conta</dt><dd id="cancel-account">Conta 1</dd></div><div><dt><i class="ph ph-calendar-blank" aria-hidden="true"></i>Agendado para</dt><dd id="cancel-scheduled">14/05/2025 10:00</dd></div></dl>
           <label class="textarea-field">Justificativa<textarea id="cancel-note" maxlength="180" rows="7" placeholder="Informe o motivo do cancelamento..."></textarea><small><span id="cancel-note-count">0</span>/180</small></label>
         </div>
         <footer class="modal-actions modal-actions-two"><button class="modal-button secondary" type="button" data-close-modal>Fechar</button><button id="cancel-confirm" class="modal-button danger" type="button"><i class="ph ph-x" aria-hidden="true"></i>Cancelar sessão</button></footer>
@@ -144,8 +145,8 @@
     <dialog id="history-modal" class="admin-modal" aria-labelledby="history-title">
       <form class="modal-card history-modal-card">
         <header class="modal-header"><div class="modal-title-row"><span class="modal-step">4</span><h2 id="history-title">Histórico da ação</h2></div><button class="modal-close" type="button" data-close-modal aria-label="Fechar modal"><i class="ph ph-x" aria-hidden="true"></i></button></header>
-        <div class="modal-body history-body"><div class="history-meta"><div class="history-avatar">AO</div><strong id="history-admin">Administrador</strong><time id="history-date">14/05/2025 11:45</time></div><dl class="detail-list history-list"><div><dt><i class="ph ph-user-circle" aria-hidden="true"></i>Ação realizada</dt><dd><span id="history-action" class="status-badge approved">Aprovação com ajuste</span></dd></div><div><dt><i class="ph ph-calendar-check" aria-hidden="true"></i>Período aprovado</dt><dd id="history-period">14/05/2025 – 14/05/2025</dd></div><div><dt><i class="ph ph-chart-pie-slice" aria-hidden="true"></i>Cota solicitada</dt><dd id="history-requested">20%</dd></div><div><dt><i class="ph ph-chart-donut" aria-hidden="true"></i>Cota ajustada</dt><dd id="history-adjusted">15%</dd></div><div><dt><i class="ph ph-note" aria-hidden="true"></i>Justificativa</dt><dd id="history-note">Ajuste realizado para otimizar o uso da capacidade disponível.</dd></div></dl></div>
-        <footer class="modal-actions"><button class="modal-button secondary" type="button" data-close-modal>Fechar</button></footer>
+        <div class="modal-body history-body"><div class="history-meta"><div class="history-avatar">AO</div><strong id="history-admin">Administrador</strong><time id="history-date">14/05/2025 11:45</time></div><dl class="detail-list history-list"><div><dt><i class="ph ph-user-circle" aria-hidden="true"></i>Ação realizada</dt><dd><span id="history-action" class="status-badge approved">Aprovação</span></dd></div><div><dt><i class="ph ph-calendar-check" aria-hidden="true"></i>Período aprovado</dt><dd id="history-period">14/05/2025 – 14/05/2025</dd></div><div><dt><i class="ph ph-note" aria-hidden="true"></i>Justificativa</dt><dd id="history-note">Ação registrada no histórico administrativo.</dd></div></dl></div>
+        <footer class="modal-actions"><button class="modal-button secondary" type="button" data-close-modal>Fechar</button><button id="history-reactivate" class="modal-button primary" type="button" hidden><i class="ph ph-arrow-counter-clockwise" aria-hidden="true"></i>Reativar token</button></footer>
       </form>
     </dialog>
 

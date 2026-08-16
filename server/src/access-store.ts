@@ -20,6 +20,9 @@ export interface DeviceAccess {
   reservationId: string | null;
   quotaBaseUsedPercent: number | null;
   quotaBudgetPercent: number | null;
+  /** Public half of the ephemeral SSH credential used by the desktop app. */
+  sshPublicKey: string | null;
+  sshKeyFingerprint: string | null;
   usage: DeviceUsageState;
 }
 
@@ -64,6 +67,7 @@ export interface AccessRegistry {
 export interface IssuedDevice {
   device: DeviceAccess;
   token: string;
+  sshPrivateKey: string;
 }
 
 export interface IssueDeviceOptions {
@@ -246,11 +250,35 @@ function quotaLimitReached(device: DeviceAccess, accountUsedPercent: number | nu
       : accountUsedPercent;
     return consumed >= device.quotaBudgetPercent;
   }
+  // A value of 100 with no per-session budget means monitoring only. It must
+  // not revoke a group token when the shared account reaches a reported cap.
+  if (device.weeklyLimitPercent >= 100) return false;
   return accountUsedPercent >= device.weeklyLimitPercent;
 }
 
 function addSafe(left: number, right: number): number {
   return Math.min(Number.MAX_SAFE_INTEGER, left + Math.max(0, right));
+}
+
+function sshString(value: Buffer): Buffer {
+  const length = Buffer.alloc(4);
+  length.writeUInt32BE(value.length, 0);
+  return Buffer.concat([length, value]);
+}
+
+export function createEphemeralSshKeyPair(): { publicKey: string; privateKey: string; fingerprint: string } {
+  const { publicKey, privateKey } = crypto.generateKeyPairSync("ed25519");
+  const spki = publicKey.export({ type: "spki", format: "der" });
+  const rawPublicKey = spki.subarray(spki.length - 32);
+  const wireKey = Buffer.concat([
+    sshString(Buffer.from("ssh-ed25519", "ascii")),
+    sshString(rawPublicKey),
+  ]);
+  return {
+    publicKey: `ssh-ed25519 ${wireKey.toString("base64")}`,
+    privateKey: privateKey.export({ type: "pkcs8", format: "pem" }).toString(),
+    fingerprint: `SHA256:${crypto.createHash("sha256").update(wireKey).digest("base64").replace(/=+$/u, "")}`,
+  };
 }
 
 function validateDevice(value: unknown): DeviceAccess {
@@ -295,6 +323,8 @@ function validateDevice(value: unknown): DeviceAccess {
     reservationId: isString(device.reservationId) && device.reservationId.trim() ? device.reservationId.trim() : null,
     quotaBaseUsedPercent: finiteNumber(device.quotaBaseUsedPercent),
     quotaBudgetPercent: finiteNumber(device.quotaBudgetPercent),
+    sshPublicKey: isString(device.sshPublicKey) && device.sshPublicKey.startsWith("ssh-ed25519 ") ? device.sshPublicKey : null,
+    sshKeyFingerprint: isString(device.sshKeyFingerprint) ? device.sshKeyFingerprint : null,
     usage: usageFromValue(device.usage),
   };
 }
@@ -393,6 +423,7 @@ export class AccessStore {
         throw new Error("Já existe um token não revogado para esta conta. Revogue o anterior antes de emitir outro.");
       }
       const token = createOpaqueToken();
+      const sshKey = createEphemeralSshKeyPair();
       const device: DeviceAccess = {
         deviceId: `device-${crypto.randomBytes(8).toString("hex")}`,
         label: normalizedLabel,
@@ -408,12 +439,14 @@ export class AccessStore {
         reservationId: typeof options.reservationId === "string" && options.reservationId.trim() ? options.reservationId.trim() : null,
         quotaBaseUsedPercent: finiteNumber(options.quotaBaseUsedPercent),
         quotaBudgetPercent: finiteNumber(options.quotaBudgetPercent),
+        sshPublicKey: sshKey.publicKey,
+        sshKeyFingerprint: sshKey.fingerprint,
         usage: emptyUsage(),
       };
 
       registry.devices.push(device);
       await this.write(registry);
-      return { device, token };
+      return { device, token, sshPrivateKey: sshKey.privateKey };
     });
   }
 
@@ -508,6 +541,29 @@ export class AccessStore {
       }
 
       device.revokedAt = now.toISOString();
+      await this.write(registry);
+      return device;
+    });
+  }
+
+  public async reactivate(deviceId: string, now = new Date()): Promise<DeviceAccess | null> {
+    return withWriteLock(this.filePath, async () => {
+      const registry = await this.read();
+      const device = registry.devices.find((candidate) => candidate.deviceId === deviceId);
+      if (!device || device.revokedAt === null || Date.parse(device.expiresAt) <= now.getTime()) {
+        return null;
+      }
+      if (device.accountId && registry.devices.some((candidate) => (
+        candidate.deviceId !== device.deviceId
+        && candidate.accountId === device.accountId
+        && candidate.revokedAt === null
+        && Date.parse(candidate.expiresAt) > now.getTime()
+      ))) {
+        throw new Error("Já existe outro token ativo para esta conta.");
+      }
+
+      device.revokedAt = null;
+      device.disabledAt = null;
       await this.write(registry);
       return device;
     });

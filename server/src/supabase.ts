@@ -1,14 +1,17 @@
 import type { AccountSnapshot, RelayDevice } from "./protocol.js";
+import { loginEmailForUsername } from "./user-identity.js";
 
 export interface SupabaseAdminIdentity {
   userId: string;
   email: string | null;
+  login: string;
   role: "owner" | "admin";
 }
 
 export interface SupabaseUserIdentity {
   userId: string;
   email: string | null;
+  login: string;
 }
 
 export type SupabaseAdminKeyType = "secret" | "service_role";
@@ -16,6 +19,7 @@ export type SupabaseAdminKeyType = "secret" | "service_role";
 interface SupabaseUser {
   id?: unknown;
   email?: unknown;
+  app_metadata?: unknown;
 }
 
 interface SupabaseRequestOptions {
@@ -78,7 +82,7 @@ export class SupabaseAuthClient {
     const role = row?.role === "owner" || row?.role === "admin" ? row.role : null;
     if (!role || row?.enabled !== true) return null;
 
-    return { userId, email: user.email, role };
+    return { userId, email: user.email, login: user.login, role };
   }
 
   public async authenticateUser(token: string): Promise<SupabaseUserIdentity | null> {
@@ -88,7 +92,10 @@ export class SupabaseAuthClient {
     if (!userResult.ok) return null;
     const user = asRecord(userResult.data) as SupabaseUser | null;
     const userId = asString(user?.id);
-    return userId ? { userId, email: asString(user?.email) } : null;
+    const email = asString(user?.email);
+    const appMetadata = asRecord(user?.app_metadata);
+    const login = asString(appMetadata?.remote_codex_login) || email || "Administrador";
+    return userId ? { userId, email, login } : null;
   }
 
   public async queryAdmin<T = unknown>(token: string, table: string, query: Record<string, string>): Promise<T[]> {
@@ -179,6 +186,28 @@ export class SupabaseServiceClient {
     return { userId, email: userEmail };
   }
 
+  public async createAdmin(email: string, password: string, role: "owner" | "admin", createdBy: string | null, login?: string): Promise<{ userId: string; email: string | null }> {
+    const normalizedLogin = login?.normalize("NFKC").trim().toLowerCase() || "";
+    const normalizedEmail = normalizedLogin ? loginEmailForUsername(normalizedLogin) : email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) throw new Error("Informe um email administrativo válido.");
+    if (password.length < 20) throw new Error("A senha administrativa deve ter pelo menos 20 caracteres.");
+    const listed = asRecord(await this.request("/auth/v1/admin/users?per_page=1000"));
+    const users = Array.isArray(listed?.users) ? listed.users : [];
+    const existing = users.find((candidate) => asString(asRecord(candidate)?.email)?.toLowerCase() === normalizedEmail);
+    let userId = asString(asRecord(existing)?.id);
+    const body = {
+      email: normalizedEmail,
+      password,
+      email_confirm: true,
+      app_metadata: { remote_codex_role: role, ...(normalizedLogin ? { remote_codex_login: normalizedLogin } : {}) },
+    };
+    if (userId) await this.request(`/auth/v1/admin/users/${encodeURIComponent(userId)}`, { method: "PUT", body });
+    else userId = asString(asRecord(await this.request("/auth/v1/admin/users", { method: "POST", body }))?.id);
+    if (!userId) throw new Error("Supabase não retornou o usuário administrativo.");
+    await this.upsertAdmin(userId, normalizedEmail, role, createdBy);
+    return { userId, email: normalizedEmail };
+  }
+
   public async bootstrapOwner(email: string): Promise<{ userId: string; email: string | null }> {
     const normalizedEmail = email.trim().toLowerCase();
     const result = await this.request("/auth/v1/admin/users?per_page=1000");
@@ -227,6 +256,7 @@ export class SupabaseServiceClient {
       login_email: input.loginEmail,
       group_name: input.groupName,
       enabled: true,
+      scheduling_enabled: true,
       account_id: input.accountId,
       weekly_quota_percent: input.weeklyQuotaPercent,
       updated_at: new Date().toISOString(),
@@ -239,8 +269,28 @@ export class SupabaseServiceClient {
   }
 
   public async listAdmins(): Promise<Array<Record<string, unknown>>> {
-    const result = await this.request("/rest/v1/codex_admins?select=user_id,email,role,enabled,created_at,created_by&order=created_at.asc");
-    return Array.isArray(result) ? result.filter((row): row is Record<string, unknown> => Boolean(asRecord(row))) : [];
+    const [adminResult, authResult] = await Promise.all([
+      this.request("/rest/v1/codex_admins?select=user_id,email,role,enabled,created_at,created_by&order=created_at.asc"),
+      this.request("/auth/v1/admin/users?per_page=1000"),
+    ]);
+    const authUsers = Array.isArray(asRecord(authResult)?.users) ? asRecord(authResult)?.users as unknown[] : [];
+    const authById = new Map(authUsers.map((candidate) => {
+      const record = asRecord(candidate);
+      return [asString(record?.id), record] as const;
+    }).filter(([id]) => Boolean(id)));
+    return Array.isArray(adminResult) ? adminResult.flatMap((candidate) => {
+      const row = asRecord(candidate);
+      const userId = asString(row?.user_id);
+      if (!row || !userId) return [];
+      const authUser = authById.get(userId);
+      const metadata = asRecord(authUser?.app_metadata);
+      return [{
+        ...row,
+        login: asString(metadata?.remote_codex_login) || asString(authUser?.email) || asString(row.email),
+        last_sign_in_at: asString(authUser?.last_sign_in_at),
+        auth_created_at: asString(authUser?.created_at),
+      }];
+    }) : [];
   }
 
   public async setAdminEnabled(userId: string, enabled: boolean): Promise<Record<string, unknown>> {
@@ -277,7 +327,7 @@ export class SupabaseServiceClient {
   public async upsertDeviceSnapshots(devices: RelayDevice[]): Promise<void> {
     if (devices.length === 0) return;
     const now = new Date().toISOString();
-    await this.upsert("codex_device_snapshots", devices.map((device) => ({
+    const rows = devices.map((device) => ({
       device_id: device.deviceId,
       label: device.label,
       account_id: device.accountId ?? null,
@@ -313,7 +363,31 @@ export class SupabaseServiceClient {
       usage_limit_reached_at: device.usage?.usageLimitReachedAt ?? null,
       usage_last_seen_at: device.usage?.lastUsageAt ?? null,
       stale_at: now,
-    })), "device_id");
+    }));
+    const failures: Error[] = [];
+    for (const row of rows) {
+      try {
+        await this.upsert("codex_device_snapshots", [row], "device_id");
+      } catch (error) {
+        const failure = error instanceof Error ? error : new Error(String(error));
+        if (failure.message.includes("codex_device_snapshots_user_id_fkey") || failure.message.includes("codex_device_snapshots_reservation_id_fkey")) {
+          try {
+            // Historical local registries can outlive deleted Auth users or
+            // reservations. Keep their operational state without an invalid
+            // foreign-key link, so they cannot block valid token updates.
+            await this.upsert("codex_device_snapshots", [{ ...row, user_id: null, reservation_id: null }], "device_id");
+            continue;
+          } catch (retryError) {
+            failures.push(retryError instanceof Error ? retryError : new Error(String(retryError)));
+            continue;
+          }
+        }
+        failures.push(failure);
+      }
+    }
+    if (failures.length > 0) {
+      throw new Error(`${failures.length} snapshot(s) de dispositivo não foram sincronizados: ${failures[0]?.message}`);
+    }
   }
 
   public async audit(actorUserId: string | null, action: string, targetType: string, targetId: string | null, metadata: Record<string, unknown> = {}): Promise<void> {

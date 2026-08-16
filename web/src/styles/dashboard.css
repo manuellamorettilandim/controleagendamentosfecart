@@ -393,6 +393,11 @@ summary:focus-visible {
   background: var(--warning-soft);
 }
 
+.notification-item.is-danger > i {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
 .notification-item strong,
 .notification-item p,
 .notification-item time {
@@ -523,6 +528,43 @@ summary:focus-visible {
   align-items: center;
   gap: 10px;
   margin-top: 11px;
+}
+
+.access-product-picker {
+  display: inline-flex;
+  gap: 4px;
+  margin-top: 12px;
+  padding: 3px;
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  background: var(--field);
+}
+
+.access-product {
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.access-product.is-active {
+  color: var(--text);
+  background: var(--surface-raised);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.16);
+}
+
+.access-product:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.access-product small {
+  color: var(--muted);
+  font-size: 9px;
 }
 
 .access-copy-picker label {
@@ -690,7 +732,7 @@ summary:focus-visible {
 
 .summary-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+  grid-template-columns: minmax(0, 1.65fr) minmax(410px, 0.85fr);
   gap: 14px;
   margin-top: 14px;
 }
@@ -778,10 +820,14 @@ summary:focus-visible {
 
 .session-overview {
   display: grid;
-  grid-template-columns: minmax(190px, 1fr) minmax(170px, 1fr) minmax(170px, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: center;
   gap: 19px;
   margin-top: 10px;
+}
+
+.session-state-block {
+  grid-column: 1 / -1;
 }
 
 .session-state-block {
@@ -1647,81 +1693,429 @@ summary:focus-visible {
   font-size: 16px;
 }
 
-.guide-grid {
+.guide-tool-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.app-access-panel {
+  margin-top: 18px;
+  padding: 18px;
+  border: 1px solid rgba(76, 132, 255, 0.28);
+  border-radius: 16px;
+  background: linear-gradient(145deg, rgba(52, 99, 210, 0.13), rgba(18, 24, 39, 0.72));
+}
+
+.app-access-heading,
+.app-access-actions,
+.app-access-note {
+  display: flex;
+  align-items: center;
+}
+
+.app-access-heading {
+  gap: 12px;
+}
+
+.app-access-heading > .ph {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border-radius: 12px;
+  color: #8fb0ff;
+  background: rgba(76, 132, 255, 0.16);
+  font-size: 21px;
+}
+
+.app-access-heading div {
+  display: grid;
+  gap: 3px;
+}
+
+.app-access-heading span,
+.app-access-note {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.app-access-details {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
+  gap: 10px;
+  margin: 16px 0;
 }
 
-.guide-card {
-  position: relative;
-  min-height: 280px;
-  padding: 24px 24px 22px;
+.app-access-details div {
+  min-width: 0;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(7, 12, 23, 0.42);
 }
 
-.guide-number {
-  position: absolute;
-  top: 18px;
-  right: 20px;
+.app-access-details dt {
+  margin-bottom: 5px;
   color: var(--muted);
-  font-family: "SFMono-Regular", Consolas, monospace;
-  font-size: 12px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
-.guide-icon {
-  display: grid;
-  width: 44px;
-  height: 44px;
-  margin-bottom: 22px;
-  place-items: center;
-  border: 1px solid rgba(var(--accent-rgb), 0.35);
-  border-radius: 11px;
-  color: var(--accent);
-  background: var(--accent-soft);
-  font-size: 24px;
-}
-
-.guide-card h2 {
+.app-access-details dd {
+  overflow: hidden;
   margin: 0;
   color: var(--text);
-  font-size: 16px;
-  font-weight: 650;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.guide-card p,
-.guide-card li {
+.app-access-actions {
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.app-access-note {
+  gap: 7px;
+  margin: 13px 0 0;
+  line-height: 1.45;
+}
+
+@media (max-width: 720px) {
+  .app-access-details {
+    grid-template-columns: 1fr;
+  }
+
+  .app-access-actions > button {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+.guide-tool-card {
+  display: grid;
+  min-height: 238px;
+  grid-template-columns: 88px minmax(0, 1fr);
+  gap: 22px;
+  align-items: center;
+  padding: 28px;
+  text-align: left;
+  transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.guide-tool-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(var(--accent-rgb), 0.55);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.13);
+}
+
+.guide-tool-art {
+  display: grid;
+  width: 82px;
+  height: 82px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid rgba(var(--accent-rgb), 0.35);
+  border-radius: 20px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  font-size: 40px;
+}
+
+.guide-tool-art.is-app {
+  color: #9d7cf2;
+  border-color: rgba(157, 124, 242, 0.35);
+  background: rgba(157, 124, 242, 0.09);
+}
+
+.guide-tool-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.guide-tool-copy > strong {
+  margin-top: 14px;
+  color: var(--text);
+  font-size: 21px;
+  font-weight: 650;
+  letter-spacing: -0.025em;
+}
+
+.guide-tool-copy > span:not(.guide-availability) {
+  margin-top: 8px;
   color: var(--muted);
   font-size: 12px;
   line-height: 1.55;
 }
 
-.guide-card > p {
-  margin: 11px 0 19px;
-}
-
-.guide-card details {
-  padding-top: 13px;
-  border-top: 1px solid var(--line);
-}
-
-.guide-card summary {
-  color: var(--text-soft);
-  cursor: pointer;
+.guide-tool-copy small {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 21px;
+  color: var(--accent);
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 650;
 }
 
-.guide-card details p {
-  margin-bottom: 0;
+.guide-availability {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 25px;
+  padding: 0 9px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 650;
 }
 
-.guide-card ol {
-  margin: 10px 0 0;
-  padding-left: 18px;
+.guide-availability.is-ready {
+  color: var(--success);
+  background: rgba(38, 190, 119, 0.1);
 }
 
-.guide-card strong {
+.guide-availability.is-limited {
+  color: var(--warning);
+  background: rgba(231, 168, 68, 0.11);
+}
+
+.guide-detail {
+  padding-bottom: 28px;
+}
+
+.guide-detail-header {
+  display: grid;
+  gap: 22px;
+  padding: 18px 4px 22px;
+}
+
+.guide-back-button,
+.guide-inline-button,
+.guide-doc-link {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  gap: 7px;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.guide-back-button {
+  color: var(--muted-strong);
+}
+
+.guide-detail-heading {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.guide-detail-heading .guide-tool-art {
+  width: 68px;
+  height: 68px;
+  border-radius: 17px;
+  font-size: 32px;
+}
+
+.guide-detail-heading h1 {
+  margin: 8px 0 0;
+  color: var(--text);
+  font-size: 28px;
+  letter-spacing: -0.04em;
+}
+
+.guide-detail-heading p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.guide-platform-switch {
+  display: inline-flex;
+  gap: 4px;
+  margin-bottom: 16px;
+  padding: 4px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--field);
+}
+
+.guide-platform-switch button {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  gap: 7px;
+  padding: 0 15px;
+  border-radius: 7px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.guide-platform-switch button.is-active {
+  color: var(--text);
+  background: var(--surface-raised);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.14);
+}
+
+.guide-steps {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.guide-step {
+  display: grid;
+  min-height: 260px;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 15px;
+  padding: 23px;
+}
+
+.guide-step-wide {
+  min-height: 0;
+  grid-column: 1 / -1;
+}
+
+.guide-step-number {
+  display: grid;
+  width: 31px;
+  height: 31px;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--accent);
+  background: var(--accent-soft);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.guide-step h2 {
+  margin: 4px 0 12px;
+  color: var(--text);
+  font-size: 16px;
+}
+
+.guide-step p,
+.guide-step li {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.58;
+}
+
+.guide-step ol {
+  margin: 0 0 16px;
+  padding-left: 19px;
+}
+
+.guide-step a:not(.guide-doc-link) {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.guide-step pre {
+  max-width: 100%;
+  margin: 12px 0;
+  overflow-x: auto;
+  padding: 13px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
   color: var(--text-soft);
+  background: var(--field);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 10px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.guide-check,
+.guide-note,
+.guide-security {
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+  margin-top: 14px;
+  padding: 11px 12px;
+  border-radius: 8px;
+  background: var(--field);
+}
+
+.guide-check .ph,
+.guide-security .ph {
+  color: var(--success);
+  font-size: 16px;
+}
+
+.guide-note .ph {
+  color: var(--accent);
+  font-size: 16px;
+}
+
+.guide-inline-button,
+.guide-doc-link {
+  min-height: 34px;
+  margin-top: 10px;
+  padding: 0 11px;
+  border: 1px solid rgba(var(--accent-rgb), 0.35);
+  border-radius: 7px;
+  background: var(--accent-soft);
+  text-decoration: none;
+}
+
+.guide-troubleshooting {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.guide-troubleshooting p {
+  display: flex;
+  margin: 0;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--field);
+}
+
+.guide-troubleshooting strong {
+  color: var(--text-soft);
+}
+
+.guide-app-warning {
+  display: flex;
+  gap: 14px;
+  margin-bottom: 16px;
+  padding: 16px 18px;
+  border: 1px solid rgba(231, 168, 68, 0.28);
+  border-radius: 10px;
+  color: var(--warning);
+  background: rgba(231, 168, 68, 0.07);
+}
+
+.guide-app-warning > .ph {
+  flex: 0 0 auto;
+  font-size: 21px;
+}
+
+.guide-app-warning strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.guide-app-warning p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
 }
 
 .booking-dialog {
@@ -2061,6 +2455,15 @@ summary:focus-visible {
   .session-overview {
     grid-template-columns: 1.2fr 1fr 1fr;
   }
+
+  .guide-tool-grid,
+  .guide-steps {
+    grid-template-columns: 1fr;
+  }
+
+  .guide-step-wide {
+    grid-column: auto;
+  }
 }
 
 @media (max-width: 720px) {
@@ -2310,7 +2713,55 @@ summary:focus-visible {
     text-align: left;
   }
 
-  .guide-grid {
+  .guide-tool-grid,
+  .guide-steps {
+    grid-template-columns: 1fr;
+  }
+
+  .guide-tool-card {
+    min-height: 0;
+    grid-template-columns: 62px minmax(0, 1fr);
+    gap: 15px;
+    padding: 19px;
+  }
+
+  .guide-tool-art {
+    width: 58px;
+    height: 58px;
+    border-radius: 15px;
+    font-size: 29px;
+  }
+
+  .guide-tool-copy > strong {
+    font-size: 17px;
+  }
+
+  .guide-detail-heading {
+    align-items: flex-start;
+  }
+
+  .guide-detail-heading .guide-tool-art {
+    width: 54px;
+    height: 54px;
+    border-radius: 14px;
+    font-size: 27px;
+  }
+
+  .guide-platform-switch {
+    width: 100%;
+  }
+
+  .guide-platform-switch button {
+    flex: 1;
+    justify-content: center;
+  }
+
+  .guide-step {
+    min-height: 0;
+    padding: 18px;
+  }
+
+  .guide-troubleshooting {
     grid-template-columns: 1fr;
   }
 
@@ -2354,27 +2805,8 @@ summary:focus-visible {
   }
 }
 
-/* MVP: keep the user journey focused on scheduling and receiving a token. */
-.dashboard-page .main-tabs,
-.dashboard-page .notification-anchor,
-.dashboard-page .help-action,
-.dashboard-page .summary-grid,
-.dashboard-page .guides-view {
-  display: none !important;
-}
-
-.dashboard-page .dialog-field:has(#booking-account),
-.dashboard-page .dialog-field:has(#booking-quota),
 .dashboard-page .dialog-field:has(#booking-note) {
   display: none !important;
-}
-
-.dashboard-page .top-nav {
-  grid-template-columns: minmax(0, 1fr) auto;
-}
-
-.dashboard-page .top-actions {
-  grid-column: 2;
 }
 
 .dashboard-page .token-card {
@@ -2411,5 +2843,3 @@ summary:focus-visible {
     width: 100%;
   }
 }
-
-

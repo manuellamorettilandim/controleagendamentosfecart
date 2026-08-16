@@ -22,6 +22,7 @@ export default defineConfig({
         dashboard: path.join(webRoot, "dashboard.html"),
         admin: path.join(webRoot, "admin.html"),
         groups: path.join(webRoot, "groups.html"),
+        telemetry: path.join(webRoot, "telemetry.html"),
       },
     },
   },

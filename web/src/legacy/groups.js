@@ -19,6 +19,7 @@
     error: "",
     live: false,
     detailHistoryExpanded: false,
+    adminRole: null,
   };
 
   function escapeHtml(value) {
@@ -188,15 +189,16 @@
     const groupsByKey = new Map();
 
     function ensureGroup(user, accountIdOverride = "") {
-      const name = textValue(user?.group_name || user?.groupName, "Sem grupo");
-      const accountId = textValue(user?.account_id || user?.accountId, accountIdOverride || "");
-      const key = `${name}\u0000${accountId}`;
+      const userId = userIdOf(user);
+      const name = textValue(user?.username, "Grupo sem nome");
+      const className = textValue(user?.group_name || user?.groupName, "Sem turma");
+      const key = userId || name;
       let group = groupsByKey.get(key);
       if (!group) {
         group = {
-          id: groupIdFor(name, accountId),
+          id: userId || groupIdFor(name, ""),
           name,
-          accountId,
+          className,
           users: [],
           reservations: [],
           devices: [],
@@ -204,7 +206,6 @@
         };
         groupsByKey.set(key, group);
       }
-      const userId = userIdOf(user);
       if (userId && !group.userIds.has(userId)) {
         group.userIds.add(userId);
         group.users.push(user);
@@ -230,15 +231,11 @@
     });
 
     return [...groupsByKey.values()].map((group) => {
-      const account = accounts.get(group.accountId);
-      const accountStatus = textValue(account?.status, "offline");
       const enabledUsers = group.users.filter((user) => user?.enabled !== false);
-      const token = !enabledUsers.length || accountStatus === "disabled"
-        ? "disabled"
-        : accountStatus === "ready"
-          ? "active"
-          : "inactive";
-      const permission = enabledUsers.length && accountStatus === "ready" ? "allowed" : "blocked";
+      const activeDevices = group.devices.filter(deviceIsActive);
+      const token = !enabledUsers.length ? "disabled" : activeDevices.length ? "active" : "inactive";
+      const schedulingEnabled = enabledUsers.some((user) => user?.scheduling_enabled !== false);
+      const permission = enabledUsers.length && schedulingEnabled ? "allowed" : "blocked";
       const activeDeviceReservationIds = new Set(group.devices.filter(deviceIsActive).map((device) => textValue(device.reservationId || device.reservation_id)));
       const now = Date.now();
       const scheduled = group.reservations
@@ -252,6 +249,8 @@
       const pendingReservation = scheduled.find(reservationIsPending);
       const upcomingReservation = scheduled.find((reservation) => (reservationStart(reservation)?.getTime() || 0) > now && !reservationIsPending(reservation));
       const selectedReservation = activeReservation || pendingReservation || upcomingReservation;
+      const selectedAccountId = textValue(selectedReservation?.account_id || activeDevices[0]?.accountId || activeDevices[0]?.account_id);
+      const account = accounts.get(selectedAccountId);
       const scheduleType = activeReservation ? "active" : pendingReservation ? "pending" : upcomingReservation ? "upcoming" : "none";
       const activityDates = [
         ...group.users.flatMap((user) => [user.created_at, user.updated_at]),
@@ -259,21 +258,15 @@
         ...group.devices.map((device) => device.lastSeenAt || device.last_seen_at),
       ].map(parseDate).filter(Boolean);
       const lastActivityDate = activityDates.sort((left, right) => right.getTime() - left.getTime())[0] || null;
-      const quotas = [
-        ...group.users.map((user) => numberValue(user.weekly_quota_percent, 0)),
-        ...group.reservations.map((reservation) => numberValue(reservation.quota_budget_percent || reservation.requested_quota_percent, 0)),
-      ];
-      const quota = Math.min(100, Math.round(Math.max(0, ...quotas)));
       return {
         id: group.id,
         name: group.name,
-        accountId: group.accountId,
-        account: accountLabelOf(account, group.accountId),
-        accountStatus,
+        className: group.className,
+        account: selectedReservation ? accountLabelOf(account, selectedAccountId) : "Escolhida em cada pedido",
         token,
         permission,
         schedule: selectedReservation ? makeSchedule(selectedReservation, scheduleType) : makeSchedule(null, "none"),
-        quota,
+        schedulingEnabled,
         lastActivity: formatActivity(lastActivityDate),
         activeSession: Boolean(activeReservation),
         users: group.users,
@@ -286,9 +279,8 @@
             id: textValue(reservation.id),
             groupId: group.id,
             group: group.name,
-            requestedBy: userLabelOf(usersById.get(userIdOf(reservation))),
+            className: group.className,
             slot: formatSlot(reservation.starts_at, reservation.ends_at),
-            quota: numberValue(reservation.requested_quota_percent || reservation.quota_budget_percent, 0),
           })),
       };
     }).sort((left, right) => left.name.localeCompare(right.name, "pt-BR") || left.account.localeCompare(right.account, "pt-BR"));
@@ -304,7 +296,7 @@
       const matchesStatus = state.status === "all" ? state.allowedTokens.has(group.token) : group.token === state.status;
       if (!matchesStatus) return false;
       if (!query) return true;
-      return `${group.name} ${group.account} ${tokenLabel(group.token)}`.toLocaleLowerCase("pt-BR").includes(query);
+      return `${group.name} ${group.className} ${tokenLabel(group.token)}`.toLocaleLowerCase("pt-BR").includes(query);
     });
   }
 
@@ -330,14 +322,12 @@
     const permission = group.permission === "allowed"
       ? '<span class="permission-pill">Pode agendar</span>'
       : '<span class="permission-pill is-blocked">Bloqueado</span>';
-    const quota = Math.max(0, Math.min(100, numberValue(group.quota, 0)));
     return `<tr class="${selected}" data-group-id="${escapeHtml(group.id)}" tabindex="0">
       <td>${escapeHtml(group.name)}</td>
-      <td>${escapeHtml(group.account)}</td>
+      <td>${escapeHtml(group.className)}</td>
       <td><span class="token-status"><i class="status-dot ${tokenClass(group.token)}"></i>${escapeHtml(tokenLabel(group.token))}</span></td>
       <td>${permission}</td>
       <td>${renderSchedule(group)}</td>
-      <td><span class="quota-cell"><span>${quota}%</span><span class="quota-mini-bar"><i style="width:${Math.min(100, quota * 5)}%"></i></span></span></td>
       <td>${escapeHtml(group.lastActivity)}</td>
       <td><button class="row-menu-button" type="button" data-row-menu="${escapeHtml(group.id)}" aria-label="Abrir detalhes de ${escapeHtml(group.name)}"><i class="ph ph-dots-three-vertical" aria-hidden="true"></i></button></td>
     </tr>`;
@@ -355,13 +345,13 @@
   function renderTable() {
     const body = $("#groups-table-body");
     if (state.loading) {
-      body.innerHTML = '<tr><td colspan="8" class="groups-empty-state">Carregando grupos reais…</td></tr>';
+      body.innerHTML = '<tr><td colspan="7" class="groups-empty-state">Carregando grupos reais…</td></tr>';
       $("#groups-pagination-label").textContent = "Carregando…";
       renderPagination(1);
       return;
     }
     if (state.error) {
-      body.innerHTML = `<tr><td colspan="8" class="groups-empty-state">${escapeHtml(state.error)}</td></tr>`;
+      body.innerHTML = `<tr><td colspan="7" class="groups-empty-state">${escapeHtml(state.error)}</td></tr>`;
       $("#groups-pagination-label").textContent = "Não foi possível carregar os grupos";
       renderPagination(1);
       return;
@@ -373,7 +363,7 @@
     const rows = list.slice(start, start + state.pageSize);
     body.innerHTML = rows.length
       ? rows.map(renderGroupRow).join("")
-      : '<tr><td colspan="8" class="groups-empty-state">Nenhum grupo encontrado com esses filtros.</td></tr>';
+      : '<tr><td colspan="7" class="groups-empty-state">Nenhum grupo encontrado com esses filtros.</td></tr>';
     const first = list.length ? start + 1 : 0;
     const last = Math.min(start + rows.length, list.length);
     $("#groups-pagination-label").textContent = `Mostrando ${first} a ${last} de ${list.length} grupos`;
@@ -387,13 +377,12 @@
     body.innerHTML = pendingRequests.length
       ? pendingRequests.map((request) => `<tr>
         <td>${escapeHtml(request.group)}</td>
-        <td>${escapeHtml(request.requestedBy)}</td>
+        <td>${escapeHtml(request.className)}</td>
         <td><span class="pending-slot"><i class="ph ph-calendar-blank" aria-hidden="true"></i>${escapeHtml(request.slot)}</span></td>
-        <td>${request.quota}%</td>
         <td><span class="pending-status"><i class="status-dot"></i>Aguardando aprovação</span></td>
         <td><button class="pending-action" type="button" data-pending-group="${escapeHtml(request.groupId)}">Ver solicitação</button></td>
       </tr>`).join("")
-      : `<tr><td colspan="6" class="groups-empty-state">${state.loading ? "Carregando solicitações…" : "Nenhuma solicitação pendente."}</td></tr>`;
+      : `<tr><td colspan="5" class="groups-empty-state">${state.loading ? "Carregando solicitações…" : "Nenhuma solicitação pendente."}</td></tr>`;
     const count = $("#pending-all-count");
     if (count) count.textContent = `(${pendingRequests.length})`;
   }
@@ -406,8 +395,8 @@
     const status = $("#group-detail-status");
     status.textContent = statusLabel(group.token);
     status.className = `group-status-pill ${statusPillClass(group.token)}`;
+    $("#detail-class").textContent = group.className;
     $("#detail-account").textContent = group.account;
-    $("#detail-members").textContent = `${group.users.length} usuário${group.users.length === 1 ? "" : "s"}`;
     $("#detail-token").innerHTML = `<span class="detail-status-dot ${group.token === "disabled" ? "is-disabled" : group.token === "inactive" ? "is-inactive" : "is-active"}"></span>${escapeHtml(tokenLabel(group.token))}`;
     $("#detail-permission").innerHTML = group.permission === "allowed"
       ? '<span class="permission-pill is-allowed">Pode agendar</span>'
@@ -419,9 +408,11 @@
     } else {
       $("#detail-session").innerHTML = `<span class="detail-status-dot ${group.schedule.type === "pending" ? "is-inactive" : ""}"></span><span><strong class="detail-upcoming-value">${escapeHtml(group.schedule.label)}</strong><small>${escapeHtml(group.schedule.time || "Aguardando decisão")}</small></span>`;
     }
-    const quota = Math.max(0, Math.min(100, numberValue(group.quota, 0)));
-    $("#detail-quota").innerHTML = `<span>${quota}%</span><span class="detail-quota-bar"><i style="width:${Math.min(100, quota * 5)}%"></i></span>`;
     $("#detail-last-activity").textContent = group.lastActivity;
+    const schedulingButton = $("#detail-toggle-scheduling-button");
+    if (schedulingButton) schedulingButton.querySelector("span").textContent = group.schedulingEnabled ? "Bloquear agendamentos" : "Liberar agendamentos";
+    const revokeButton = $("#detail-revoke-token-button");
+    if (revokeButton) revokeButton.disabled = group.token !== "active";
     const history = state.detailHistoryExpanded ? group.history : group.history.slice(0, 3);
     $("#recent-history-list").innerHTML = history.length
       ? history.map((item) => `<li><span class="history-icon ${item.tone}"><i class="ph ${item.icon}" aria-hidden="true"></i></span><p><span>${escapeHtml(item.title)}</span><small>${escapeHtml(item.note)}</small></p><time>${escapeHtml(item.time)}</time></li>`).join("")
@@ -482,7 +473,7 @@
 
   async function ensureAdminAccess() {
     let token = getAuthToken();
-    if (!token) return false;
+    if (!token) return null;
     const check = () => fetch("/api/admin/session", {
       headers: { Authorization: `Bearer ${token}` },
       cache: "no-store",
@@ -493,20 +484,20 @@
         const config = await window.RemoteCodexAuth.loadConfig();
         await window.RemoteCodexAuth.refreshSession(config);
         token = getAuthToken();
-        if (!token) return false;
+        if (!token) return null;
         response = await check();
       }
-      if (!response.ok) return false;
+      if (!response.ok) return null;
       const identity = await response.json().catch(() => ({}));
-      return identity.role === "owner" || identity.role === "admin";
+      return identity.role === "owner" || identity.role === "admin" ? identity : null;
     } catch {
-      return false;
+      return null;
     }
   }
 
-  async function adminRequest(path) {
+  async function adminRequest(path, options = {}) {
     if (!window.FecartApi?.admin) throw new Error("Cliente da API administrativa indisponível.");
-    const result = await window.FecartApi.admin(path);
+    const result = await window.FecartApi.admin(path, options);
     if (!result) throw new Error("Sessão administrativa ausente.");
     return result;
   }
@@ -544,6 +535,45 @@
     }
   }
 
+  async function toggleScheduling() {
+    const group = findGroup(state.selectedId);
+    if (!group) return;
+    const enabled = !group.schedulingEnabled;
+    const button = $("#detail-toggle-scheduling-button");
+    if (button) button.disabled = true;
+    try {
+      await adminRequest(`/api/admin/groups/${encodeURIComponent(group.id)}/scheduling`, {
+        method: "POST",
+        body: JSON.stringify({ enabled }),
+      });
+      await loadLiveData();
+      showToast(enabled ? `Agendamentos liberados para ${group.name}.` : `Agendamentos bloqueados para ${group.name}.`);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Não foi possível alterar a permissão.", "error");
+    } finally {
+      if (button) button.disabled = false;
+    }
+  }
+
+  async function revokeGroupToken() {
+    const group = findGroup(state.selectedId);
+    if (!group || group.token !== "active") return;
+    const button = $("#detail-revoke-token-button");
+    if (button) button.disabled = true;
+    try {
+      const result = await adminRequest(`/api/admin/groups/${encodeURIComponent(group.id)}/revoke-token`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
+      await loadLiveData();
+      showToast(result?.revoked ? `Token ativo de ${group.name} revogado.` : `Nenhum token ativo encontrado para ${group.name}.`);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Não foi possível revogar o token.", "error");
+    } finally {
+      if (button) button.disabled = false;
+    }
+  }
+
   function exportGroups() {
     if (!groups.length) {
       showToast("Não há grupos reais para exportar.", "error");
@@ -551,15 +581,13 @@
     }
     const csvCell = (value) => `"${String(value ?? "").replaceAll('"', '""')}"`;
     const rows = [
-      ["Grupo", "Conta", "Usuários", "Status do token", "Permissão", "Agendamento", "Quota", "Última atividade"],
+      ["Grupo", "Turma", "Status do token", "Permissão", "Agendamento", "Última atividade"],
       ...groups.map((group) => [
         group.name,
-        group.account,
-        group.users.length,
+        group.className,
         tokenLabel(group.token),
         group.permission === "allowed" ? "Pode agendar" : "Bloqueado",
         `${group.schedule.label} ${group.schedule.time}`.trim(),
-        `${group.quota}%`,
         group.lastActivity,
       ]),
     ];
@@ -670,6 +698,8 @@
     });
 
     $("#export-groups-button")?.addEventListener("click", exportGroups);
+    $("#detail-toggle-scheduling-button")?.addEventListener("click", toggleScheduling);
+    $("#detail-revoke-token-button")?.addEventListener("click", revokeGroupToken);
     $("#detail-refresh-button")?.addEventListener("click", async () => {
       await loadLiveData();
       if (findGroup(state.selectedId)) openGroupDetailModal();
@@ -693,10 +723,9 @@
         return;
       }
       if (section === "groups") return;
-      showToast("Esta área de telemetria estará disponível em breve.");
+      if (section === "telemetry") window.location.replace("/telemetry");
     }));
 
-    $(".sidebar-collapse")?.addEventListener("click", () => $(".admin-shell")?.classList.toggle("is-collapsed"));
     $("[data-admin-logout]")?.addEventListener("click", logout);
 
     document.addEventListener("click", (event) => {
@@ -705,11 +734,14 @@
   }
 
   document.addEventListener("DOMContentLoaded", async () => {
-    if (!(await ensureAdminAccess())) {
+    const identity = await ensureAdminAccess();
+    if (!identity) {
       window.RemoteCodexAuth?.clearSession?.();
       window.location.replace("/login");
       return;
     }
+    state.adminRole = identity.role;
+    window.FecartAdminShell?.setIdentity?.(identity);
     document.body.classList.remove("admin-auth-pending");
     document.body.classList.add("admin-auth-ready");
     bindEvents();

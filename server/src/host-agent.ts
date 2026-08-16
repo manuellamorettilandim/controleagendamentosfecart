@@ -66,6 +66,12 @@ export interface HostConfig {
   supabaseSecretKey?: string;
   supabaseServiceRoleKey?: string;
   startAppServer: boolean;
+  sshAuthorizedKeysFile?: string;
+  sshSessionCommand?: string;
+  sshPublicHost?: string;
+  sshPublicPort: number;
+  sshPublicUser: string;
+  sshWorkspaceRoot: string;
 }
 
 interface PendingFrame {
@@ -336,6 +342,14 @@ export function hostConfigFromEnvironment(env: NodeJS.ProcessEnv = process.env):
     supabaseSecretKey: env.SUPABASE_SECRET_KEY?.trim() || undefined,
     supabaseServiceRoleKey: env.SUPABASE_SERVICE_ROLE_KEY?.trim() || undefined,
     startAppServer: env.HOST_SKIP_APP_SERVER !== "1",
+    sshAuthorizedKeysFile: env.CODEX_SSH_AUTHORIZED_KEYS_FILE?.trim()
+      ? path.resolve(env.CODEX_SSH_AUTHORIZED_KEYS_FILE)
+      : undefined,
+    sshSessionCommand: env.CODEX_SSH_SESSION_COMMAND?.trim() || undefined,
+    sshPublicHost: env.CODEX_SSH_PUBLIC_HOST?.trim() || undefined,
+    sshPublicPort: Math.min(65_535, Math.max(1, Math.floor(positiveNumber(env.CODEX_SSH_PUBLIC_PORT, 22)))),
+    sshPublicUser: env.CODEX_SSH_PUBLIC_USER?.trim() || "fecart-host",
+    sshWorkspaceRoot: path.resolve(env.CODEX_SSH_WORKSPACE_ROOT?.trim() || path.join(path.dirname(primary.codeHome), "workspaces")),
   };
 }
 
@@ -510,6 +524,7 @@ export class HostAgent {
       );
     }
     const devices = await this.accessStore.active();
+    await this.syncSshAuthorizedKeys(devices);
     const deviceIds = new Set(devices.map((device) => device.deviceId));
     for (const deviceId of this.lastSyncedDeviceIds) {
       if (!deviceIds.has(deviceId)) this.send({ v: PROTOCOL_VERSION, type: "access.revoke", deviceId });
@@ -517,6 +532,28 @@ export class HostAgent {
     this.send({ v: PROTOCOL_VERSION, type: "access.sync", devices: devices.map(asRelayDevice) });
     this.lastSyncedDeviceIds = deviceIds;
     await this.syncDeviceSnapshots();
+  }
+
+  private async syncSshAuthorizedKeys(devices: DeviceAccess[]): Promise<void> {
+    const target = this.config.sshAuthorizedKeysFile;
+    const command = this.config.sshSessionCommand;
+    if (!target || !command) return;
+    if (/[\r\n"]/.test(command)) throw new Error("CODEX_SSH_SESSION_COMMAND contém caracteres inválidos.");
+    const eligible = devices.filter((device) => (
+      device.sshPublicKey
+      && device.accountId
+      && !device.usage?.usageLimitReachedAt
+      && /^[a-zA-Z0-9._-]+$/.test(device.deviceId)
+      && /^[a-zA-Z0-9._-]+$/.test(device.accountId)
+    ));
+    const contents = eligible.map((device) => (
+      `restrict,command="${command} ${device.deviceId} ${device.accountId}" ${device.sshPublicKey} ${device.deviceId}`
+    )).join("\n");
+    await fs.mkdir(path.dirname(target), { recursive: true });
+    const temporary = `${target}.${process.pid}.tmp`;
+    await fs.writeFile(temporary, contents ? `${contents}\n` : "", { encoding: "utf8", mode: 0o600 });
+    await fs.rename(temporary, target);
+    await fs.chmod(target, 0o600).catch(() => undefined);
   }
 
   private async refreshAccounts(): Promise<void> {
@@ -687,22 +724,22 @@ export class HostAgent {
         );
         await this.syncAccess();
         await this.audit(actorId, command, "device", issued.device.deviceId, { label: issued.device.label });
-        return { device: publicDevice(issued.device), token: issued.token };
+        return { device: publicDevice(issued.device), token: issued.token, app: this.appAccess(issued.device, issued.sshPrivateKey) };
       }
       case "session.issue": {
         const accountId = requestString(payload, "accountId");
         const userId = requestString(payload, "userId");
         const reservationId = requestString(payload, "reservationId");
         const expiresAt = requestString(payload, "expiresAt");
-        const budgetPercent = requestPercent(payload, "quotaBudgetPercent", 5);
-        if (budgetPercent <= 0) throw new Error("A franquia da sessão precisa ser maior que zero.");
+        const quotaBudgetPercent = requestPercent(payload, "quotaBudgetPercent", 5);
+        if (quotaBudgetPercent < 5 || quotaBudgetPercent > 20 || quotaBudgetPercent % 5 !== 0) {
+          throw new Error("O uso aprovado da sessão deve ser 5%, 10%, 15% ou 20%.");
+        }
         const worker = await this.workerFor(accountId);
         if (!worker.ready || worker.snapshot.status !== "ready") {
-          throw new Error("A conta vinculada à reserva não está disponível.");
+          throw new Error("A conta escolhida para a reserva não está disponível.");
         }
-        const weeklyWindow = weeklyRateLimit(worker.snapshot);
-        const baseUsedPercent = weeklyWindow?.usedPercent ?? 0;
-        const absoluteLimit = Math.min(100, Math.round((baseUsedPercent + budgetPercent) * 100) / 100);
+        const accountWindow = weeklyRateLimit(worker.snapshot);
         const issued = await this.accessStore.issue(
           `Sessão ${reservationId.slice(0, 8)}`,
           Math.max(1_000, Date.parse(expiresAt) - Date.now()),
@@ -710,20 +747,19 @@ export class HostAgent {
           {
             accountId,
             expiresAt,
-            weeklyLimitPercent: absoluteLimit,
+            weeklyLimitPercent: 100,
             userId,
             reservationId,
-            quotaBaseUsedPercent: baseUsedPercent,
-            quotaBudgetPercent: budgetPercent,
+            quotaBaseUsedPercent: accountWindow?.usedPercent ?? 0,
+            quotaBudgetPercent,
           },
         );
         await this.syncAccess();
         await this.audit(userId, command, "reservation", reservationId, {
           accountId,
-          quotaBudgetPercent: budgetPercent,
-          quotaBaseUsedPercent: baseUsedPercent,
+          quotaBudgetPercent,
         });
-        return { device: publicDevice(issued.device), token: issued.token };
+        return { device: publicDevice(issued.device), token: issued.token, app: this.appAccess(issued.device, issued.sshPrivateKey) };
       }
       case "access.list": {
         const devices = await this.accessStore.list();
@@ -761,6 +797,13 @@ export class HostAgent {
         await this.audit(actorId, command, "device", device.deviceId);
         return { device: publicDevice(device) };
       }
+      case "access.reactivate": {
+        const device = await this.accessStore.reactivate(requestString(payload, "deviceId"));
+        if (!device) throw new Error("Dispositivo não encontrado, não está revogado ou a sessão expirou.");
+        await this.syncAccess();
+        await this.audit(actorId, command, "device", device.deviceId);
+        return { device: publicDevice(device) };
+      }
       case "account.list":
         return { defaultAccountId: await this.accountStore.defaultId(), accounts: this.accountSnapshots() };
       case "account.add": {
@@ -776,6 +819,7 @@ export class HostAgent {
         const login = sanitizeLoginResult(await worker.loginStart());
         const snapshot = await worker.refreshSnapshot();
         await this.syncAccounts();
+        await this.audit(actorId, command, "account", accountId, { status: snapshot.status });
         return { accountId, login, snapshot: worker.snapshotForDefault(await this.accountStore.defaultId()) };
       }
       case "account.refresh": {
@@ -831,6 +875,17 @@ export class HostAgent {
       case "admin.list":
         if (!this.supabase) throw new Error("Supabase central não está configurado.");
         return { admins: await this.supabase.listAdmins() };
+      case "audit.write": {
+        if (!this.supabase) throw new Error("Supabase central não está configurado.");
+        const action = requestString(payload, "action");
+        const targetType = requestString(payload, "targetType");
+        const targetId = requestOptionalString(payload, "targetId");
+        const metadata = payload.metadata && typeof payload.metadata === "object" && !Array.isArray(payload.metadata)
+          ? payload.metadata as Record<string, unknown>
+          : {};
+        await this.audit(actorId, action, targetType, targetId, metadata);
+        return { recorded: true };
+      }
       case "admin.enable":
       case "admin.disable":
         if (!this.supabase) throw new Error("Supabase central não está configurado.");
@@ -854,6 +909,24 @@ export class HostAgent {
 
   private accountSnapshots(): AccountSnapshot[] {
     return [...this.workers.values()].map((worker) => worker.snapshot);
+  }
+
+  private appAccess(device: DeviceAccess, privateKey: string): Record<string, unknown> {
+    if (!this.config.sshPublicHost || !this.config.sshAuthorizedKeysFile || !this.config.sshSessionCommand || !device.sshKeyFingerprint) {
+      return { available: false };
+    }
+    const workspaceOwner = (device.userId || device.deviceId).replace(/[^a-zA-Z0-9._-]/g, "-").slice(0, 80);
+    return {
+      available: true,
+      host: this.config.sshPublicHost,
+      port: this.config.sshPublicPort,
+      user: this.config.sshPublicUser,
+      alias: `fecart-${device.deviceId.slice(-8)}`,
+      workspacePath: path.join(this.config.sshWorkspaceRoot, workspaceOwner),
+      privateKey,
+      fingerprint: device.sshKeyFingerprint,
+      expiresAt: device.expiresAt,
+    };
   }
 
   private async audit(actorId: string | null, action: string, targetType: string, targetId: string | null, metadata: Record<string, unknown> = {}): Promise<void> {

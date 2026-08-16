@@ -1,0 +1,65 @@
+<div class="admin-shell">
+  <aside class="admin-sidebar" data-admin-sidebar aria-label="Navegação administrativa"></aside>
+
+  <main class="admin-main">
+    <header class="admin-header">
+      <div class="page-heading">
+        <p class="eyebrow">Fecart AI Share</p>
+        <h1>Telemetria</h1>
+        <p>Acessos, contas e trilha de ações administrativas</p>
+      </div>
+      <div class="admin-header-actions">
+        <label class="admin-search" for="telemetry-search">
+          <i class="ph ph-magnifying-glass" aria-hidden="true"></i>
+          <input id="telemetry-search" type="search" placeholder="Buscar login, ação ou conta..." autocomplete="off">
+        </label>
+        <button id="telemetry-refresh" class="telemetry-refresh" type="button"><i class="ph ph-arrows-clockwise" aria-hidden="true"></i><span>Atualizar</span></button>
+        <button id="theme-toggle" class="admin-theme-toggle" type="button" aria-label="Ativar tema claro" aria-pressed="true" title="Ativar tema claro">
+          <i class="ph ph-sun" aria-hidden="true"></i>
+        </button>
+      </div>
+    </header>
+
+    <div class="admin-content telemetry-content">
+      <section class="telemetry-summary" aria-label="Resumo da telemetria">
+        <article class="telemetry-metric"><span class="telemetry-metric-icon is-blue"><i class="ph ph-shield-check" aria-hidden="true"></i></span><div><small>Acessos privilegiados</small><strong id="telemetry-admin-count">—</strong><p>admins e owners ativos</p></div></article>
+        <article class="telemetry-metric"><span class="telemetry-metric-icon is-purple"><i class="ph ph-crown" aria-hidden="true"></i></span><div><small>Owners</small><strong id="telemetry-owner-count">—</strong><p>acesso total ao painel</p></div></article>
+        <article class="telemetry-metric"><span class="telemetry-metric-icon is-green"><i class="ph ph-activity" aria-hidden="true"></i></span><div><small>Ações nas últimas 24h</small><strong id="telemetry-action-count">—</strong><p>eventos administrativos</p></div></article>
+        <article class="telemetry-metric"><span class="telemetry-metric-icon is-amber"><i class="ph ph-user-circle-check" aria-hidden="true"></i></span><div><small>Contas conectadas</small><strong id="telemetry-account-count">—</strong><p id="telemetry-host-status">verificando host...</p></div></article>
+      </section>
+
+      <section class="telemetry-grid">
+        <article class="panel telemetry-panel telemetry-people-panel">
+          <header class="telemetry-panel-header"><div><h2>Admins e owners</h2><p>Quem possui acesso e quando entrou pela última vez</p></div><span id="telemetry-people-total" class="telemetry-count">0</span></header>
+          <div class="telemetry-table-wrap">
+            <table class="telemetry-table">
+              <thead><tr><th>Login</th><th>Cargo</th><th>Status</th><th>Último acesso</th><th>Criado em</th></tr></thead>
+              <tbody id="telemetry-admins-body"><tr><td colspan="5" class="telemetry-empty">Carregando acessos...</td></tr></tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="panel telemetry-panel telemetry-accounts-panel">
+          <header class="telemetry-panel-header"><div><h2>Login das contas</h2><p>Estado de autenticação das contas Codex</p></div><span id="telemetry-accounts-total" class="telemetry-count">0</span></header>
+          <div id="telemetry-accounts-list" class="telemetry-account-list"><p class="telemetry-empty">Carregando contas...</p></div>
+        </article>
+      </section>
+
+      <section class="panel telemetry-panel telemetry-audit-panel">
+        <header class="telemetry-panel-header telemetry-audit-header">
+          <div><h2>Trilha de ações</h2><p>Aprovações, recusas, permissões, revogações e alterações administrativas</p></div>
+          <label class="telemetry-filter" for="telemetry-action-filter"><span class="sr-only">Filtrar ações</span><select id="telemetry-action-filter"><option value="all">Todas as ações</option><option value="reservation">Aprovações e recusas</option><option value="group">Grupos e tokens</option><option value="account">Contas</option><option value="admin">Admins e acessos</option></select><i class="ph ph-caret-down" aria-hidden="true"></i></label>
+        </header>
+        <div class="telemetry-table-wrap telemetry-audit-wrap">
+          <table class="telemetry-table telemetry-audit-table">
+            <thead><tr><th>Data e hora</th><th>Responsável</th><th>Ação</th><th>Alvo</th><th>Detalhes</th></tr></thead>
+            <tbody id="telemetry-audit-body"><tr><td colspan="5" class="telemetry-empty">Carregando histórico...</td></tr></tbody>
+          </table>
+        </div>
+        <footer class="telemetry-audit-footer"><span id="telemetry-audit-total">0 ações exibidas</span><span id="telemetry-updated-at">—</span></footer>
+      </section>
+    </div>
+  </main>
+</div>
+
+<div id="telemetry-toast" class="admin-toast" role="status" aria-live="polite" aria-atomic="true"></div>

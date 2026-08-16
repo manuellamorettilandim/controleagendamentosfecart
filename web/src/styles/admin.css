@@ -3288,6 +3288,121 @@ body {
   flex: 1 1 auto;
 }
 
+/* Sidebar session identity and edge-mounted collapse control. */
+.sidebar-brand-row {
+  position: relative;
+}
+
+.sidebar-collapse {
+  position: absolute;
+  z-index: 2;
+  top: 50%;
+  right: -15px;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--admin-line);
+  border-radius: 999px;
+  color: var(--admin-text-soft);
+  background: var(--admin-surface);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.24);
+  transform: translateY(-50%);
+}
+
+.sidebar-collapse .ph {
+  font-size: 16px;
+}
+
+.sidebar-session {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) 36px;
+  align-items: center;
+  gap: 10px;
+  min-height: 54px;
+}
+
+.sidebar-session-avatar {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border: 1px solid rgba(53, 100, 242, 0.34);
+  border-radius: 10px;
+  color: var(--admin-blue);
+  background: var(--admin-blue-soft);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.sidebar-session-copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.sidebar-session-copy strong,
+.sidebar-session-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-session-copy strong {
+  color: var(--admin-text);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.sidebar-session-copy small {
+  color: var(--admin-muted);
+  font-size: 11px;
+}
+
+.sidebar-logout {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: var(--admin-radius-control);
+  color: var(--admin-muted);
+  background: transparent;
+}
+
+.sidebar-logout:hover {
+  border-color: var(--admin-line);
+  color: #f87171;
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.sidebar-logout .ph {
+  font-size: 20px;
+}
+
+.admin-shell.is-collapsed .sidebar-session {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.admin-shell.is-collapsed .sidebar-session-copy {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .sidebar-collapse {
+    display: none;
+  }
+
+  .sidebar-footer {
+    display: block;
+    padding: 10px 14px;
+  }
+
+  .sidebar-session {
+    grid-template-columns: 36px minmax(0, 1fr) 36px;
+  }
+}
+
 :root[data-theme="light"] {
   color-scheme: light;
   --admin-bg: #f3f5f8;
@@ -3330,5 +3445,4 @@ body {
     width: auto;
   }
 }
-
 

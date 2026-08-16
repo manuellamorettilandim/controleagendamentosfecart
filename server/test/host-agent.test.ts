@@ -64,7 +64,7 @@ test("host agent connects the relay to a local app-server without exposing the l
   const codexHome = path.join(directory, "codex-home");
   const accountStore = new AccountStore(path.join(directory, "accounts.json"), path.join(directory, "accounts"));
   const store = new AccessStore(path.join(codexHome, "remote-access.json"));
-  const issued = await store.issue("host-test-client", 60 * 60_000);
+  const issued = await store.issue("host-test-client", 60 * 60_000, new Date(), { accountId: "primary" });
   const fakeAppServer = new WebSocketServer({ port: 0 });
   fakeAppServer.on("connection", (socket) => {
     socket.on("message", (raw, binary) => {
@@ -116,6 +116,9 @@ test("host agent connects the relay to a local app-server without exposing the l
       CODEX_APP_SERVER_TOKEN_FILE: path.join(codexHome, "app-server.token"),
       CODEX_ACCOUNT_REGISTRY: path.join(directory, "accounts.json"),
       CODEX_ACCOUNTS_DIR: path.join(directory, "accounts"),
+      CODEX_SSH_AUTHORIZED_KEYS_FILE: path.join(directory, "authorized_keys"),
+      CODEX_SSH_SESSION_COMMAND: "/usr/bin/node /opt/fecart/current/dist/src/ssh-session.js",
+      CODEX_SSH_PUBLIC_HOST: "codex.example.test",
       HOST_SKIP_APP_SERVER: "1",
       ACCESS_SYNC_INTERVAL_MS: "50",
       RELAY_HEARTBEAT_INTERVAL_MS: "50",
@@ -133,6 +136,13 @@ test("host agent connects the relay to a local app-server without exposing the l
     assert.equal(response.binary, false);
 
     await fs.access(path.join(codexHome, "app-server.token"));
+    const authorized = await fs.readFile(path.join(directory, "authorized_keys"), "utf8");
+    assert.match(authorized, new RegExp(issued.device.deviceId));
+    assert.match(authorized, /restrict,command=/);
+    assert.equal(authorized.includes(issued.sshPrivateKey), false);
+    await store.disable(issued.device.deviceId);
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    assert.equal(await fs.readFile(path.join(directory, "authorized_keys"), "utf8"), "");
   } finally {
     client?.terminate();
     await agent?.stop();

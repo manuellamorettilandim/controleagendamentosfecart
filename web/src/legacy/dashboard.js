@@ -4,7 +4,8 @@
   const $ = (selector) => document.querySelector(selector);
   const components = () => window.FecartComponents;
   const calendarTools = () => window.FecartCalendar;
-  const preview = ["localhost", "127.0.0.1"].includes(window.location.hostname) && window.location.hash === "#preview";
+  // There is no test-login or preview authentication bypass.
+  const preview = false;
   const state = {
     config: null,
     data: null,
@@ -16,7 +17,8 @@
     nowOffset: 0,
     tokenVisible: false,
     tokenReservationId: null,
-    copyMode: "token",
+    accessProduct: "cli",
+    platform: /Mac/i.test(navigator.platform) ? "macos" : /Linux/i.test(navigator.platform) ? "linux" : "powershell",
     activationInFlight: null,
     activationError: null,
     notificationOpen: false,
@@ -101,13 +103,77 @@
     }
   }
 
+  function storedSessionFor(reservation) {
+    if (!reservation) return null;
+    try {
+      const stored = JSON.parse(window.localStorage.getItem(localTokenKey(reservation.id)) || "null");
+      if (!stored || (stored.expiresAt && Date.parse(stored.expiresAt) <= now().getTime())) {
+        window.localStorage.removeItem(localTokenKey(reservation.id));
+        return null;
+      }
+      return stored;
+    } catch {
+      return null;
+    }
+  }
+
+  function appAccessFor(reservation) {
+    const app = storedSessionFor(reservation)?.app;
+    return app?.available && app.privateKey && app.host && app.user ? app : null;
+  }
+
+  function appKeyFilename(app) {
+    return `${String(app?.alias || "fecart-codex").replace(/[^a-zA-Z0-9._-]/g, "-")}_ed25519`;
+  }
+
+  function appSshConfig(app) {
+    const keyName = appKeyFilename(app);
+    return [
+      `Host ${app.alias}`,
+      `  HostName ${app.host}`,
+      `  Port ${Number(app.port || 22)}`,
+      `  User ${app.user}`,
+      `  IdentityFile ~/.ssh/${keyName}`,
+      "  IdentitiesOnly yes",
+    ].join("\n");
+  }
+
   function sessionLimitReached(reservation) {
     const device = deviceFor(reservation);
-    return device?.status === "limited" || Boolean(device?.usage_limit_reached_at);
+    if (!reservation || !device) return false;
+    if (device.status === "limited" || device.usage_limit_reached_at) return true;
+    const budget = Number(device.quota_budget_percent ?? reservation.quota_budget_percent ?? reservation.requested_quota_percent);
+    const base = Number(device.quota_base_used_percent ?? reservation.quota_base_used_percent ?? 0);
+    const current = Number(device.account_used_percent);
+    if (!Number.isFinite(budget) || !Number.isFinite(current)) return false;
+    const consumed = current >= base ? current - base : current;
+    return consumed >= budget;
+  }
+
+  function sessionUsage(reservation, device = deviceFor(reservation)) {
+    const budget = Number(device?.quota_budget_percent ?? reservation?.quota_budget_percent ?? reservation?.requested_quota_percent ?? 0);
+    const base = Number(device?.quota_base_used_percent ?? reservation?.quota_base_used_percent ?? 0);
+    const current = Number(device?.account_used_percent);
+    const consumed = Number.isFinite(current) ? Math.max(0, current >= base ? current - base : current) : 0;
+    const remaining = Math.max(0, budget - consumed);
+    const remainingPercent = budget > 0 ? Math.max(0, Math.min(100, Math.round((remaining / budget) * 100))) : 0;
+    return { budget, consumed, remaining, remainingPercent };
+  }
+
+  function formatCountdown(milliseconds) {
+    const totalSeconds = Math.max(0, Math.ceil(milliseconds / 1_000));
+    const hours = Math.floor(totalSeconds / 3_600);
+    const minutes = Math.floor((totalSeconds % 3_600) / 60);
+    const seconds = totalSeconds % 60;
+    return hours > 0
+      ? `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`
+      : `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
   }
 
   function sessionTokenAvailable(reservation) {
-    return Boolean(tokenFor(reservation) && !sessionLimitReached(reservation));
+    const device = deviceFor(reservation);
+    const remotelyActive = device && !["revoked", "disabled", "expired"].includes(device.status);
+    return Boolean(remotelyActive && tokenFor(reservation) && !sessionLimitReached(reservation));
   }
 
   function remoteCliUrl() {
@@ -118,8 +184,15 @@
     return `${protocol}//${hostWithPort}`;
   }
 
-  function cliCommandFor(token) {
-    return `$env:CODEX_REMOTE_TOKEN = "${token}"; codex --remote ${remoteCliUrl()} --remote-auth-token-env CODEX_REMOTE_TOKEN`;
+  function cliCommandFor(token, platform = state.platform) {
+    const remoteUrl = remoteCliUrl();
+    if (platform === "cmd") {
+      return `set "CODEX_REMOTE_TOKEN=${token}" && codex --remote "${remoteUrl}" --remote-auth-token-env CODEX_REMOTE_TOKEN`;
+    }
+    if (platform === "macos" || platform === "linux") {
+      return `export CODEX_REMOTE_TOKEN='${token}'; codex --remote '${remoteUrl}' --remote-auth-token-env CODEX_REMOTE_TOKEN`;
+    }
+    return `$env:CODEX_REMOTE_TOKEN = "${token}"; codex --remote "${remoteUrl}" --remote-auth-token-env CODEX_REMOTE_TOKEN`;
   }
 
   function formatTokenCount(value) {
@@ -161,6 +234,7 @@
       token,
       deviceId: device?.deviceId || null,
       expiresAt,
+      app: result?.app && typeof result.app === "object" ? result.app : null,
     }));
     reservation.device_id = device?.deviceId || reservation.device_id || null;
     reservation.activated_at = reservation.activated_at || new Date().toISOString();
@@ -198,7 +272,7 @@
     if (!reservation) return true;
     if (reservation.status === "cancelled") return true;
     if (state.endedReservationIds.has(reservation.id)) return true;
-    if (reservation.device_id && deviceFor(reservation)?.status === "revoked") return true;
+    if (reservation.device_id && ["revoked", "disabled", "expired"].includes(deviceFor(reservation)?.status)) return true;
     if (Date.parse(reservation.ends_at) <= now().getTime()) return true;
     return false;
   }
@@ -355,7 +429,44 @@
     });
     $("#overview-view").hidden = !overview;
     $("#guides-view").hidden = overview;
+    if (!overview) showGuidePage("home", false);
     if (overview && state.calendar) window.setTimeout(() => state.calendar.updateSize?.(), 40);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function showGuidePage(name, updateHistory = true) {
+    const page = name === "cli" || name === "app" ? name : "home";
+    $("#guides-home").hidden = page !== "home";
+    $("#guide-cli").hidden = page !== "cli";
+    $("#guide-app").hidden = page !== "app";
+    if (updateHistory) {
+      const hash = page === "home" ? "#guides" : `#guides/${page}`;
+      window.history.pushState({ guide: page }, "", hash);
+    }
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function setGuidePlatform(guide, platform) {
+    if (!guide) return;
+    const selected = platform === "macos" ? "macos" : "windows";
+    guide.querySelectorAll("[data-guide-platform]").forEach((button) => {
+      const active = button.dataset.guidePlatform === selected;
+      button.classList.toggle("is-active", active);
+      button.setAttribute("aria-selected", String(active));
+    });
+    guide.querySelectorAll("[data-platform-copy]").forEach((copy) => {
+      copy.hidden = copy.dataset.platformCopy !== selected;
+    });
+  }
+
+  function restoreGuideFromLocation() {
+    const match = window.location.hash.match(/^#guides\/(cli|app)$/);
+    if (window.location.hash === "#guides" || match) {
+      activateTab("guides");
+      showGuidePage(match?.[1] || "home", false);
+      return;
+    }
+    activateTab("overview");
   }
 
   function renderAccounts() {
@@ -385,36 +496,51 @@
     }
     const usable = sessionTokenAvailable(reservation);
     const token = usable ? tokenFor(reservation) : null;
+    const app = usable ? appAccessFor(reservation) : null;
     const tokenNode = $("#session-token");
     const toggle = $("#toggle-token");
     const tokenLine = $("#token-copy-line");
     const cliLine = $("#cli-copy-line");
     const visible = Boolean(token && state.tokenVisible);
-    const showingToken = state.copyMode === "token";
     tokenNode.dataset.token = token || "";
     tokenNode.textContent = visible ? token : "••••••••••••••••••••••••";
     toggle.disabled = !token;
     toggle.setAttribute("aria-pressed", String(visible));
     toggle.setAttribute("aria-label", visible ? "Ocultar token" : "Mostrar token");
     toggle.innerHTML = `<i class="ph ${visible ? "ph-eye-slash" : "ph-eye"}" aria-hidden="true"></i><span>${visible ? "Ocultar" : "Mostrar"}</span>`;
-    tokenLine.hidden = !showingToken;
-    cliLine.hidden = showingToken;
+    document.querySelectorAll("[data-cli-access]").forEach((node) => { node.hidden = state.accessProduct !== "cli"; });
+    $("#app-access-panel").hidden = state.accessProduct !== "app";
+    document.querySelectorAll("[data-access-product]").forEach((button) => {
+      const active = button.dataset.accessProduct === state.accessProduct;
+      button.classList.toggle("is-active", active);
+      button.setAttribute("aria-pressed", String(active));
+    });
+    $("#app-ssh-alias").textContent = app?.alias || "—";
+    $("#app-workspace-path").textContent = app?.workspacePath || "—";
+    $("#app-access-expiry").textContent = app?.expiresAt ? components().formatDateTime(new Date(app.expiresAt)) : "—";
+    $("#app-access-summary").textContent = app
+      ? "Chave pronta. Instale-a no SSH e selecione este host no Codex App."
+      : state.activationInFlight
+        ? "Preparando a conexão SSH temporária…"
+        : "Disponível durante uma sessão aprovada e ativa.";
+    $("#download-app-key").disabled = !app;
+    $("#copy-app-ssh-config").disabled = !app;
     $("#access-copy-status").textContent = state.activationInFlight
-      ? "Gerando o token real no host central…"
+      ? "Gerando as credenciais temporárias no host central…"
       : state.activationError
         ? state.activationError
         : sessionLimitReached(reservation)
           ? "A cota desta sessão foi atingida; o token foi bloqueado."
           : token
-            ? showingToken
-              ? (visible ? "Token revelado neste navegador. Oculte-o quando terminar." : "Token disponível para a sessão ativa.")
-              : (visible ? "Comando pronto com o token revelado." : "Comando pronto com o token protegido.")
+            ? state.accessProduct === "app"
+              ? (app ? "Conexão do Codex App pronta. Baixe a chave e copie a configuração SSH." : "O host ainda não publicou o acesso SSH do Codex App.")
+              : (visible ? "Comando pronto e token manual revelado. Oculte-o quando terminar." : "Comando pronto para o terminal selecionado; o token permanece protegido.")
             : "O acesso temporário aparece quando houver uma sessão ativa neste navegador.";
 
     const commandNode = $("#cli-command");
     const maskedToken = "••••••••••••••••";
     const displayToken = visible && token ? token : maskedToken;
-    commandNode.textContent = cliCommandFor(displayToken);
+    commandNode.textContent = cliCommandFor(displayToken, state.platform);
     const copyCommand = $("#copy-cli-command");
     copyCommand.disabled = !token;
   }
@@ -451,32 +577,26 @@
       const start = new Date(reservation.starts_at);
       const end = new Date(reservation.ends_at);
       const total = Math.max(1, end.getTime() - start.getTime());
-      const elapsed = Math.max(0, Math.min(total, now().getTime() - start.getTime()));
-      const percentage = Math.round((elapsed / total) * 100);
+      const remainingTime = Math.max(0, end.getTime() - now().getTime());
+      const timePercentage = Math.round((remainingTime / total) * 100);
+      const usage = sessionUsage(reservation, device);
       const limited = sessionLimitReached(reservation);
-      components().setProgress($("#session-progress"), percentage, `${percentage}% do tempo da sessão`);
-      $("#session-percent").textContent = `${percentage}%`;
-      $("#session-time").textContent = formatDuration(elapsed / 3_600_000);
-      $("#session-time-total").textContent = `/ ${formatDuration(total / 3_600_000)}`;
-      status.textContent = limited ? "Cota da sessão atingida" : state.activationInFlight ? "Inicializando sessão" : "Sessão ativa";
-      dot.classList.toggle("is-active", !limited);
+      components().setProgress($("#session-progress"), timePercentage, `${formatCountdown(remainingTime)} restantes na sessão`);
+      $("#session-percent").textContent = `${timePercentage}%`;
+      $("#session-time").textContent = formatCountdown(remainingTime);
+      $("#session-time-total").textContent = `até ${components().formatTime(end)}`;
+      status.textContent = limited ? "Uso esgotado" : state.activationInFlight ? "Inicializando sessão" : "Sessão ativa";
+      dot.classList.toggle("is-active", true);
       dot.classList.toggle("is-limited", limited);
       $("#session-started").textContent = state.activationInFlight
         ? "Gerando a credencial real no host central…"
-        : limited
-          ? "O relay bloqueou o token ao atingir a cota solicitada."
-          : `Ativa desde ${components().formatDateTime(start)}`;
+        : `Ativa desde ${components().formatDateTime(start)}`;
 
-      const budget = Number(device?.quota_budget_percent ?? reservation.requested_quota_percent ?? state.data?.profile?.weekly_quota_percent ?? 20);
-      const used = Number(device?.account_used_percent ?? 0);
-      const quotaPercentage = budget > 0 ? Math.min(100, Math.max(0, Math.round((used / budget) * 100))) : 0;
-      components().setProgress($("#quota-progress"), quotaPercentage, `${quotaPercentage}% da cota semanal`);
-      $("#quota-percent").textContent = `${quotaPercentage}%`;
-      $("#quota-used").textContent = `${used}%`;
-      $("#quota-total").textContent = `/ ${budget}%`;
-      $("#session-activity").textContent = limited
-        ? "Monitoramento encerrado por limite de cota."
-        : state.activationInFlight
+      components().setProgress($("#quota-progress"), usage.remainingPercent, `${usage.remaining.toFixed(1)}% de uso restante`);
+      $("#quota-percent").textContent = `${usage.remainingPercent}%`;
+      $("#quota-used").textContent = `${usage.remaining.toFixed(1).replace(".0", "")}% restante`;
+      $("#quota-total").textContent = `de ${usage.budget}% aprovados`;
+      $("#session-activity").textContent = state.activationInFlight
           ? "Aguardando o host central emitir o token."
           : lastActivity
             ? `Última atividade ${formatRelative(lastActivity)}.`
@@ -487,16 +607,18 @@
                 : "Token sendo preparado para esta sessão.";
     } else {
       const upcoming = (state.data?.reservations || [])
-        .filter((item) => item.status === "scheduled" && Date.parse(item.starts_at) > now().getTime())
+        .filter((item) => item.status === "scheduled" && item.approval_status === "approved" && Date.parse(item.starts_at) > now().getTime())
         .sort((a, b) => Date.parse(a.starts_at) - Date.parse(b.starts_at))[0];
-      components().setProgress($("#session-progress"), 0, "0% do tempo da sessão");
-      components().setProgress($("#quota-progress"), 0, "0% da cota semanal");
-      $("#session-percent").textContent = "0%";
-      $("#session-time").textContent = "—";
-      $("#session-time-total").textContent = "/ —";
-      $("#quota-percent").textContent = "0%";
-      $("#quota-used").textContent = "0%";
-      $("#quota-total").textContent = `/ ${Number(state.data?.profile?.weekly_quota_percent || 20)}%`;
+      const untilStart = upcoming ? Math.max(0, Date.parse(upcoming.starts_at) - now().getTime()) : 0;
+      const usage = upcoming ? sessionUsage(upcoming, null) : { budget: 0, remaining: 0, remainingPercent: 0 };
+      components().setProgress($("#session-progress"), upcoming ? 100 : 0, upcoming ? `${formatCountdown(untilStart)} até a próxima sessão` : "Nenhuma sessão aprovada");
+      components().setProgress($("#quota-progress"), upcoming ? 100 : 0, upcoming ? `${usage.budget}% aprovados para a próxima sessão` : "Sem uso aprovado");
+      $("#session-percent").textContent = upcoming ? "100%" : "0%";
+      $("#session-time").textContent = upcoming ? formatCountdown(untilStart) : "—";
+      $("#session-time-total").textContent = upcoming ? `começa ${components().formatDateTime(upcoming.starts_at)}` : "sem sessão aprovada";
+      $("#quota-percent").textContent = upcoming ? "100%" : "—";
+      $("#quota-used").textContent = upcoming ? `${usage.budget}% disponível` : "—";
+      $("#quota-total").textContent = upcoming ? "na próxima sessão" : "sem uso aprovado";
       status.textContent = "Sessão desligada";
       dot.classList.remove("is-active", "is-limited");
       $("#session-started").textContent = upcoming ? `Próxima janela ${components().formatDateTime(upcoming.starts_at)}` : "Ative um horário aprovado para começar.";
@@ -730,19 +852,40 @@
 
   function renderNotifications() {
     const items = [];
-    const reservations = (state.data?.reservations || []).slice().sort((a, b) => Date.parse(a.starts_at) - Date.parse(b.starts_at));
-    reservations.filter((item) => item.approval_status === "pending" && item.status === "scheduled").slice(0, 3).forEach((item) => {
-      items.push({ type: "warning", icon: "ph-clock", title: "Solicitação em análise", message: `${components().formatDateTime(item.starts_at)} · ${formatDuration((Date.parse(item.ends_at) - Date.parse(item.starts_at)) / 3_600_000)} para ${item.account_id}.` });
-    });
-    reservations.filter((item) => item.approval_status === "approved" && Date.parse(item.ends_at) > now().getTime()).slice(0, 2).forEach((item) => {
-      items.push({ type: "success", icon: "ph-check-circle", title: "Horário confirmado", message: `${components().formatDateTime(item.starts_at)} · ${item.account_id}.` });
-    });
-    if (state.data?.relay && !state.data.relay.ready) items.unshift({ type: "warning", icon: "ph-warning", title: "Host temporariamente offline", message: "As solicitações continuam salvas, mas a ativação será retomada quando o host voltar." });
-    if (!items.length) items.push({ type: "info", icon: "ph-check-circle", title: "Tudo em dia", message: "Nenhuma notificação nova por enquanto." });
+    const reservations = (state.data?.reservations || []).slice();
+    reservations
+      .filter((item) => item.reviewed_at && ["approved", "rejected"].includes(item.approval_status))
+      .sort((a, b) => Date.parse(b.reviewed_at) - Date.parse(a.reviewed_at))
+      .slice(0, 6)
+      .forEach((item) => {
+        const requested = Number(item.requested_quota_percent || 5);
+        const approved = Number(item.quota_budget_percent || requested);
+        const rejected = item.approval_status === "rejected";
+        const adjustment = approved === requested ? "" : approved > requested ? " com upgrade" : " com downgrade";
+        const decision = rejected ? "Solicitação recusada" : `Solicitação aprovada${adjustment}`;
+        const quotaCopy = rejected ? "" : ` Uso: ${requested}% → ${approved}%.`;
+        const noteCopy = item.review_note ? ` Justificativa: ${item.review_note}` : " Sem justificativa informada.";
+        items.push({
+          type: rejected ? "danger" : "success",
+          icon: rejected ? "ph-x-circle" : approved === requested ? "ph-check-circle" : approved > requested ? "ph-arrow-up" : "ph-arrow-down",
+          title: decision,
+          message: `${components().formatDateTime(item.starts_at)} · ${item.account_id}.${quotaCopy}${noteCopy}`,
+          time: formatRelative(item.reviewed_at),
+        });
+      });
+    reservations
+      .filter((item) => item.approval_status === "pending" && item.status === "scheduled")
+      .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
+      .slice(0, 3)
+      .forEach((item) => {
+        items.push({ type: "warning", icon: "ph-clock", title: "Solicitação em análise", message: `${components().formatDateTime(item.starts_at)} · ${item.requested_quota_percent || 5}% solicitados para ${item.account_id}.`, time: formatRelative(item.created_at) });
+      });
+    if (state.data?.relay && !state.data.relay.ready) items.unshift({ type: "warning", icon: "ph-warning", title: "Host temporariamente offline", message: "As solicitações continuam salvas, mas a ativação será retomada quando o host voltar.", time: "agora" });
+    if (!items.length) items.push({ type: "info", icon: "ph-check-circle", title: "Tudo em dia", message: "Nenhuma notificação nova por enquanto.", time: "agora" });
     $("#notification-badge").hidden = items.length === 1 && items[0].title === "Tudo em dia";
     $("#notification-badge").textContent = String(items.length);
     $("#notification-count").textContent = items.length === 1 && items[0].title === "Tudo em dia" ? "sem novidades" : `${items.length} ${items.length === 1 ? "nova" : "novas"}`;
-    $("#notification-list").innerHTML = items.map((item) => `<article class="notification-item is-${item.type}"><i class="ph ${item.icon}" aria-hidden="true"></i><div><strong>${components().escapeHTML(item.title)}</strong><p>${components().escapeHTML(item.message)}</p><time>${item.type === "success" ? "agenda" : "agora"}</time></div></article>`).join("");
+    $("#notification-list").innerHTML = items.map((item) => `<article class="notification-item is-${item.type}"><i class="ph ${item.icon}" aria-hidden="true"></i><div><strong>${components().escapeHTML(item.title)}</strong><p>${components().escapeHTML(item.message)}</p><time>${components().escapeHTML(item.time || "agora")}</time></div></article>`).join("");
   }
 
   function toggleNotifications(force) {
@@ -790,7 +933,7 @@
     $("#booking-date").value = dateInputValue(value);
     $("#booking-time").value = timeInputValue(value);
     $("#booking-duration").value = String(Math.min(3, Math.max(1, Math.round(duration))));
-    $("#booking-quota").value = "15";
+    $("#booking-quota").value = "5";
     $("#booking-note").value = "";
     setBookingMessage();
     updateBookingEnd();
@@ -935,8 +1078,8 @@
     const start = inputDateTime($("#booking-date").value, $("#booking-time").value);
     const duration = Number($("#booking-duration").value);
     const accountId = $("#booking-account").value;
-    const quota = Number($("#booking-quota").value);
-    if (!start || ![1, 2, 3].includes(duration) || !accountId || ![5, 10, 15, 20].includes(quota)) {
+    const requestedQuotaPercent = Number($("#booking-quota").value);
+    if (!start || ![1, 2, 3].includes(duration) || ![5, 10, 15, 20].includes(requestedQuotaPercent) || !accountId) {
       setBookingMessage("Confira os dados do agendamento.");
       return;
     }
@@ -949,15 +1092,15 @@
     setBookingMessage("Enviando solicitação…");
     try {
       if (preview) {
-        addPreviewReservation(start, duration, accountId, quota);
+        addPreviewReservation(start, duration, accountId, requestedQuotaPercent);
         closeBooking();
         loadDashboardData({ ...state.data, serverTime: new Date().toISOString(), reservations: state.data.reservations });
-        components().showToast("Agendamento aprovado; o token será gerado quando o horário começar.", "success");
+        components().showToast("Pedido enviado para aprovação.", "success");
       } else {
-        await api("/api/user/reservations", { method: "POST", body: JSON.stringify({ startsAt: start.toISOString(), durationHours: duration, accountId, requestedQuotaPercent: quota }) });
+        await api("/api/user/reservations", { method: "POST", body: JSON.stringify({ startsAt: start.toISOString(), durationHours: duration, accountId, requestedQuotaPercent }) });
         closeBooking();
         await loadDashboard(true);
-        components().showToast("Agendamento aprovado; o token será gerado quando o horário começar.", "success");
+        components().showToast("Pedido enviado para aprovação.", "success");
       }
     } catch (error) {
       setBookingMessage(error instanceof Error ? error.message : "Não foi possível enviar a solicitação.");
@@ -973,9 +1116,37 @@
   }
 
   function bindInteractions() {
-    document.querySelectorAll(".main-tab").forEach((tab) => tab.addEventListener("click", () => activateTab(tab.dataset.tab)));
-    $("#guides-back").addEventListener("click", () => activateTab("overview"));
-    $("#help-button").addEventListener("click", () => activateTab("guides"));
+    document.querySelectorAll(".main-tab").forEach((tab) => tab.addEventListener("click", () => {
+      if (tab.dataset.tab === "guides") {
+        activateTab("guides");
+        showGuidePage("home");
+        return;
+      }
+      window.history.pushState({}, "", window.location.pathname);
+      activateTab("overview");
+    }));
+    $("#guides-back").addEventListener("click", () => {
+      window.history.pushState({}, "", window.location.pathname);
+      activateTab("overview");
+    });
+    $("#help-button").addEventListener("click", () => {
+      activateTab("guides");
+      showGuidePage("home");
+    });
+    document.querySelectorAll("[data-open-guide]").forEach((button) => button.addEventListener("click", () => {
+      activateTab("guides");
+      showGuidePage(button.dataset.openGuide);
+    }));
+    document.querySelectorAll("[data-guide-back]").forEach((button) => button.addEventListener("click", () => showGuidePage("home")));
+    document.querySelectorAll("[data-guide-platform]").forEach((button) => button.addEventListener("click", () => {
+      setGuidePlatform(button.closest(".guide-detail"), button.dataset.guidePlatform);
+    }));
+    document.querySelectorAll("[data-go-overview]").forEach((button) => button.addEventListener("click", () => {
+      window.history.pushState({}, "", window.location.pathname);
+      activateTab("overview");
+      $(".token-card")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }));
+    window.addEventListener("popstate", restoreGuideFromLocation);
     $("#user-logout").addEventListener("click", logout);
 
     $("#notifications-toggle").addEventListener("click", () => toggleNotifications());
@@ -994,9 +1165,43 @@
       state.tokenVisible = !state.tokenVisible;
       renderToken();
     });
-    $("#access-copy-mode").addEventListener("change", (event) => {
-      state.copyMode = event.target.value === "codex-cli" ? "codex-cli" : "token";
+    $("#access-platform").value = state.platform;
+    $("#access-platform").addEventListener("change", (event) => {
+      state.platform = ["powershell", "cmd", "macos", "linux"].includes(event.target.value) ? event.target.value : "powershell";
       renderToken();
+    });
+    document.querySelectorAll("[data-access-product]").forEach((button) => button.addEventListener("click", () => {
+      state.accessProduct = button.dataset.accessProduct === "app" ? "app" : "cli";
+      renderToken();
+    }));
+    $("#download-app-key").addEventListener("click", () => {
+      const app = appAccessFor(activeReservation());
+      if (!app) {
+        components().showToast("A chave do Codex App só fica disponível durante a sessão ativa.", "warning");
+        return;
+      }
+      const blob = new Blob([app.privateKey], { type: "application/x-pem-file" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = appKeyFilename(app);
+      anchor.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
+      components().showToast("Chave temporária baixada.", "success");
+    });
+    $("#copy-app-ssh-config").addEventListener("click", async () => {
+      const app = appAccessFor(activeReservation());
+      if (!app) {
+        components().showToast("A configuração só fica disponível durante a sessão ativa.", "warning");
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(appSshConfig(app));
+        $("#access-copy-status").textContent = "Configuração SSH copiada. Cole no arquivo ~/.ssh/config.";
+        components().showToast("Configuração SSH copiada.", "success");
+      } catch {
+        components().showToast("Não foi possível copiar a configuração SSH.", "error");
+      }
     });
     $("#copy-token").addEventListener("click", async () => {
       const reservation = activeReservation();
@@ -1022,7 +1227,7 @@
         return;
       }
       try {
-        await navigator.clipboard.writeText(cliCommandFor(token));
+        await navigator.clipboard.writeText(cliCommandFor(token, state.platform));
         $("#access-copy-status").textContent = "Comando copiado para a área de transferência.";
         components().showToast("Comando do Codex CLI copiado.", "success");
       } catch {
@@ -1079,6 +1284,7 @@
       }
     }
     await loadDashboard();
+    restoreGuideFromLocation();
     window.setInterval(() => {
       renderSession();
       renderToken();

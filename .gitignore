@@ -12,3 +12,4 @@ site-next/
 *.token.txt
 *.secret
 coverage/
+supabase/.temp/

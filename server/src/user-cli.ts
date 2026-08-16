@@ -10,17 +10,15 @@ interface LegacyUser {
   groupName: string;
 }
 
-function option(name: string, fallback: string): string {
-  const index = process.argv.indexOf(name);
-  return process.argv[index + 1]?.trim() || fallback;
-}
-
 function parseLegacyUsers(sql: string): LegacyUser[] {
   const users: LegacyUser[] = [];
+  const seen = new Set<string>();
   const pattern = /\('((?:''|[^'])+)',\s*'"([^"]+)"'::jsonb,\s*'((?:''|[^'])+)'\)/g;
   for (const match of sql.matchAll(pattern)) {
     const username = match[1].replaceAll("''", "'");
-    if (username.toLowerCase() === "admin") continue;
+    const canonical = username.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+    if (canonical === "admin" || canonical === "1ia" || seen.has(canonical)) continue;
+    seen.add(canonical);
     users.push({ username, password: match[2], groupName: match[3].replaceAll("''", "'") });
   }
   return users;
@@ -29,7 +27,7 @@ function parseLegacyUsers(sql: string): LegacyUser[] {
 async function main(): Promise<void> {
   const command = process.argv[2];
   if (command !== "import-legacy") {
-    console.log("Uso: npm.cmd run users -- import-legacy [--account primary] [--quota 5]");
+    console.log("Uso: npm.cmd run users -- import-legacy");
     return;
   }
   const url = process.env.SUPABASE_URL?.trim();
@@ -37,10 +35,6 @@ async function main(): Promise<void> {
   const legacyKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
   const key = secretKey || legacyKey;
   if (!url || !key) throw new Error("Configure SUPABASE_URL e SUPABASE_SECRET_KEY no host central.");
-  const accountId = option("--account", "primary");
-  const quotaPercent = Number(option("--quota", "5"));
-  if (!Number.isFinite(quotaPercent) || quotaPercent <= 0 || quotaPercent > 100) throw new Error("--quota deve estar entre 0 e 100.");
-
   const sourcePath = path.resolve("legacy", "fecart-prototype", "SUPABASE_SETUP.sql");
   const users = parseLegacyUsers(await fs.readFile(sourcePath, "utf8"));
   if (users.length === 0) throw new Error("Nenhum login comum foi encontrado no SQL legado.");
@@ -51,8 +45,8 @@ async function main(): Promise<void> {
       loginEmail: loginEmailForUsername(user.username),
       password: user.password,
       groupName: user.groupName,
-      accountId,
-      weeklyQuotaPercent: quotaPercent,
+      accountId: "primary",
+      weeklyQuotaPercent: 100,
     });
     console.log(`Usuário migrado: ${user.username} · ${user.groupName}`);
   }

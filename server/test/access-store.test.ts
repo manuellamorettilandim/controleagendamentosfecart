@@ -26,12 +26,22 @@ test("AccessStore issues concurrent device tokens and persists only hashes", asy
     for (const { token, device } of issued) {
       assert.match(raw, new RegExp(device.tokenHash));
       assert.equal(raw.includes(token), false);
-    assert.equal(device.tokenHash, hashToken(token));
+      assert.equal(device.tokenHash, hashToken(token));
+      assert.match(device.sshPublicKey || "", /^ssh-ed25519 /);
+      assert.match(device.sshKeyFingerprint || "", /^SHA256:/);
+    }
+    for (const { sshPrivateKey } of issued) {
+      assert.match(sshPrivateKey, /^-----BEGIN PRIVATE KEY-----/);
+      assert.equal(raw.includes(sshPrivateKey), false);
     }
 
     const revoked = await store.revoke(issued[0].device.deviceId, new Date("2026-08-12T13:00:00.000Z"));
     assert.equal(revoked?.revokedAt, "2026-08-12T13:00:00.000Z");
     assert.equal((await store.active(new Date("2026-08-12T13:00:00.000Z"))).length, 2);
+    const reactivated = await store.reactivate(issued[0].device.deviceId, new Date("2026-08-12T13:01:00.000Z"));
+    assert.equal(reactivated?.revokedAt, null);
+    assert.equal((await store.active(new Date("2026-08-12T13:01:00.000Z"))).length, 3);
+    assert.ok(await store.revoke(issued[0].device.deviceId, new Date("2026-08-12T13:02:00.000Z")));
 
     const disabled = await store.disable(issued[1].device.deviceId, new Date("2026-08-12T13:30:00.000Z"));
     assert.equal(disabled?.disabledAt, "2026-08-12T13:30:00.000Z");
@@ -91,6 +101,24 @@ test("AccessStore enforces a session quota as delta, including after account res
     assert.equal((await store.list()).find((device) => device.deviceId === issued.device.deviceId)?.usage.usageLimitReachedAt, null);
     await store.updateAccountLimit("primary", 5, 10_080, 1_800_604_800, new Date("2026-08-13T12:20:00.000Z"));
     assert.equal((await store.list()).find((device) => device.deviceId === issued.device.deviceId)?.usage.usageLimitReachedAt, "2026-08-13T12:20:00.000Z");
+  } finally {
+    await fs.rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("AccessStore keeps group sessions unlimited when no quota budget is assigned", async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "remote-codex-unlimited-"));
+  try {
+    const store = new AccessStore(path.join(directory, "access.json"));
+    const issued = await store.issue("approved group session", 3_600_000, new Date("2026-08-13T12:00:00.000Z"), {
+      accountId: "primary",
+      weeklyLimitPercent: 100,
+      quotaBaseUsedPercent: null,
+      quotaBudgetPercent: null,
+    });
+    await store.updateAccountLimit("primary", 100, 10_080, 1_800_000_000, new Date("2026-08-13T12:10:00.000Z"));
+    const stored = (await store.list()).find((device) => device.deviceId === issued.device.deviceId);
+    assert.equal(stored?.usage.usageLimitReachedAt, null);
   } finally {
     await fs.rm(directory, { recursive: true, force: true });
   }

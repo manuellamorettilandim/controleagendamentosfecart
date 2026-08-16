@@ -12,12 +12,11 @@
           <div class="admin-header-actions">
             <label class="admin-search" for="groups-search">
               <i class="ph ph-magnifying-glass" aria-hidden="true"></i>
-              <input id="groups-search" type="search" placeholder="Buscar grupo, conta..." autocomplete="off">
+              <input id="groups-search" type="search" placeholder="Buscar grupo ou turma..." autocomplete="off">
             </label>
             <button id="theme-toggle" class="admin-theme-toggle" type="button" aria-label="Ativar tema claro" aria-pressed="true" title="Ativar tema claro">
               <i class="ph ph-sun" aria-hidden="true"></i>
             </button>
-            <div class="admin-avatar" aria-label="Administrador">AD</div>
           </div>
         </header>
 
@@ -76,7 +75,7 @@
                 <div class="groups-table-wrap">
                   <table class="groups-table">
                     <thead>
-                      <tr><th>Grupo</th><th>Conta vinculada</th><th>Status do token</th><th>Permissão de agendar</th><th>Sessão atual /<br>próximo agendamento</th><th>Quota reservada</th><th>Última atividade</th><th><span class="sr-only">Ações</span></th></tr>
+                      <tr><th>Grupo</th><th>Turma</th><th>Status do token</th><th>Permissão de agendar</th><th>Sessão atual /<br>próximo agendamento</th><th>Última atividade</th><th><span class="sr-only">Ações</span></th></tr>
                     </thead>
                     <tbody id="groups-table-body"></tbody>
                   </table>
@@ -98,7 +97,7 @@
                 </header>
                 <div class="pending-table-wrap">
                   <table class="pending-table">
-                    <thead><tr><th>Grupo</th><th>Solicitado por</th><th>Slot solicitado</th><th>Quota solicitada</th><th>Status</th><th>Ações</th></tr></thead>
+                    <thead><tr><th>Grupo</th><th>Turma</th><th>Slot solicitado</th><th>Status</th><th>Ações</th></tr></thead>
                     <tbody id="pending-table-body"></tbody>
                   </table>
                 </div>
@@ -125,12 +124,11 @@
         </header>
 
         <dl class="group-detail-list">
-          <div><dt>Conta vinculada</dt><dd id="detail-account">—</dd></div>
-          <div><dt>Usuários do grupo</dt><dd id="detail-members">—</dd></div>
+          <div><dt>Turma</dt><dd id="detail-class">—</dd></div>
+          <div><dt>Conta</dt><dd id="detail-account">Escolhida pelo grupo em cada pedido</dd></div>
           <div><dt>Status do token</dt><dd id="detail-token">—</dd></div>
           <div><dt>Permissão de agendar</dt><dd id="detail-permission">—</dd></div>
           <div><dt>Sessão atual</dt><dd id="detail-session">—</dd></div>
-          <div><dt>Quota reservada atual</dt><dd id="detail-quota">—</dd></div>
           <div><dt>Última atividade</dt><dd id="detail-last-activity">—</dd></div>
         </dl>
 
@@ -140,6 +138,8 @@
         </section>
 
         <div class="group-detail-actions">
+          <button id="detail-toggle-scheduling-button" class="detail-action detail-action-secondary" type="button"><i class="ph ph-calendar-x" aria-hidden="true"></i><span>Bloquear agendamentos</span></button>
+          <button id="detail-revoke-token-button" class="detail-action detail-action-danger" type="button"><i class="ph ph-key" aria-hidden="true"></i><span>Revogar token ativo</span></button>
           <button id="detail-refresh-button" class="detail-action detail-action-secondary" type="button"><i class="ph ph-arrows-clockwise" aria-hidden="true"></i><span>Atualizar dados</span></button>
           <button id="detail-requests-button" class="detail-action detail-action-secondary" type="button"><i class="ph ph-clipboard-text" aria-hidden="true"></i><span>Ver solicitações do grupo</span></button>
         </div>

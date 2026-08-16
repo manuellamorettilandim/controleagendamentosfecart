@@ -4,8 +4,8 @@
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
   const ADMIN_AGENDA_SLOT_HEIGHT = 48;
-  const preview = ["localhost", "127.0.0.1"].includes(window.location.hostname)
-    && (new URLSearchParams(window.location.search).has("preview") || window.location.hash.includes("preview"));
+  // Authentication bypasses and demo logins are intentionally disabled.
+  const preview = false;
 
   const WEEKDAY_NAMES = ["SEG", "TER", "QUA", "QUI", "SEX", "SÁB", "DOM"];
   const MONTH_FORMATTER = new Intl.DateTimeFormat("pt-BR", { month: "long" });
@@ -41,6 +41,11 @@
   function dateKey(value) {
     const date = cloneDate(value);
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  }
+
+  function dateTimeInputValue(value) {
+    const date = cloneDate(value);
+    return `${dateKey(date)}T${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
   }
 
   function formatDate(value) {
@@ -79,28 +84,6 @@
     return date;
   }
 
-  function decoratePreviewSchedule(schedule, weekStart) {
-    const startsAt = scheduleDateFromSlot(weekStart, schedule.day, schedule.start);
-    const durationHours = Math.max(0, Number(schedule.end) - Number(schedule.start)) || 1;
-    const endsAt = new Date(startsAt.getTime() + durationHours * 60 * 60_000);
-    return {
-      ...schedule,
-      dateKey: dateKey(startsAt),
-      startsAt: startsAt.toISOString(),
-      endsAt: endsAt.toISOString(),
-      requestedAt: formatDateTime(startsAt),
-    };
-  }
-
-  function decoratePreviewApproval(approval, weekStart) {
-    const schedule = sampleSchedules.find((item) => item.id === approval.scheduleId);
-    const startsAt = schedule ? scheduleDateFromSlot(weekStart, schedule.day, schedule.start) : null;
-    return {
-      ...approval,
-      requestedAt: startsAt ? formatDateTime(startsAt) : approval.requestedAt,
-    };
-  }
-
   function scheduleStartDate(schedule) {
     const stored = schedule?.startsAt ? new Date(schedule.startsAt) : null;
     if (stored && !Number.isNaN(stored.getTime())) return stored;
@@ -136,40 +119,11 @@
     });
   }
 
-  const sampleAccounts = [
-    { id: "account-1", label: "Conta 1", quota: 72, reset: "seg 00:00", status: "ready" },
-    { id: "account-2", label: "Conta 2", quota: 58, reset: "seg 00:00", status: "ready" },
-    { id: "account-3", label: "Conta 3", quota: 80, reset: "seg 00:00", status: "ready" },
-  ];
-
-  const sampleSchedules = [
-    { id: "schedule-1", group: "Grupo 1", accountId: "account-1", day: 1, start: 9, end: 10.5, status: "approved", statusLabel: "Aprovado", quota: 10, requestedAt: "14/05/2025 09:15", note: "" },
-    { id: "schedule-2", group: "Grupo 2", accountId: "account-1", day: 2, start: 8.5, end: 10, status: "active", statusLabel: "Sessão ativa", quota: 15, requestedAt: "14/05/2025 10:02", note: "" },
-    { id: "schedule-3", group: "Grupo 5", accountId: "account-1", day: 2, start: 10.25, end: 11.75, status: "pending", statusLabel: "Pendente", quota: 20, requestedAt: "14/05/2025 10:02", note: "" },
-    { id: "schedule-4", group: "Grupo 3", accountId: "account-1", day: 3, start: 9, end: 10, status: "pending", statusLabel: "Aguardando aprovação", quota: 8, requestedAt: "14/05/2025 11:45", note: "" },
-    { id: "schedule-5", group: "Grupo 6", accountId: "account-1", day: 3, start: 11, end: 12.5, status: "approved", statusLabel: "Aprovado", quota: 12, requestedAt: "14/05/2025 11:45", note: "" },
-    { id: "schedule-6", group: "Grupo 4", accountId: "account-1", day: 1, start: 13, end: 14.5, status: "approved", statusLabel: "Aprovado", quota: 5, requestedAt: "14/05/2025 12:30", note: "" },
-    { id: "schedule-7", group: "Grupo 7", accountId: "account-1", day: 5, start: 10, end: 11.5, status: "approved", statusLabel: "Aprovado", quota: 9, requestedAt: "14/05/2025 12:30", note: "" },
-    { id: "schedule-8", group: "Grupo 8", accountId: "account-1", day: 4, start: 14, end: 15.5, status: "cancelled", statusLabel: "Cancelado", quota: 12, requestedAt: "14/05/2025 13:20", note: "Sessão cancelada pelo administrador." },
-    { id: "schedule-9", group: "Grupo 9", accountId: "account-2", day: 2, start: 9, end: 10.5, status: "approved", statusLabel: "Aprovado", quota: 10, requestedAt: "14/05/2025 09:15", note: "" },
-    { id: "schedule-10", group: "Grupo 10", accountId: "account-3", day: 4, start: 11, end: 12, status: "pending", statusLabel: "Pendente", quota: 15, requestedAt: "14/05/2025 11:20", note: "" },
-  ];
-
-  const sampleApprovals = [
-    { id: "approval-1", scheduleId: "schedule-2", group: "Grupo 2", account: "Conta 1", requestedAt: "14/05/2025 09:15", duration: "1h 30m", quota: 10, status: "pending" },
-    { id: "approval-2", scheduleId: "schedule-3", group: "Grupo 5", account: "Conta 2", requestedAt: "14/05/2025 10:02", duration: "2h 00m", quota: 15, status: "pending" },
-    { id: "approval-3", scheduleId: "schedule-4", group: "Grupo 8", account: "Conta 3", requestedAt: "14/05/2025 11:45", duration: "1h 08m", quota: 8, status: "pending" },
-    { id: "approval-4", scheduleId: "schedule-5", group: "Grupo 3", account: "Conta 1", requestedAt: "14/05/2025 12:30", duration: "45m", quota: 5, status: "pending" },
-    { id: "approval-5", scheduleId: "schedule-10", group: "Grupo 9", account: "Conta 2", requestedAt: "14/05/2025 13:10", duration: "1h 00m", quota: 12, status: "pending" },
-    { id: "approval-6", scheduleId: "schedule-11", group: "Grupo 6", account: "Conta 3", requestedAt: "14/05/2025 14:05", duration: "1h 30m", quota: 10, status: "pending" },
-    { id: "approval-7", scheduleId: "schedule-12", group: "Grupo 4", account: "Conta 1", requestedAt: "14/05/2025 15:20", duration: "45m", quota: 5, status: "pending" },
-  ];
-
   const state = {
-    accounts: sampleAccounts.map((account) => ({ ...account })),
-    schedules: sampleSchedules.map((schedule) => decoratePreviewSchedule(schedule, startOfWeek(initialNow))),
-    approvals: sampleApprovals.map((approval) => decoratePreviewApproval(approval, startOfWeek(initialNow))),
-    activeAccountId: "account-1",
+    accounts: [],
+    schedules: [],
+    approvals: [],
+    activeAccountId: "",
     view: "week",
     weekStart: startOfWeek(initialNow),
     focusedDayIndex: weekdayIndex(initialNow),
@@ -217,10 +171,13 @@
       active: "Sessão ativa",
       cancelled: "Cancelado",
       disabled: "Token desabilitado",
+      revoked: "Token revogado",
+      expired: "Sessão expirada",
     }[status] || "Pendente");
   }
 
   function statusClass(status) {
+    if (["revoked", "expired"].includes(status)) return "disabled";
     return ["pending", "approved", "adjusted", "active", "cancelled", "disabled"].includes(status) ? status : "pending";
   }
 
@@ -253,30 +210,37 @@
 
   function renderMetrics() {
     const active = state.accounts.filter((account) => account.status === "ready").length;
-    const total = Math.max(10, state.accounts.length);
-    const pending = state.approvals.filter((approval) => approval.status === "pending").length || 7;
-    const remaining = state.live && state.accounts.length
+    const total = state.accounts.length;
+    const pending = state.approvals.filter((approval) => approval.status === "pending").length;
+    const remaining = state.accounts.length
       ? Math.round(state.accounts.reduce((sum, account) => sum + Number(account.quota || 0), 0) / state.accounts.length)
-      : 64;
-    setText("#metric-active-accounts", active);
-    setText("#metric-total-accounts", total);
-    setText("#metric-quota", `${remaining}%`);
-    setText("#metric-today", 18);
-    setText("#metric-today-accounts", Math.max(3, state.accounts.length));
-    setText("#metric-pending", pending);
+      : null;
+    const today = dateKey(new Date());
+    const todaySchedules = state.schedules.filter((schedule) => schedule.dateKey === today && schedule.status !== "cancelled");
+    const todayAccounts = new Set(todaySchedules.map((schedule) => schedule.accountId).filter(Boolean)).size;
+    setText("#metric-active-accounts", state.live ? active : "—");
+    setText("#metric-total-accounts", state.live ? total : "—");
+    setText("#metric-quota", state.live && remaining !== null ? `${remaining}%` : "—");
+    setText("#metric-today", state.live ? todaySchedules.length : "—");
+    setText("#metric-today-accounts", state.live ? todayAccounts : "—");
+    setText("#metric-pending", state.live ? pending : "—");
+    setText("#metric-quota-detail", state.live && remaining !== null ? `${remaining}% de 100%` : "carregando dados reais");
+    setText("#metric-pending-detail", state.live ? "requerem decisão" : "carregando dados reais");
     const activeProgress = $("#metric-active-progress");
     const quotaProgress = $("#metric-quota-progress");
+    const todayProgress = $("#metric-today-progress");
     const pendingProgress = $("#metric-pending-progress");
-    if (activeProgress) activeProgress.style.width = `${Math.min(100, (active / total) * 100)}%`;
-    if (quotaProgress) quotaProgress.style.width = `${Math.min(100, remaining)}%`;
+    if (activeProgress) activeProgress.style.width = `${total ? Math.min(100, (active / total) * 100) : 0}%`;
+    if (quotaProgress) quotaProgress.style.width = `${remaining === null ? 0 : Math.min(100, remaining)}%`;
+    if (todayProgress) todayProgress.style.width = `${Math.min(100, (todaySchedules.length / 24) * 100)}%`;
     if (pendingProgress) pendingProgress.style.width = `${Math.min(100, (pending / 12) * 100)}%`;
-    setText("#approval-count", pending);
+    setText("#approval-count", state.live ? pending : "—");
   }
 
   function renderManagedAccounts() {
     const target = $("#managed-accounts");
     if (!target) return;
-    target.innerHTML = state.accounts.slice(0, 3).map((account) => `
+    target.innerHTML = state.accounts.map((account) => `
       <div class="managed-account-card" data-account-card="${escapeHtml(account.id)}" role="button" tabindex="0" aria-label="Abrir agenda da ${escapeHtml(account.label)}">
         <span class="account-card-header"><span class="account-card-name"><i class="status-dot" aria-hidden="true"></i>${escapeHtml(account.label)}</span>
           <span class="account-menu-wrap">
@@ -326,7 +290,7 @@
             <span class="status-badge ${approval.status === "pending" ? "pending" : "approved"}">${approval.status === "pending" ? "Pendente" : "Revisado"}</span>
           </div>
           <div class="approval-item-meta"><span><i class="ph ph-wallet" aria-hidden="true"></i>${escapeHtml(approval.account)}</span><span><i class="ph ph-calendar-blank" aria-hidden="true"></i>${escapeHtml(approval.requestedAt)}</span></div>
-          <div class="approval-item-facts"><span><i class="ph ph-clock" aria-hidden="true"></i>${escapeHtml(approval.duration)}</span><span><i class="ph ph-chart-pie-slice" aria-hidden="true"></i>${formatQuota(approval.quota)} de quota</span></div>
+          <div class="approval-item-facts"><span><i class="ph ph-clock" aria-hidden="true"></i>${escapeHtml(approval.duration)}</span><span><i class="ph ph-gauge" aria-hidden="true"></i>${formatQuota(approval.quota)} solicitados</span></div>
         </div>
         <button class="action-link" type="button" data-approval-action="${escapeHtml(approval.id)}">Decidir</button>
       </article>
@@ -337,7 +301,7 @@
   function renderAccountTabs() {
     const target = $("#account-tabs");
     if (!target) return;
-    target.innerHTML = state.accounts.slice(0, 3).map((account) => `
+    target.innerHTML = state.accounts.map((account) => `
       <button class="account-tab${account.id === state.activeAccountId ? " is-active" : ""}" type="button" role="tab" aria-selected="${account.id === state.activeAccountId}" data-account-tab="${escapeHtml(account.id)}">${escapeHtml(account.label)}</button>
     `).join("");
   }
@@ -589,21 +553,19 @@
     const account = accountById(schedule.accountId);
     const time = scheduleTimeRange(schedule);
     const startDate = time.startDate;
-    const dateValue = dateKey(startDate);
     const period = formatPeriod(schedule);
     const accountLabel = account?.label || "Conta 1";
     setText("#review-group", schedule.group);
     setText("#review-account", accountLabel);
     setText("#review-period", period);
-    setText("#review-requested-quota", formatQuota(schedule.quota));
-    setText("#review-remaining-quota", formatQuota(Math.max(0, 42 - Number(schedule.quota || 0))));
     const startInput = $("#review-start");
     const endInput = $("#review-end");
-    if (startInput) startInput.value = dateValue;
-    if (endInput) endInput.value = dateValue;
+    if (startInput) startInput.value = dateTimeInputValue(time.startDate);
+    if (endInput) endInput.value = dateTimeInputValue(time.endDate);
     const quotaInput = $("#review-quota");
-    if (quotaInput) quotaInput.value = String(schedule.quota || 20);
-    setText("#review-quota-value", formatQuota(schedule.quota));
+    if (quotaInput) quotaInput.value = String(schedule.adjustedQuota || schedule.quota || 5);
+    setText("#review-requested-quota", `solicitado: ${formatQuota(schedule.quota)}`);
+    renderReviewAdjustment();
     const reviewNote = $("#review-note");
     if (reviewNote) reviewNote.value = schedule.note || "";
     updateCounter(reviewNote, $("#review-note-count"), 200);
@@ -611,22 +573,20 @@
     setText("#disable-group", schedule.group);
     setText("#disable-account", accountLabel);
     setText("#disable-start", `${formatDate(startDate)} ${formatTime(time.start)}`);
-    setText("#disable-quota", formatQuota(schedule.quota));
     setText("#cancel-group", schedule.group);
     setText("#cancel-account", accountLabel);
     setText("#cancel-scheduled", `${formatDate(startDate)} ${formatTime(time.start)}`);
-    setText("#cancel-quota", formatQuota(schedule.quota));
     setText("#history-admin", "Administrador");
     setText("#history-date", schedule.requestedAt || formatDateTime(startDate));
     setText("#history-period", period);
-    setText("#history-requested", formatQuota(schedule.quota));
-    setText("#history-adjusted", formatQuota(schedule.adjustedQuota || Math.max(5, Number(schedule.quota || 0) - 5)));
     setText("#history-note", schedule.note || "Ação registrada no histórico administrativo.");
     const historyAction = $("#history-action");
     if (historyAction) {
       historyAction.textContent = statusText(schedule.status);
       historyAction.className = `status-badge ${statusClass(schedule.status)}`;
     }
+    const reactivateButton = $("#history-reactivate");
+    if (reactivateButton) reactivateButton.hidden = !(schedule.status === "revoked" && schedule.deviceId && time.endDate.getTime() > Date.now());
   }
 
   function openSchedule(scheduleId) {
@@ -654,6 +614,18 @@
     if (output) output.textContent = String(Math.min(max, input?.value?.length || 0));
   }
 
+  function renderReviewAdjustment() {
+    const schedule = selectedSchedule();
+    const approved = Number($("#review-quota")?.value || schedule?.quota || 5);
+    const requested = Number(schedule?.quota || 5);
+    setText("#review-quota-output", `${approved}%`);
+    setText("#review-adjustment-label", approved === requested
+      ? "Sem ajuste de uso"
+      : approved > requested
+        ? `Upgrade de ${requested}% para ${approved}%`
+        : `Downgrade de ${requested}% para ${approved}%`);
+  }
+
   function updateSchedule(status, message, extra = {}) {
     const schedule = selectedSchedule();
     if (!schedule) return;
@@ -673,9 +645,8 @@
   }
 
   async function ensureAdminAccess() {
-    if (preview) return true;
     let token = getAuthToken();
-    if (!token) return false;
+    if (!token) return null;
 
     const check = async () => fetch("/api/admin/session", {
       headers: { Authorization: `Bearer ${token}` },
@@ -688,14 +659,14 @@
         const config = await window.RemoteCodexAuth.loadConfig();
         await window.RemoteCodexAuth.refreshSession(config);
         token = getAuthToken();
-        if (!token) return false;
+        if (!token) return null;
         response = await check();
       }
-      if (!response.ok) return false;
+      if (!response.ok) return null;
       const identity = await response.json().catch(() => ({}));
-      return identity.role === "owner" || identity.role === "admin";
+      return identity.role === "owner" || identity.role === "admin" ? identity : null;
     } catch {
-      return false;
+      return null;
     }
   }
 
@@ -703,44 +674,41 @@
     return window.FecartApi.admin(path, options);
   }
 
-  async function sendReservationDecision(action, schedule, note) {
+  async function sendReservationDecision(action, schedule, note, adjustments = {}) {
     if (!state.live || !schedule?.id) return;
-    try {
-      await adminRequest(`/api/admin/reservations/${encodeURIComponent(schedule.id)}/${action}`, {
-        method: "POST",
-        body: JSON.stringify({ note: note || null }),
-      });
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : "Ação salva apenas nesta visualização.", "error");
-    }
+    return adminRequest(`/api/admin/reservations/${encodeURIComponent(schedule.id)}/${action}`, {
+      method: "POST",
+      body: JSON.stringify({ note: note || null, ...adjustments }),
+    });
   }
 
   async function loadLiveData() {
     if (!getAuthToken()) return;
     try {
-      const [accountsResult, usersResult, reservationsResult] = await Promise.all([
+      const [accountsResult, usersResult, reservationsResult, devicesResult] = await Promise.all([
         adminRequest("/api/admin/accounts"),
         adminRequest("/api/admin/users"),
         adminRequest("/api/admin/reservations"),
+        adminRequest("/api/admin/devices"),
       ]);
       const accounts = Array.isArray(accountsResult?.accounts) ? accountsResult.accounts : [];
       const users = Array.isArray(usersResult?.users) ? usersResult.users : [];
       const reservations = Array.isArray(reservationsResult?.reservations) ? reservationsResult.reservations : [];
-      if (!accounts.length && !reservations.length) return;
-      if (accounts.length) {
-        state.accounts = accounts.map((account, index) => ({
+      const devices = Array.isArray(devicesResult?.devices) ? devicesResult.devices : [];
+      state.accounts = accounts.map((account, index) => ({
           id: account.accountId || account.account_id || `account-live-${index}`,
           label: account.label || `Conta ${index + 1}`,
           quota: accountQuota(account),
           reset: resetLabel(account),
           status: account.status || "ready",
         }));
-        state.activeAccountId = state.accounts[0]?.id || state.activeAccountId;
+      if (!state.accounts.some((account) => account.id === state.activeAccountId)) {
+        state.activeAccountId = state.accounts[0]?.id || "";
       }
-      if (reservations.length) {
-        const userMap = new Map(users.map((user) => [user.user_id, user.group_name || user.username || "Grupo"]));
-        state.schedules = reservations.map((reservation, index) => normalizeReservation(reservation, userMap, index));
-        state.approvals = state.schedules.filter((schedule) => schedule.status === "pending").map((schedule) => ({
+      const userMap = new Map(users.map((user) => [user.user_id, user.username || user.group_name || "Grupo"]));
+      const deviceMap = new Map(devices.map((device) => [device.deviceId || device.device_id, device]));
+      state.schedules = reservations.map((reservation, index) => normalizeReservation(reservation, userMap, deviceMap, index));
+      state.approvals = state.schedules.filter((schedule) => schedule.status === "pending").map((schedule) => ({
           id: schedule.id,
           group: schedule.group,
           account: accountById(schedule.accountId)?.label || "Conta",
@@ -749,11 +717,16 @@
           quota: schedule.quota,
           status: "pending",
         }));
-      }
       state.live = true;
       renderAll();
-    } catch {
-      // A local visual preview is still useful when the relay is not running.
+    } catch (error) {
+      state.accounts = [];
+      state.schedules = [];
+      state.approvals = [];
+      state.activeAccountId = "";
+      state.live = false;
+      renderAll();
+      showToast(error instanceof Error ? error.message : "Não foi possível carregar os dados reais.", "error");
     }
   }
 
@@ -773,7 +746,7 @@
     return Number.isNaN(date.getTime()) ? "seg 00:00" : date.toLocaleDateString("pt-BR", { weekday: "short", hour: "2-digit", minute: "2-digit" }).replace(".", "");
   }
 
-  function normalizeReservation(reservation, userMap, index) {
+  function normalizeReservation(reservation, userMap, deviceMap, index) {
     const startDate = new Date(reservation.starts_at);
     const endDate = new Date(reservation.ends_at);
     const day = Number.isNaN(startDate.getTime()) ? (index % 7) : Math.max(0, Math.min(6, (startDate.getDay() + 6) % 7));
@@ -782,7 +755,21 @@
       ? 1
       : Math.max(0, (endDate.getTime() - startDate.getTime()) / 3_600_000);
     const end = start + (durationHours || 1);
-    const status = reservation.status === "cancelled" ? "cancelled" : reservation.approval_status === "pending" ? "pending" : reservation.device_id ? "active" : "approved";
+    const linkedDevice = reservation.device_id ? deviceMap.get(reservation.device_id) : null;
+    const deviceStatus = linkedDevice?.status || "";
+    const status = reservation.status === "cancelled"
+      ? "cancelled"
+      : reservation.approval_status === "pending"
+        ? "pending"
+          : reservation.device_id && ["active", "limited"].includes(deviceStatus)
+          ? "active"
+          : reservation.device_id && deviceStatus === "revoked"
+            ? "revoked"
+          : reservation.device_id && deviceStatus === "expired"
+            ? "expired"
+          : reservation.device_id && deviceStatus === "disabled"
+            ? "disabled"
+            : "approved";
     const requestedDate = new Date(reservation.created_at || reservation.starts_at);
     return {
       id: reservation.id,
@@ -799,6 +786,7 @@
       quota: Number(reservation.requested_quota_percent || 5),
       adjustedQuota: Number(reservation.quota_budget_percent || reservation.requested_quota_percent || 5),
       deviceId: reservation.device_id || null,
+      deviceStatus,
       requestedAt: Number.isNaN(requestedDate.getTime()) ? "" : formatDateTime(requestedDate),
       note: reservation.review_note || "",
     };
@@ -954,36 +942,104 @@
       if (event.target === dialog) closeDialog(dialog);
     }));
 
-    $("#review-quota")?.addEventListener("input", (event) => setText("#review-quota-value", formatQuota(event.currentTarget.value)));
     $("#review-note")?.addEventListener("input", (event) => updateCounter(event.currentTarget, $("#review-note-count"), 200));
+    $("#review-quota")?.addEventListener("input", renderReviewAdjustment);
     $("#disable-note")?.addEventListener("input", (event) => updateCounter(event.currentTarget, $("#disable-note-count"), 180));
     $("#cancel-note")?.addEventListener("input", (event) => updateCounter(event.currentTarget, $("#cancel-note-count"), 180));
 
     $("#review-approve")?.addEventListener("click", async () => {
       const schedule = selectedSchedule();
+      if (!schedule) return;
       const note = $("#review-note")?.value.trim() || "";
-      updateSchedule("approved", "Solicitação aprovada.", { note });
-      await sendReservationDecision("approve", schedule, note);
-    });
-
-    $("#review-adjust")?.addEventListener("click", async () => {
-      const schedule = selectedSchedule();
-      const note = $("#review-note")?.value.trim() || "Ajuste realizado para otimizar o uso da capacidade disponível.";
-      const adjustedQuota = Number($("#review-quota")?.value || schedule?.quota || 15);
-      updateSchedule("adjusted", "Solicitação aprovada com ajuste.", { note, adjustedQuota });
-      await sendReservationDecision("approve", schedule, note);
+      const startsAt = new Date($("#review-start")?.value || "");
+      const endsAt = new Date($("#review-end")?.value || "");
+      const quotaBudgetPercent = Number($("#review-quota")?.value || schedule.quota || 5);
+      const button = $("#review-approve");
+      if (Number.isNaN(startsAt.getTime()) || Number.isNaN(endsAt.getTime()) || endsAt <= startsAt) {
+        showToast("Confira o início e o fim aprovados.", "error");
+        return;
+      }
+      if (button) button.disabled = true;
+      try {
+        await sendReservationDecision("approve", schedule, note, {
+          startsAt: startsAt.toISOString(),
+          endsAt: endsAt.toISOString(),
+          quotaBudgetPercent,
+        });
+        closeAllDialogs();
+        await loadLiveData();
+        const adjustment = quotaBudgetPercent === schedule.quota ? "" : quotaBudgetPercent > schedule.quota ? " com upgrade." : " com downgrade.";
+        showToast(`Solicitação aprovada${adjustment}`);
+      } catch (error) {
+        showToast(error instanceof Error ? error.message : "Não foi possível aprovar a solicitação.", "error");
+      } finally {
+        if (button) button.disabled = false;
+      }
     });
 
     $("#review-reject")?.addEventListener("click", async () => {
       const schedule = selectedSchedule();
+      if (!schedule) return;
       const note = $("#review-note")?.value.trim() || "Solicitação recusada pelo administrador.";
-      updateSchedule("cancelled", "Solicitação recusada.", { note });
-      await sendReservationDecision("reject", schedule, note);
+      const button = $("#review-reject");
+      if (button) button.disabled = true;
+      try {
+        await sendReservationDecision("reject", schedule, note);
+        closeAllDialogs();
+        await loadLiveData();
+        showToast("Solicitação recusada.");
+      } catch (error) {
+        showToast(error instanceof Error ? error.message : "Não foi possível recusar a solicitação.", "error");
+      } finally {
+        if (button) button.disabled = false;
+      }
     });
 
-    $("#disable-confirm")?.addEventListener("click", () => {
+    $("#disable-confirm")?.addEventListener("click", async () => {
+      const schedule = selectedSchedule();
       const note = $("#disable-note")?.value.trim() || "Token desabilitado pelo administrador.";
-      updateSchedule("disabled", "Token desabilitado.", { note });
+      const button = $("#disable-confirm");
+      if (!schedule?.deviceId) {
+        showToast("O dispositivo ativo não foi encontrado. Atualize o painel e tente novamente.", "error");
+        return;
+      }
+      if (button) button.disabled = true;
+      try {
+        await adminRequest(`/api/admin/devices/${encodeURIComponent(schedule.deviceId)}/revoke`, {
+          method: "POST",
+          body: JSON.stringify({ note }),
+        });
+        closeAllDialogs();
+        await loadLiveData();
+        showToast("Token revogado e conexões encerradas.");
+      } catch (error) {
+        showToast(error instanceof Error ? error.message : "Não foi possível revogar o token.", "error");
+      } finally {
+        if (button) button.disabled = false;
+      }
+    });
+
+    $("#history-reactivate")?.addEventListener("click", async () => {
+      const schedule = selectedSchedule();
+      const button = $("#history-reactivate");
+      if (!schedule?.deviceId) {
+        showToast("O token revogado não foi encontrado.", "error");
+        return;
+      }
+      if (button) button.disabled = true;
+      try {
+        await adminRequest(`/api/admin/devices/${encodeURIComponent(schedule.deviceId)}/reactivate`, {
+          method: "POST",
+          body: JSON.stringify({}),
+        });
+        closeAllDialogs();
+        await loadLiveData();
+        showToast("Token reativado para o restante da sessão.");
+      } catch (error) {
+        showToast(error instanceof Error ? error.message : "Não foi possível reativar o token.", "error");
+      } finally {
+        if (button) button.disabled = false;
+      }
     });
 
     $("#cancel-confirm")?.addEventListener("click", () => {
@@ -1026,12 +1082,11 @@
         window.location.replace("/groups");
         return;
       }
-      showToast("Esta visão operacional está concentrada no painel Geral.");
+      if (button.dataset.section === "telemetry") {
+        window.location.replace("/telemetry");
+      }
     }));
 
-    $(".sidebar-collapse")?.addEventListener("click", () => {
-      $(".admin-shell")?.classList.toggle("is-collapsed");
-    });
 
     $("[data-admin-logout]")?.addEventListener("click", async () => {
       try {
@@ -1046,16 +1101,18 @@
   }
 
   document.addEventListener("DOMContentLoaded", async () => {
-    if (!(await ensureAdminAccess())) {
+    const identity = await ensureAdminAccess();
+    if (!identity) {
       window.RemoteCodexAuth?.clearSession?.();
       window.location.replace("/login");
       return;
     }
+    window.FecartAdminShell?.setIdentity?.(identity);
     document.body.classList.remove("admin-auth-pending");
     document.body.classList.add("admin-auth-ready");
     bindEvents();
     renderAll();
-    if (!preview) await loadLiveData();
+    await loadLiveData();
   });
 })();
 
