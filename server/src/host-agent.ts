@@ -948,7 +948,17 @@ export class HostAgent {
   }
 }
 
-const isEntryPoint = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+let isEntryPoint = false;
+if (process.argv[1]) {
+  try {
+    const { realpathSync } = await import("node:fs");
+    const scriptPath = fileURLToPath(import.meta.url);
+    isEntryPoint = path.resolve(process.argv[1]) === scriptPath || realpathSync(process.argv[1]) === realpathSync(scriptPath);
+  } catch {
+    isEntryPoint = false;
+  }
+}
+
 if (isEntryPoint) {
   const agent = new HostAgent(hostConfigFromEnvironment());
   await agent.start();

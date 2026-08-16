@@ -130,11 +130,15 @@ try {
   Write-Host 'Enviando codigo e instalador para a Lightsail...'
   & scp -i $resolvedKeyPath -o StrictHostKeyChecking=accept-new $archivePath "${destination}:/tmp/fecart-app.tar.gz"
   if ($LASTEXITCODE -ne 0) { throw 'Falha ao enviar o projeto.' }
-  & scp -i $resolvedKeyPath -o StrictHostKeyChecking=accept-new (Join-Path $projectRoot 'deploy/aws/bootstrap.sh') "${destination}:/tmp/fecart-bootstrap.sh"
+  $bootstrapContent = [IO.File]::ReadAllText((Join-Path $projectRoot 'deploy/aws/bootstrap.sh')).Replace("`r`n", "`n")
+  $remoteBootstrap = Join-Path $temporaryDirectory 'fecart-bootstrap.sh'
+  [IO.File]::WriteAllBytes($remoteBootstrap, [Text.Encoding]::UTF8.GetBytes($bootstrapContent))
+
+  & scp -i $resolvedKeyPath -o StrictHostKeyChecking=accept-new $remoteBootstrap "${destination}:/tmp/fecart-bootstrap.sh"
   if ($LASTEXITCODE -ne 0) { throw 'Falha ao enviar o bootstrap.' }
 
   Write-Host 'Instalando Node.js, Codex CLI, Caddy e os servicos...'
-  & ssh -i $resolvedKeyPath -o StrictHostKeyChecking=accept-new $destination "sudo bash /tmp/fecart-bootstrap.sh '$PublicHost'"
+  & ssh -i $resolvedKeyPath -o StrictHostKeyChecking=accept-new $destination "sed -i 's/\r$//' /tmp/fecart-bootstrap.sh && sudo bash /tmp/fecart-bootstrap.sh '$PublicHost'"
   if ($LASTEXITCODE -ne 0) { throw 'Falha no bootstrap remoto.' }
 
   Write-Host 'Transmitindo os ambientes protegidos diretamente para a maquina...'

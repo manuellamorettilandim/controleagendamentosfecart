@@ -105,6 +105,7 @@ chmod -R o-w "$RELEASE_DIR"
 ln -sfn "$RELEASE_DIR" /opt/fecart/current
 
 install -o root -g root -m 0755 "$RELEASE_DIR/deploy/aws/install-env.sh" /usr/local/sbin/fecart-install-env
+sed -i 's/\r$//' /usr/local/sbin/fecart-install-env
 
 cat > /etc/systemd/system/fecart-relay.service <<'UNIT'
 [Unit]
