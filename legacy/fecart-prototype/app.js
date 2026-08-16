@@ -10,7 +10,6 @@ const CONFIGURED_SUPABASE_KEY = ""; // Ex: "eyJhbGciOiJIUzI1NiI..."
  */
 const DEFAULT_USER_DATABASE = [
   // 1IA - A
-  { username: "1IA", password: "A", turma: "1IA - A" },
   { username: "fecurity", password: "joao01@", turma: "1IA - A" },
   { username: "itech", password: "luis02@", turma: "1IA - A" },
   { username: "olhardasmaquinas", password: "arthur03@", turma: "1IA - A" },
@@ -50,8 +49,6 @@ const DEFAULT_USER_DATABASE = [
   { username: "neuraltrio", password: "gabriel08@", turma: "2IA - B" },
   { username: "trigêmeos", password: "lucas08@", turma: "2IA - B" },
 
-  // Administrador
-  { username: "admin", password: ["raissa", "melissa", "beatriz", "manuella"], turma: "Administrador" }
 ];
 
 // Chaves do localStorage

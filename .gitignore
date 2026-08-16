@@ -1,0 +1,15 @@
+node_modules/
+dist/
+site/
+site-next/
+.env
+.env.*
+!.env.example
+.codex/
+.codex/remote-access.json
+.codex/remote-access.json.*
+*.token
+*.token.txt
+*.secret
+coverage/
+supabase/.temp/
