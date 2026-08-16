@@ -21,11 +21,23 @@ import {
   type WireMessage,
 } from "./protocol.js";
 import { accountSnapshotFromRow, SupabaseAuthClient, type SupabaseAdminIdentity } from "./supabase.js";
+import {
+  SlidingWindowRateLimiter,
+  extractClientIp,
+  applySecurityHeaders,
+  applyRateLimitHeaders,
+} from "./rate-limiter.js";
 
 const DEFAULT_PORT = 10_000;
 const DEFAULT_HOST = "0.0.0.0";
 const DEFAULT_HEARTBEAT_TIMEOUT_MS = 20_000;
 const DEFAULT_MAX_PAYLOAD = 8 * 1024 * 1024;
+const DEFAULT_RATE_LIMIT_GLOBAL_MAX = 120;
+const DEFAULT_RATE_LIMIT_API_MAX = 60;
+const DEFAULT_RATE_LIMIT_RESERVATION_MAX = 10;
+const DEFAULT_RATE_LIMIT_SESSION_MAX = 15;
+const DEFAULT_RATE_LIMIT_WS_MAX = 30;
+const DEFAULT_MAX_CONCURRENT_STREAMS_PER_IP = 10;
 
 const STATIC_ROUTES: Record<string, string> = {
   "/": "login.html",
@@ -51,6 +63,14 @@ export interface RelayOptions {
   maxPayload?: number;
   supabaseUrl?: string;
   supabasePublishableKey?: string;
+  globalRateLimitMax?: number;
+  globalRateLimitWindowMs?: number;
+  apiRateLimitMax?: number;
+  reservationRateLimitMax?: number;
+  sessionRateLimitMax?: number;
+  wsRateLimitMax?: number;
+  maxConcurrentStreamsPerIp?: number;
+  trustProxy?: boolean;
 }
 
 interface ClientStream {
@@ -98,7 +118,7 @@ function jsonResponse(response: ServerResponse, status: number, value: unknown):
   response.statusCode = status;
   response.setHeader("Content-Type", "application/json; charset=utf-8");
   response.setHeader("Cache-Control", "no-store");
-  response.setHeader("X-Content-Type-Options", "nosniff");
+  applySecurityHeaders(response);
   response.end(body);
 }
 
@@ -108,7 +128,10 @@ async function readJsonBody(request: IncomingMessage): Promise<Record<string, un
   for await (const chunk of request) {
     const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
     total += buffer.length;
-    if (total > 64 * 1024) throw new Error("Request body too large.");
+    if (total > 64 * 1024) {
+      request.destroy(new Error("Request body too large."));
+      throw new Error("Request body too large.");
+    }
     chunks.push(buffer);
   }
   if (chunks.length === 0) return {};
@@ -225,7 +248,7 @@ function deviceSnapshotFromRow(row: Record<string, unknown>): Record<string, unk
 export class RelayServer {
   private readonly server: http.Server;
   private readonly webSocketServer: WebSocketServer;
-  private readonly options: Required<Pick<RelayOptions, "agentTokenHash" | "host" | "port" | "siteDir" | "heartbeatTimeoutMs" | "maxPayload">> & {
+  private readonly options: Required<Pick<RelayOptions, "agentTokenHash" | "host" | "port" | "siteDir" | "heartbeatTimeoutMs" | "maxPayload" | "globalRateLimitMax" | "globalRateLimitWindowMs" | "apiRateLimitMax" | "reservationRateLimitMax" | "sessionRateLimitMax" | "wsRateLimitMax" | "maxConcurrentStreamsPerIp" | "trustProxy">> & {
     supabaseUrl?: string;
     supabasePublishableKey?: string;
   };
@@ -236,6 +259,16 @@ export class RelayServer {
   private readonly lastAccountSnapshots = new Map<string, AccountSnapshot>();
   private readonly pendingControls = new Map<string, { resolve: (value: unknown) => void; reject: (error: Error) => void; timer: NodeJS.Timeout }>();
   private readonly authClient: SupabaseAuthClient | null;
+  private readonly globalLimiter: SlidingWindowRateLimiter;
+  private readonly apiLimiter: SlidingWindowRateLimiter;
+  private readonly reservationLimiter: SlidingWindowRateLimiter;
+  private readonly sessionLimiter: SlidingWindowRateLimiter;
+  private readonly authLimiter: SlidingWindowRateLimiter;
+  private readonly wsLimiter: SlidingWindowRateLimiter;
+  private readonly clientStreamsByIp = new Map<string, Set<string>>();
+  private readonly streamToIp = new Map<string, string>();
+  private readonly clientHeartbeats = new Map<WebSocket, number>();
+  private wsHeartbeatTimer: NodeJS.Timeout | null = null;
   private tunnel: WebSocket | null = null;
   private hostId: string | null = null;
   private registered = false;
@@ -256,6 +289,14 @@ export class RelayServer {
       maxPayload: options.maxPayload ?? DEFAULT_MAX_PAYLOAD,
       supabaseUrl: options.supabaseUrl?.trim() || undefined,
       supabasePublishableKey: options.supabasePublishableKey?.trim() || undefined,
+      globalRateLimitMax: options.globalRateLimitMax ?? DEFAULT_RATE_LIMIT_GLOBAL_MAX,
+      globalRateLimitWindowMs: options.globalRateLimitWindowMs ?? 60_000,
+      apiRateLimitMax: options.apiRateLimitMax ?? DEFAULT_RATE_LIMIT_API_MAX,
+      reservationRateLimitMax: options.reservationRateLimitMax ?? DEFAULT_RATE_LIMIT_RESERVATION_MAX,
+      sessionRateLimitMax: options.sessionRateLimitMax ?? DEFAULT_RATE_LIMIT_SESSION_MAX,
+      wsRateLimitMax: options.wsRateLimitMax ?? DEFAULT_RATE_LIMIT_WS_MAX,
+      maxConcurrentStreamsPerIp: options.maxConcurrentStreamsPerIp ?? DEFAULT_MAX_CONCURRENT_STREAMS_PER_IP,
+      trustProxy: options.trustProxy ?? true,
     };
 
     if (!/^[a-f0-9]{64}$/i.test(this.options.agentTokenHash)) {
@@ -265,9 +306,41 @@ export class RelayServer {
       ? new SupabaseAuthClient(this.options.supabaseUrl, this.options.supabasePublishableKey)
       : null;
 
+    this.globalLimiter = new SlidingWindowRateLimiter({
+      maxRequests: this.options.globalRateLimitMax,
+      windowMs: this.options.globalRateLimitWindowMs,
+    });
+    this.apiLimiter = new SlidingWindowRateLimiter({
+      maxRequests: this.options.apiRateLimitMax,
+      windowMs: 60_000,
+    });
+    this.reservationLimiter = new SlidingWindowRateLimiter({
+      maxRequests: this.options.reservationRateLimitMax,
+      windowMs: 60_000,
+    });
+    this.sessionLimiter = new SlidingWindowRateLimiter({
+      maxRequests: this.options.sessionRateLimitMax,
+      windowMs: 60_000,
+    });
+    this.authLimiter = new SlidingWindowRateLimiter({
+      maxRequests: 10,
+      windowMs: 5 * 60_000,
+      blockDurationMs: 5 * 60_000,
+    });
+    this.wsLimiter = new SlidingWindowRateLimiter({
+      maxRequests: this.options.wsRateLimitMax,
+      windowMs: 60_000,
+    });
+
     this.server = http.createServer((request, response) => {
       void this.handleHttp(request, response);
     });
+
+    // Slowloris and hanging socket mitigations
+    this.server.requestTimeout = 30_000;
+    this.server.headersTimeout = 35_000;
+    this.server.keepAliveTimeout = 65_000;
+
     this.webSocketServer = new WebSocketServer({ noServer: true, maxPayload: this.options.maxPayload });
     this.server.on("upgrade", (request, socket, head) => this.handleUpgrade(request, socket, head));
   }
@@ -289,6 +362,9 @@ export class RelayServer {
 
     this.expiryTimer = setInterval(() => this.pruneState(), 1_000);
     this.expiryTimer.unref();
+
+    this.wsHeartbeatTimer = setInterval(() => this.pingClients(), 15_000);
+    this.wsHeartbeatTimer.unref();
   }
 
   public async close(): Promise<void> {
@@ -296,6 +372,17 @@ export class RelayServer {
       clearInterval(this.expiryTimer);
       this.expiryTimer = null;
     }
+    if (this.wsHeartbeatTimer) {
+      clearInterval(this.wsHeartbeatTimer);
+      this.wsHeartbeatTimer = null;
+    }
+
+    this.globalLimiter.close();
+    this.apiLimiter.close();
+    this.reservationLimiter.close();
+    this.sessionLimiter.close();
+    this.authLimiter.close();
+    this.wsLimiter.close();
 
     this.failClosed("Relay encerrado");
     for (const socket of this.clientToStream.keys()) {
@@ -313,6 +400,28 @@ export class RelayServer {
     await new Promise<void>((resolve) => {
       this.server.close(() => resolve());
     });
+  }
+
+  private pingClients(): void {
+    const now = Date.now();
+    for (const [socket, lastSeen] of [...this.clientHeartbeats.entries()]) {
+      if (socket.readyState !== WebSocket.OPEN) {
+        this.clientHeartbeats.delete(socket);
+        continue;
+      }
+      if (now - lastSeen > 45_000) {
+        // Client did not respond to pings for 45s; close dead socket
+        socket.terminate();
+        this.clientHeartbeats.delete(socket);
+        continue;
+      }
+      try {
+        socket.ping();
+      } catch {
+        socket.terminate();
+        this.clientHeartbeats.delete(socket);
+      }
+    }
   }
 
   public address(): ReturnType<http.Server["address"]> {
@@ -354,6 +463,17 @@ export class RelayServer {
   }
 
   private async handleHttp(request: IncomingMessage, response: ServerResponse): Promise<void> {
+    const isHttps = request.headers["x-forwarded-proto"] === "https";
+    applySecurityHeaders(response, isHttps);
+
+    const clientIp = extractClientIp(request, this.options.trustProxy);
+    const globalCheck = this.globalLimiter.check(clientIp);
+    applyRateLimitHeaders(response, globalCheck);
+    if (!globalCheck.allowed) {
+      jsonResponse(response, 429, { error: "Muitas requisições. Tente novamente mais tarde.", retryAfter: globalCheck.retryAfterSec });
+      return;
+    }
+
     const url = new URL(request.url ?? "/", "http://relay.invalid");
 
     if (url.pathname === "/healthz") {
@@ -381,13 +501,27 @@ export class RelayServer {
       return;
     }
 
-    if (url.pathname.startsWith("/api/admin/")) {
-      await this.handleAdminApi(request, response, url.pathname);
-      return;
-    }
+    if (url.pathname.startsWith("/api/admin/") || url.pathname.startsWith("/api/user/")) {
+      const apiCheck = this.apiLimiter.check(clientIp);
+      applyRateLimitHeaders(response, apiCheck);
+      if (!apiCheck.allowed) {
+        jsonResponse(response, 429, { error: "Muitas requisições para a API. Tente novamente mais tarde.", retryAfter: apiCheck.retryAfterSec });
+        return;
+      }
 
-    if (url.pathname.startsWith("/api/user/")) {
-      await this.handleUserApi(request, response, url.pathname);
+      const authCheck = this.authLimiter.check(clientIp);
+      if (!authCheck.allowed) {
+        applyRateLimitHeaders(response, authCheck);
+        jsonResponse(response, 429, { error: "IP temporariamente bloqueado por excesso de tentativas de autenticação.", retryAfter: authCheck.retryAfterSec });
+        return;
+      }
+
+      if (url.pathname.startsWith("/api/admin/")) {
+        await this.handleAdminApi(request, response, url.pathname, clientIp);
+        return;
+      }
+
+      await this.handleUserApi(request, response, url.pathname, clientIp);
       return;
     }
 
@@ -439,7 +573,6 @@ export class RelayServer {
                     : "application/javascript; charset=utf-8";
       response.statusCode = 200;
       response.setHeader("Content-Type", contentType);
-      response.setHeader("X-Content-Type-Options", "nosniff");
       response.setHeader("Content-Security-Policy", "default-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'; script-src 'self'; img-src 'self' data:; connect-src 'self' https://*.supabase.co https://*.supabase.in");
       if (request.method === "HEAD") {
         response.end();
@@ -453,7 +586,7 @@ export class RelayServer {
     }
   }
 
-  private async handleAdminApi(request: IncomingMessage, response: ServerResponse, pathname: string): Promise<void> {
+  private async handleAdminApi(request: IncomingMessage, response: ServerResponse, pathname: string, clientIp: string): Promise<void> {
     if (urlHasQuery(request.url)) {
       jsonResponse(response, 400, { error: "Query strings are not used by admin APIs." });
       return;
@@ -464,6 +597,7 @@ export class RelayServer {
     }
     const token = bearerToken(request);
     if (!token) {
+      this.authLimiter.recordFailure(clientIp);
       jsonResponse(response, 401, { error: "Supabase bearer token required." });
       return;
     }
@@ -474,9 +608,11 @@ export class RelayServer {
       identity = null;
     }
     if (!identity) {
+      this.authLimiter.recordFailure(clientIp);
       jsonResponse(response, 401, { error: "Supabase authentication failed." });
       return;
     }
+    this.authLimiter.reset(clientIp);
 
     const parts = routeParts(pathname);
     const method = request.method ?? "GET";
@@ -706,7 +842,7 @@ export class RelayServer {
     }
   }
 
-  private async handleUserApi(request: IncomingMessage, response: ServerResponse, pathname: string): Promise<void> {
+  private async handleUserApi(request: IncomingMessage, response: ServerResponse, pathname: string, clientIp: string): Promise<void> {
     if (urlHasQuery(request.url)) {
       jsonResponse(response, 400, { error: "Query strings are not used by user APIs." });
       return;
@@ -717,11 +853,13 @@ export class RelayServer {
     }
     const token = bearerToken(request);
     if (!token) {
+      this.authLimiter.recordFailure(clientIp);
       jsonResponse(response, 401, { error: "Supabase bearer token required." });
       return;
     }
     const identity = await this.authClient.authenticateUser(token).catch(() => null);
     if (!identity) {
+      this.authLimiter.recordFailure(clientIp);
       jsonResponse(response, 401, { error: "Supabase authentication failed." });
       return;
     }
@@ -744,9 +882,11 @@ export class RelayServer {
       ? { ...profileRow, scheduling_enabled: profileRow.scheduling_enabled !== false }
       : null;
     if (!profile || profile.enabled !== true) {
+      this.authLimiter.recordFailure(clientIp);
       jsonResponse(response, 403, { error: "Este usuário não está habilitado para o Remote Codex." });
       return;
     }
+    this.authLimiter.reset(clientIp);
 
     const parts = routeParts(pathname);
     const method = request.method ?? "GET";
@@ -800,6 +940,13 @@ export class RelayServer {
       }
       const body = await readJsonBody(request);
       if (parts.length === 3 && parts[2] === "reservations") {
+        const resCheck = this.reservationLimiter.check(clientIp);
+        applyRateLimitHeaders(response, resCheck);
+        if (!resCheck.allowed) {
+          jsonResponse(response, 429, { error: "Muitas tentativas de reserva. Aguarde um momento antes de tentar novamente.", retryAfter: resCheck.retryAfterSec });
+          return;
+        }
+
         const startsAt = typeof body.startsAt === "string" ? new Date(body.startsAt) : new Date(Number.NaN);
         const durationHours = Number(body.durationHours);
         const requestedQuotaPercent = Number(body.requestedQuotaPercent);
@@ -891,6 +1038,15 @@ export class RelayServer {
         });
         jsonResponse(response, cancelled.ok ? 200 : 400, cancelled.ok ? { reservation: Array.isArray(cancelled.data) ? cancelled.data[0] : cancelled.data } : { error: dataError(cancelled.data, "Não foi possível cancelar.") });
         return;
+      }
+
+      if (parts[4] === "end" || parts[4] === "session") {
+        const sessCheck = this.sessionLimiter.check(clientIp);
+        applyRateLimitHeaders(response, sessCheck);
+        if (!sessCheck.allowed) {
+          jsonResponse(response, 429, { error: "Muitas operações de sessão. Aguarde um momento antes de tentar novamente.", retryAfter: sessCheck.retryAfterSec });
+          return;
+        }
       }
 
       if (parts[4] === "end") {
@@ -1034,6 +1190,8 @@ export class RelayServer {
       return;
     }
 
+    const clientIp = extractClientIp(request, this.options.trustProxy);
+
     if (url.pathname === "/tunnel") {
       const token = bearerToken(request);
       if (!token || !hashesEqual(hashToken(token), this.options.agentTokenHash)) {
@@ -1050,6 +1208,24 @@ export class RelayServer {
     // O Codex CLI aceita apenas o endereco WSS sem caminho. Mantemos
     // /codex como alias para clientes que conseguem configurar o caminho.
     if (url.pathname === "/" || url.pathname === "/codex") {
+      const wsCheck = this.wsLimiter.check(clientIp);
+      if (!wsCheck.allowed) {
+        rejectUpgrade(socket, 429, "Too Many Requests");
+        return;
+      }
+
+      const activeStreamsForIp = this.clientStreamsByIp.get(clientIp)?.size ?? 0;
+      if (activeStreamsForIp >= this.options.maxConcurrentStreamsPerIp) {
+        rejectUpgrade(socket, 429, "Too many concurrent connections from this IP.");
+        return;
+      }
+
+      const authCheck = this.authLimiter.check(clientIp);
+      if (!authCheck.allowed) {
+        rejectUpgrade(socket, 429, "IP temporarily blocked due to repeated auth failures.");
+        return;
+      }
+
       if (!this.status().ready) {
         rejectUpgrade(socket, 503, "Central host is not connected and synchronized.");
         return;
@@ -1058,12 +1234,14 @@ export class RelayServer {
       const token = bearerToken(request);
       const device = token ? this.findDevice(token) : null;
       if (!device) {
+        this.authLimiter.recordFailure(clientIp);
         rejectUpgrade(socket, 401, "Device authentication failed.");
         return;
       }
+      this.authLimiter.reset(clientIp);
 
       this.webSocketServer.handleUpgrade(request, socket, head, (webSocket) => {
-        this.handleClient(webSocket, device);
+        this.handleClient(webSocket, device, clientIp);
       });
       return;
     }
@@ -1220,7 +1398,7 @@ export class RelayServer {
     this.lastSyncAt = Date.now();
   }
 
-  private handleClient(webSocket: WebSocket, device: RelayDevice): void {
+  private handleClient(webSocket: WebSocket, device: RelayDevice, clientIp: string): void {
     const streamId = cryptoRandomId();
     const accountId = device.accountId ?? this.defaultAccountId;
     const account = accountId ? this.accounts.get(accountId) : undefined;
@@ -1235,8 +1413,22 @@ export class RelayServer {
     const stream: ClientStream = { streamId, deviceId: device.deviceId, accountId, client: webSocket };
     this.streams.set(streamId, stream);
     this.clientToStream.set(webSocket, streamId);
+    this.streamToIp.set(streamId, clientIp);
+
+    let ipStreams = this.clientStreamsByIp.get(clientIp);
+    if (!ipStreams) {
+      ipStreams = new Set();
+      this.clientStreamsByIp.set(clientIp, ipStreams);
+    }
+    ipStreams.add(streamId);
+
+    this.clientHeartbeats.set(webSocket, Date.now());
+    webSocket.on("pong", () => {
+      this.clientHeartbeats.set(webSocket, Date.now());
+    });
 
     webSocket.on("message", (raw, isBinary) => {
+      this.clientHeartbeats.set(webSocket, Date.now());
       const current = this.streams.get(streamId);
       if (!current || current.client !== webSocket) {
         return;
@@ -1293,6 +1485,20 @@ export class RelayServer {
 
     this.streams.delete(streamId);
     this.clientToStream.delete(stream.client);
+    this.clientHeartbeats.delete(stream.client);
+
+    const clientIp = this.streamToIp.get(streamId);
+    if (clientIp) {
+      this.streamToIp.delete(streamId);
+      const ipStreams = this.clientStreamsByIp.get(clientIp);
+      if (ipStreams) {
+        ipStreams.delete(streamId);
+        if (ipStreams.size === 0) {
+          this.clientStreamsByIp.delete(clientIp);
+        }
+      }
+    }
+
     if (notifyTunnel) {
       const message: StreamCloseMessage = {
         v: PROTOCOL_VERSION,
@@ -1342,6 +1548,9 @@ export class RelayServer {
     this.devices.clear();
     this.accounts.clear();
     this.defaultAccountId = null;
+    this.clientHeartbeats.clear();
+    this.clientStreamsByIp.clear();
+    this.streamToIp.clear();
 
     for (const [requestId, pending] of this.pendingControls) {
       clearTimeout(pending.timer);
@@ -1403,5 +1612,13 @@ export function relayOptionsFromEnvironment(env: NodeJS.ProcessEnv = process.env
     heartbeatTimeoutMs: Number(env.RELAY_HEARTBEAT_TIMEOUT_MS || DEFAULT_HEARTBEAT_TIMEOUT_MS),
     supabaseUrl: env.SUPABASE_URL?.trim() || undefined,
     supabasePublishableKey: env.SUPABASE_PUBLISHABLE_KEY?.trim() || undefined,
+    globalRateLimitMax: env.RATE_LIMIT_GLOBAL_MAX ? Number(env.RATE_LIMIT_GLOBAL_MAX) : undefined,
+    globalRateLimitWindowMs: env.RATE_LIMIT_GLOBAL_WINDOW_MS ? Number(env.RATE_LIMIT_GLOBAL_WINDOW_MS) : undefined,
+    apiRateLimitMax: env.RATE_LIMIT_API_MAX ? Number(env.RATE_LIMIT_API_MAX) : undefined,
+    reservationRateLimitMax: env.RATE_LIMIT_RESERVATION_MAX ? Number(env.RATE_LIMIT_RESERVATION_MAX) : undefined,
+    sessionRateLimitMax: env.RATE_LIMIT_SESSION_MAX ? Number(env.RATE_LIMIT_SESSION_MAX) : undefined,
+    wsRateLimitMax: env.RATE_LIMIT_WS_MAX ? Number(env.RATE_LIMIT_WS_MAX) : undefined,
+    maxConcurrentStreamsPerIp: env.MAX_CONCURRENT_STREAMS_PER_IP ? Number(env.MAX_CONCURRENT_STREAMS_PER_IP) : undefined,
+    trustProxy: env.TRUST_PROXY !== "false",
   };
 }

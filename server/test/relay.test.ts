@@ -434,3 +434,78 @@ test("admin API validates Supabase identity before exposing account snapshots", 
     await new Promise<void>((resolve) => supabaseMock.close(() => resolve()));
   }
 });
+
+test("relay enforces HTTP rate limiting and applies unified security headers", async () => {
+  const relay = new RelayServer({
+    agentTokenHash: hashToken(agentToken),
+    host: "127.0.0.1",
+    port: 0,
+    siteDir: "site",
+    heartbeatTimeoutMs: 5_000,
+    globalRateLimitMax: 5,
+    globalRateLimitWindowMs: 10_000,
+  });
+  await relay.listen();
+  const port = addressPort(relay);
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/healthz`);
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get("x-frame-options"), "DENY");
+    assert.equal(res.headers.get("x-content-type-options"), "nosniff");
+    assert.equal(res.headers.get("referrer-policy"), "strict-origin-when-cross-origin");
+    assert.equal(res.headers.get("ratelimit-limit"), "5");
+
+    // Consume remaining tokens (3 more to reach 4, then 5th is allowed, 6th is rejected)
+    for (let i = 0; i < 4; i++) {
+      const okRes = await fetch(`http://127.0.0.1:${port}/healthz`);
+      assert.equal(okRes.status, 200);
+    }
+
+    const blockedRes = await fetch(`http://127.0.0.1:${port}/healthz`);
+    assert.equal(blockedRes.status, 429);
+    assert.ok(blockedRes.headers.has("retry-after"));
+    const data = await blockedRes.json();
+    assert.match(data.error, /Muitas requisições/);
+  } finally {
+    await relay.close();
+  }
+});
+
+test("relay enforces WebSocket upgrade rate limits and max concurrent streams per IP", async () => {
+  const relay = new RelayServer({
+    agentTokenHash: hashToken(agentToken),
+    host: "127.0.0.1",
+    port: 0,
+    siteDir: "site",
+    heartbeatTimeoutMs: 5_000,
+    wsRateLimitMax: 3,
+    maxConcurrentStreamsPerIp: 2,
+  });
+  await relay.listen();
+  const port = addressPort(relay);
+  const base = `ws://127.0.0.1:${port}`;
+  let tunnel: WebSocket | undefined;
+  const clients: WebSocket[] = [];
+  try {
+    tunnel = await open(`${base}/tunnel`, { Authorization: `Bearer ${agentToken}` });
+    tunnel.send(encodeMessage({ v: PROTOCOL_VERSION, type: "register", hostId: "ws-rate-host" }));
+    tunnel.send(encodeMessage(syncAccounts()));
+    tunnel.send(encodeMessage({ v: PROTOCOL_VERSION, type: "access.sync", devices: [syncDevice()] }));
+    await waitFor(() => relay.status(), (status) => status.ready);
+
+    // First 2 concurrent clients should connect
+    const c1 = await open(base, { Authorization: `Bearer ${deviceToken}` });
+    clients.push(c1);
+    const c2 = await open(base, { Authorization: `Bearer ${deviceToken}` });
+    clients.push(c2);
+
+    // 3rd client exceeds maxConcurrentStreamsPerIp (2) -> rejected 429
+    const rejectedStatusResult = await rejectedStatus(base, { Authorization: `Bearer ${deviceToken}` });
+    assert.equal(rejectedStatusResult, 429);
+  } finally {
+    for (const c of clients) c.terminate();
+    tunnel?.terminate();
+    await relay.close();
+  }
+});
+
