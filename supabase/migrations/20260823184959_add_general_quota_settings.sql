@@ -79,7 +79,7 @@ as $$
       from public.codex_device_snapshots snapshot
       where snapshot.reservation_id = reservation.id
         and snapshot.status in ('reserved', 'running', 'active')
-      order by snapshot.activated_at desc nulls last, snapshot.created_at desc
+      order by snapshot.created_at desc
       limit 1
     ) device on true
     where reservation.account_id = target_account_id
