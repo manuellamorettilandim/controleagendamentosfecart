@@ -275,9 +275,9 @@ function updateQuotaProgress(
   const windowChanged = Boolean(resetIso && usage.windowResetsAt && resetIso !== usage.windowResetsAt);
 
   let delta = 0;
-  if (windowChanged) {
-    // A weekly reset never grants a second session budget. Usage already
-    // observed in the new window is added to the prior window's consumption.
+  if (windowChanged && previous !== null && current < previous) {
+    // A true window reset occurred (the reported percentage dropped and reset timestamp changed).
+    // Usage observed in the new window is added to the prior window's consumption.
     delta = current;
   } else if (previous !== null && current >= previous) {
     delta = current - previous;

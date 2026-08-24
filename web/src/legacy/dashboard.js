@@ -214,7 +214,7 @@
 
   function appCommandFor(token, platform = state.platform) {
     if (platform === "cmd") {
-      return `set "FECART_CODEX_TOKEN=${token}" && start ChatGPT`;
+      return `setx FECART_CODEX_TOKEN "${token}" && start explorer.exe "shell:AppsFolder\\OpenAI.Codex_2p2nqsd0c76g0!App"`;
     }
     if (platform === "macos") {
       return `FECART_CODEX_TOKEN='${token}' open -a "ChatGPT"`;
@@ -222,7 +222,7 @@
     if (platform === "linux") {
       return `FECART_CODEX_TOKEN='${token}' chatgpt`;
     }
-    return `$env:FECART_CODEX_TOKEN = "${token}"; Start-Process "ChatGPT"`;
+    return `setx FECART_CODEX_TOKEN "${token}"; Start-Process "explorer.exe" "shell:AppsFolder\\OpenAI.Codex_2p2nqsd0c76g0!App"`;
   }
 
   function legacyCliCommandFor(token, platform = state.platform) {
@@ -239,16 +239,16 @@
   function autoConfigCommand(platform = "windows") {
     const toml = configTomlSnippet();
     if (platform === "macos" || platform === "linux") {
-      return `mkdir -p ~/.codex && [ -f ~/.codex/config.toml ] && cp ~/.codex/config.toml ~/.codex/config.toml.bak && echo "Backup criado em: ~/.codex/config.toml.bak"; cat << 'EOF' > ~/.codex/config.toml\n${toml}\nEOF\necho "Configuração do FECART Codex aplicada com sucesso!"`;
+      return `mkdir -p ~/.codex && if [ -f ~/.codex/config.toml ]; then cp ~/.codex/config.toml ~/.codex/config.toml.bak && echo -e "\n\\x1b[1;33m========================================================\n [ATENÇÃO] BACKUP DO SEU CONFIG.TOML FOI CRIADO!\n Caminho do backup: ~/.codex/config.toml.bak\n Anote este caminho caso queira restaurar manualmente.\n========================================================\\x1b[0m\n"; fi; cat << 'EOF' > ~/.codex/config.toml\n${toml}\nEOF\necho "Configuração do FECART Codex aplicada com sucesso!"`;
     }
-    return `$dir="$HOME\\.codex"; $cfg="$dir\\config.toml"; $bak="$dir\\config.toml.bak"; New-Item -ItemType Directory -Force $dir | Out-Null; if (Test-Path $cfg) { Copy-Item $cfg $bak -Force; Write-Host "Backup criado em: $bak" -ForegroundColor Cyan }; @'\n${toml}\n'@ | Set-Content -Path $cfg -Encoding UTF8; Write-Host "Configuração do FECART Codex aplicada com sucesso!" -ForegroundColor Green`;
+    return `$dir="$HOME\\.codex"; $cfg="$dir\\config.toml"; $bak="$dir\\config.toml.bak"; New-Item -ItemType Directory -Force $dir | Out-Null; if (Test-Path $cfg) { Copy-Item $cfg $bak -Force; Write-Host "\`n========================================================" -ForegroundColor Yellow; Write-Host " [ATENCAO] BACKUP DO SEU CONFIG.TOML FOI CRIADO!" -ForegroundColor Yellow; Write-Host " Caminho do backup: $bak" -ForegroundColor Cyan; Write-Host " Anote este caminho caso queira restaurar manualmente." -ForegroundColor Gray; Write-Host "========================================================\`n" -ForegroundColor Yellow }; @'\n${toml}\n'@ | Set-Content -Path $cfg -Encoding UTF8; Write-Host "Configuração do FECART Codex aplicada com sucesso!" -ForegroundColor Green`;
   }
 
   function restoreConfigCommand(platform = "windows") {
     if (platform === "macos" || platform === "linux") {
-      return `if [ -f ~/.codex/config.toml.bak ]; then mv ~/.codex/config.toml.bak ~/.codex/config.toml && echo "Backup restaurado com sucesso de: ~/.codex/config.toml.bak"; else rm -f ~/.codex/config.toml && echo "Configuração do FECART removida! Codex restaurado para o padrão."; fi`;
+      return `if [ -f ~/.codex/config.toml.bak ]; then mv ~/.codex/config.toml.bak ~/.codex/config.toml && echo -e "\n\\x1b[1;32m[SUCESSO] Backup restaurado de: ~/.codex/config.toml.bak\nCodex voltou à configuração anterior.\\x1b[0m\n"; else rm -f ~/.codex/config.toml && echo -e "\n\\x1b[1;33m[REMOVIDO] Configuração da FECART removida! Codex restaurado para o padrão.\\x1b[0m\n"; fi`;
     }
-    return `$dir="$HOME\\.codex"; $cfg="$dir\\config.toml"; $bak="$dir\\config.toml.bak"; if (Test-Path $bak) { Move-Item $bak $cfg -Force; Write-Host "Backup restaurado com sucesso de: $bak" -ForegroundColor Green } elseif (Test-Path $cfg) { Remove-Item $cfg -Force; Write-Host "Configuração do FECART removida! Codex restaurado para o padrão." -ForegroundColor Yellow } else { Write-Host "Nenhuma configuração personalizada encontrada." }`;
+    return `$dir="$HOME\\.codex"; $cfg="$dir\\config.toml"; $bak="$dir\\config.toml.bak"; if (Test-Path $bak) { Move-Item $bak $cfg -Force; Write-Host "\`n[SUCESSO] Backup restaurado de: $bak" -ForegroundColor Green; Write-Host "Codex voltou à sua configuração pessoal anterior.\`n" -ForegroundColor Gray } elseif (Test-Path $cfg) { Remove-Item $cfg -Force; Write-Host "\`n[REMOVIDO] Configuração da FECART removida! Codex restaurado para o padrão.\`n" -ForegroundColor Yellow } else { Write-Host "\`nNenhuma configuração personalizada encontrada.\`n" }`;
   }
 
   function formatTokenCount(value) {
@@ -614,6 +614,11 @@
       linuxNote.hidden = !(isApp && state.platform === "linux");
     }
 
+    const appWarning = $("#app-close-warning");
+    if (appWarning) {
+      appWarning.hidden = !isApp;
+    }
+
     const kicker = $("#access-kicker-text");
     if (kicker) {
       kicker.textContent = isApp ? "ChatGPT Desktop (Codex)" : "Codex CLI";
@@ -701,12 +706,14 @@
       $("#session-percent").textContent = `${timePercentage}%`;
       $("#session-time").textContent = formatCountdown(remainingTime);
       $("#session-time-total").textContent = `até ${components().formatTime(end)}`;
-      status.textContent = limited ? "Uso esgotado" : state.activationInFlight ? "Inicializando sessão" : "Sessão ativa";
+      status.textContent = limited ? "Ativa (Uso esgotado)" : state.activationInFlight ? "Inicializando sessão" : "Sessão ativa";
       dot.classList.toggle("is-active", !limited);
       dot.classList.toggle("is-limited", limited);
       $("#session-started").textContent = state.activationInFlight
         ? "Gerando a credencial real no host central…"
-        : `Ativa desde ${components().formatDateTime(start)}`;
+        : limited
+          ? `Janela ativa desde ${components().formatDateTime(start)} (cota esgotada)`
+          : `Ativa desde ${components().formatDateTime(start)}`;
 
       components().setProgress($("#quota-progress"), usage.remainingPercent, `${usage.remaining.toFixed(1)}% de uso restante`);
       $("#quota-percent").textContent = `${usage.remainingPercent}%`;
@@ -714,7 +721,9 @@
       $("#quota-total").textContent = `de ${usage.budget}% aprovados`;
       $("#session-activity").textContent = state.activationInFlight
           ? "Aguardando o host central emitir o token."
-          : lastActivity
+          : limited
+            ? "Cota aprovada desta sessão foi consumida; o token está bloqueado."
+            : lastActivity
             ? `Última atividade ${formatRelative(lastActivity)}.`
             : lastSeen
               ? `CLI conectado ${formatRelative(lastSeen)}; aguardando uso.`
@@ -771,13 +780,14 @@
       const pending = item.approval_status !== "approved";
       const ended = reservationIsEnded(item);
       const active = !ended && !pending && Date.parse(item.starts_at) <= now().getTime() && Date.parse(item.ends_at) > now().getTime();
+      const limited = active && sessionLimitReached(item);
       return {
         id: `reservation-${item.id}`,
-        title: ended ? "Encerrado" : active ? "Sessão ativa" : pending ? "Pendente" : "Aprovado",
+        title: ended ? "Encerrado" : limited ? "Ativa (Esgotada)" : active ? "Sessão ativa" : pending ? "Pendente" : "Aprovado",
         start: item.starts_at,
         end: item.ends_at,
-        className: ["calendar-event-own", pending ? "calendar-event-pending" : "", ended ? "calendar-event-ended" : "", active ? "calendar-event-active" : ""].filter(Boolean).join(" "),
-        extendedProps: { kind: "mine", pending, active, ended, reservationId: item.id },
+        className: ["calendar-event-own", pending ? "calendar-event-pending" : "", ended ? "calendar-event-ended" : "", active ? (limited ? "calendar-event-limited" : "calendar-event-active") : ""].filter(Boolean).join(" "),
+        extendedProps: { kind: "mine", pending, active, ended, limited, reservationId: item.id },
       };
     });
     const busy = (state.data?.busySlots || [])

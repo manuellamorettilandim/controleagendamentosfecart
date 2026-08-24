@@ -261,6 +261,7 @@ export interface RawDatabaseData {
   accountSnapshots: Array<Record<string, unknown>>;
   accountUsageSamples?: Array<Record<string, unknown>>;
   usageEvents?: Array<Record<string, unknown>>;
+  adminAudit?: Array<Record<string, unknown>>;
   hostConnected?: boolean;
   lastHostSyncAt?: string | null;
   dataTruncated?: boolean;
@@ -659,6 +660,57 @@ export function aggregateUsageReport(data: RawDatabaseData, options: ReportFilte
     connectedIntervalsByReservation.set(resId, intervals);
   }
 
+  // Se houver registros de auditoria administrativa (e usageEvents estiver ausente/incompleto),
+  // agregar modelos e turnos a partir de provider.request.completed
+  const deviceToResId = new Map<string, string>();
+  for (const res of inRangeReservations) {
+    const resId = String(res.id || "");
+    const devId = typeof res.device_id === "string" ? res.device_id : "";
+    if (resId && devId) deviceToResId.set(devId, resId);
+  }
+  for (const dev of data.deviceSnapshots) {
+    const devId = typeof dev.device_id === "string" ? dev.device_id : "";
+    const resId = typeof dev.reservation_id === "string" ? dev.reservation_id : "";
+    if (devId && resId) deviceToResId.set(devId, resId);
+  }
+
+  const auditList = Array.isArray(data.adminAudit) ? data.adminAudit : [];
+  for (const record of auditList) {
+    const action = String(record.action || "");
+    if (action !== "provider.request.completed" && action !== "provider.request.started") continue;
+    const deviceId = String(record.target_id || "");
+    const reservationId = deviceToResId.get(deviceId) || "";
+    if (!reservationId) continue;
+    const meta = (record.metadata && typeof record.metadata === "object" ? record.metadata : {}) as Record<string, unknown>;
+    const modelId = typeof meta.model === "string" && meta.model.trim() ? meta.model.trim() : "";
+    if (!modelId) continue;
+
+    const models = modelsByReservation.get(reservationId) || new Map<string, MutableModelUsage>();
+    const model = models.get(modelId) || {
+      modelId,
+      turns: 0,
+      totalTokens: 0,
+      inputTokens: 0,
+      cachedInputTokens: 0,
+      outputTokens: 0,
+      reasoningTokens: 0,
+      turnIds: new Set<string>(),
+    };
+
+    if (action === "provider.request.completed") {
+      const reqId = typeof meta.requestId === "string" ? meta.requestId : "";
+      if (reqId) model.turnIds.add(reqId);
+      model.turns += 1;
+      model.totalTokens += safeNumber(meta.totalTokens);
+      model.inputTokens += safeNumber(meta.inputTokens);
+      model.cachedInputTokens += safeNumber(meta.cachedInputTokens);
+      model.outputTokens += safeNumber(meta.outputTokens);
+      model.reasoningTokens += safeNumber(meta.reasoningTokens);
+    }
+    models.set(modelId, model);
+    modelsByReservation.set(reservationId, models);
+  }
+
   // Inicializar estatísticas de cada grupo
   const groupStats = new Map<string, {
     userId: string;
@@ -860,11 +912,21 @@ export function aggregateUsageReport(data: RawDatabaseData, options: ReportFilte
       group.outputTokens += sessionOutputTokens;
       group.reasoningTokens += sessionReasoningTokens;
 
-      const quotaBaseUsedPercent = safeNumber(device.quota_base_used_percent);
-      const accountUsedPercent = safeNumber(device.account_used_percent);
-      weeklyQuotaUsedPercent = accountUsedPercent >= quotaBaseUsedPercent
-        ? accountUsedPercent - quotaBaseUsedPercent
-        : accountUsedPercent;
+      const quotaBaseUsedPercent = device.quota_base_used_percent !== null && device.quota_base_used_percent !== undefined
+        ? Number(device.quota_base_used_percent)
+        : null;
+      const accountUsedPercent = device.account_used_percent !== null && device.account_used_percent !== undefined
+        ? Number(device.account_used_percent)
+        : null;
+
+      if (accountUsedPercent !== null && quotaBaseUsedPercent !== null) {
+        weeklyQuotaUsedPercent = Math.max(0, accountUsedPercent - quotaBaseUsedPercent);
+      } else {
+        weeklyQuotaUsedPercent = 0;
+      }
+      if (approvedQuota !== null) {
+        weeklyQuotaUsedPercent = Math.min(approvedQuota, weeklyQuotaUsedPercent);
+      }
       group.weeklyQuotaUsedPercent += weeklyQuotaUsedPercent;
 
       const deviceCreated = typeof device.created_at === "string" ? device.created_at : null;
@@ -896,16 +958,10 @@ export function aggregateUsageReport(data: RawDatabaseData, options: ReportFilte
         processingHours = round(connectedHours * 0.65, 2);
       }
 
-      // Se a sessão tem tokens mas nenhum modelo foi capturado por evento de stream, atribuir modelos suportados
+      // Se a sessão tem tokens mas nenhum modelo foi capturado por evento de stream ou auditoria, atribuir gpt-5.6-sol como padrão
       if (sessionModels.length === 0 && observedTokens > 0) {
-        const defaultModels = ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5", "gpt-5.4"];
-        let hash = 0;
-        for (let idx = 0; idx < resId.length; idx += 1) {
-          hash = ((hash << 5) - hash) + resId.charCodeAt(idx);
-        }
-        const modelId = defaultModels[Math.abs(hash) % defaultModels.length];
         const fallbackModel: ModelUsageSummary = {
-          modelId,
+          modelId: "gpt-5.6-sol",
           turns: Math.max(1, Math.round(observedTokens / 2500)),
           totalTokens: observedTokens,
           inputTokens: sessionInputTokens,
@@ -914,6 +970,18 @@ export function aggregateUsageReport(data: RawDatabaseData, options: ReportFilte
           reasoningTokens: sessionReasoningTokens,
         };
         sessionModels.push(fallbackModel);
+      } else if (sessionModels.length > 0 && observedTokens > 0) {
+        const totalModelTokens = sessionModels.reduce((sum, m) => sum + m.totalTokens, 0);
+        if (totalModelTokens === 0 || Math.abs(totalModelTokens - observedTokens) > 100) {
+          const ratio = totalModelTokens > 0 ? observedTokens / totalModelTokens : 1;
+          for (const m of sessionModels) {
+            m.totalTokens = Math.round(m.totalTokens * ratio);
+            m.inputTokens = Math.round(m.inputTokens * ratio);
+            m.cachedInputTokens = Math.round(m.cachedInputTokens * ratio);
+            m.outputTokens = Math.round(m.outputTokens * ratio);
+            m.reasoningTokens = Math.round(m.reasoningTokens * ratio);
+          }
+        }
       }
 
       // Garantir coerência: Horas Reservadas >= Horas Conectadas >= Horas em Processamento
@@ -1241,8 +1309,7 @@ export function aggregateUsageReport(data: RawDatabaseData, options: ReportFilte
   for (const id of accountIds) {
     if (!id) continue;
     const acc = snapshotByAccount.get(id) || {};
-    const limits = Object.values(acc.rate_limits as Record<string, { primary?: { usedPercent?: number; resetsAt?: number } }> || {});
-    const primary = limits[0]?.primary;
+    const status = String(acc.status || "ready");
     const usage = accountUsageTracker.get(id) || {
       sessions: 0,
       tokens: 0,
@@ -1257,6 +1324,11 @@ export function aggregateUsageReport(data: RawDatabaseData, options: ReportFilte
       groupBreakdown: new Map(),
       models: new Map<string, MutableModelUsage>(),
     };
+    if (usage.sessions === 0 && usage.tokens === 0 && status !== "ready") {
+      continue;
+    }
+    const limits = Object.values(acc.rate_limits as Record<string, { primary?: { usedPercent?: number; resetsAt?: number } }> || {});
+    const primary = limits[0]?.primary;
     const windows = windowsByAccount.get(id) || [];
     const used = windows.reduce((sum, window) => sum + window.consumedPercent, 0);
     const wasted = windows.reduce((sum, window) => sum + window.wastedPercent, 0);

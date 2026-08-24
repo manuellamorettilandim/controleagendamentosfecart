@@ -62,6 +62,8 @@ Para testar tudo em uma única máquina (relay, host-agent e os app-servers loca
 npm.cmd run local
 ```
 
+O modo local separa automaticamente o ambiente do relay e do host: a secret do Supabase e o token bruto do túnel ficam somente no host. Antes de testar o fluxo de agendamento em um projeto Supabase existente, aplique também a migração mais recente em `supabase/migrations/20260824000000_sync_profiles_and_scheduling.sql`.
+
 Esse modo força o host a usar o relay local em `ws://127.0.0.1:10000/tunnel`, serve o site em `http://127.0.0.1:10000/` e mantém o Supabase como serviço externo. Encerre com `Ctrl+C`.
 
 Para iniciar o local e o Tailscale Funnel juntos no Windows, use `start-local-tunnel.cmd` (ou `npm.cmd run local:tunnel`). O script espera o relay responder, configura `tailscale funnel --bg 10000`, captura a URL estável `*.ts.net` e abre o login nessa URL. O Tailscale precisa estar instalado, conectado à conta e com o Funnel habilitado; use `tailscale funnel off` para desativar a publicação. O dashboard gera o comando do Codex usando automaticamente o domínio da página atual.

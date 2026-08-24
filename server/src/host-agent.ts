@@ -1,4 +1,4 @@
-﻿import fs from "node:fs/promises";
+import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -747,6 +747,27 @@ export class HostAgent {
             status,
             headers,
           });
+          void this.supabase?.upsertOperationalUsageEvent({
+            eventKey: crypto.randomUUID(),
+            eventType: "turn_started",
+            deviceId: device.deviceId,
+            userId: device.userId,
+            reservationId: device.reservationId,
+            accountId: message.accountId,
+            threadId: message.requestId,
+            turnId: message.requestId,
+            modelId: requestedModel || "gpt-5.6-sol",
+            status: "inProgress",
+            totalTokens: 0,
+            inputTokens: 0,
+            cachedInputTokens: 0,
+            outputTokens: 0,
+            reasoningTokens: 0,
+            accountUsedPercent: null,
+            accountWindowDurationMins: null,
+            accountResetsAt: null,
+            observedAt: new Date().toISOString(),
+          }).catch(() => undefined);
         },
         onChunk: (chunk) => {
           this.send({
@@ -758,8 +779,9 @@ export class HostAgent {
         },
         onEnd: async (usage) => {
           const durationMs = Date.now() - startTime;
+          const window = weeklyRateLimit(worker.snapshot);
+          const modelUsed = usage?.model ?? requestedModel ?? "gpt-5.6-sol";
           if (usage) {
-            const window = weeklyRateLimit(worker.snapshot);
             const observation: UsageObservation = {
               threadId: usage.responseId || message.requestId,
               total: {
@@ -777,11 +799,54 @@ export class HostAgent {
             await this.accessStore.recordUsage(message.deviceId, observation).catch((err) => this.logError("usage.record", err));
             void worker.refreshSnapshot().catch(() => undefined);
             void this.syncAccess().catch(() => undefined);
+
+            void this.supabase?.upsertOperationalUsageEvent({
+              eventKey: crypto.randomUUID(),
+              eventType: "token_usage",
+              deviceId: device.deviceId,
+              userId: device.userId,
+              reservationId: device.reservationId,
+              accountId: message.accountId,
+              threadId: usage.responseId || message.requestId,
+              turnId: message.requestId,
+              modelId: modelUsed,
+              status: "completed",
+              totalTokens: usage.totalTokens,
+              inputTokens: usage.inputTokens,
+              cachedInputTokens: usage.cachedInputTokens,
+              outputTokens: usage.outputTokens,
+              reasoningTokens: usage.reasoningOutputTokens,
+              accountUsedPercent: window?.usedPercent ?? null,
+              accountWindowDurationMins: window?.windowDurationMins ?? null,
+              accountResetsAt: window?.resetsAt ?? null,
+              observedAt: new Date().toISOString(),
+            }).catch(() => undefined);
           }
+          void this.supabase?.upsertOperationalUsageEvent({
+            eventKey: crypto.randomUUID(),
+            eventType: "turn_completed",
+            deviceId: device.deviceId,
+            userId: device.userId,
+            reservationId: device.reservationId,
+            accountId: message.accountId,
+            threadId: usage?.responseId || message.requestId,
+            turnId: message.requestId,
+            modelId: modelUsed,
+            status: "completed",
+            totalTokens: usage?.totalTokens ?? 0,
+            inputTokens: usage?.inputTokens ?? 0,
+            cachedInputTokens: usage?.cachedInputTokens ?? 0,
+            outputTokens: usage?.outputTokens ?? 0,
+            reasoningTokens: usage?.reasoningOutputTokens ?? 0,
+            accountUsedPercent: window?.usedPercent ?? null,
+            accountWindowDurationMins: window?.windowDurationMins ?? null,
+            accountResetsAt: window?.resetsAt ?? null,
+            observedAt: new Date().toISOString(),
+          }).catch(() => undefined);
           await this.audit(device.userId, "provider.request.completed", "device", device.deviceId, {
             requestId: message.requestId,
             accountId: message.accountId,
-            model: usage?.model ?? requestedModel,
+            model: modelUsed,
             durationMs,
             totalTokens: usage?.totalTokens ?? 0,
             inputTokens: usage?.inputTokens ?? 0,
@@ -967,6 +1032,27 @@ export class HostAgent {
           },
         );
         await this.syncAccess();
+        void this.supabase?.upsertOperationalUsageEvent({
+          eventKey: crypto.randomUUID(),
+          eventType: "session_opened",
+          deviceId: issued.device.deviceId,
+          userId,
+          reservationId,
+          accountId,
+          threadId: null,
+          turnId: null,
+          modelId: null,
+          status: "connected",
+          totalTokens: 0,
+          inputTokens: 0,
+          cachedInputTokens: 0,
+          outputTokens: 0,
+          reasoningTokens: 0,
+          accountUsedPercent: accountWindow?.usedPercent ?? null,
+          accountWindowDurationMins: accountWindow?.windowDurationMins ?? null,
+          accountResetsAt: accountWindow?.resetsAt ?? null,
+          observedAt: new Date().toISOString(),
+        }).catch(() => undefined);
         await this.audit(userId, command, "reservation", reservationId, {
           accountId,
           quotaBudgetPercent,
@@ -1011,6 +1097,27 @@ export class HostAgent {
         const device = await this.accessStore.revoke(requestString(payload, "deviceId"));
         if (!device) throw new Error("Dispositivo não encontrado ou já revogado.");
         await this.syncAccess();
+        void this.supabase?.upsertOperationalUsageEvent({
+          eventKey: crypto.randomUUID(),
+          eventType: "session_closed",
+          deviceId: device.deviceId,
+          userId: device.userId,
+          reservationId: device.reservationId,
+          accountId: device.accountId ?? "unknown",
+          threadId: null,
+          turnId: null,
+          modelId: null,
+          status: "closed",
+          totalTokens: device.usage.observedTokens,
+          inputTokens: device.usage.observedInputTokens,
+          cachedInputTokens: device.usage.observedCachedInputTokens,
+          outputTokens: device.usage.observedOutputTokens,
+          reasoningTokens: device.usage.observedReasoningTokens,
+          accountUsedPercent: device.usage.lastAccountUsedPercent ?? null,
+          accountWindowDurationMins: null,
+          accountResetsAt: null,
+          observedAt: new Date().toISOString(),
+        }).catch(() => undefined);
         await this.audit(actorId, command, "device", device.deviceId);
         return { device: publicDevice(device) };
       }

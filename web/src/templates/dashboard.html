@@ -86,6 +86,11 @@
                 <span><strong>Linux:</strong> O Codex App está disponível oficialmente em pacotes <code>.deb</code> (Ubuntu 24.04/26.04, Debian 13), <code>.rpm</code> (Fedora 43/44) e <code>AppImage</code>.</span>
               </div>
 
+              <div id="app-close-warning" class="app-close-callout" style="display:flex; align-items:center; gap:8px; margin-bottom:10px; padding:10px 14px; border-radius:10px; background:rgba(245, 158, 11, 0.1); border:1px solid rgba(245, 158, 11, 0.35); font-size:13px; color:#fef3c7;" hidden>
+                <i class="ph ph-warning-circle" style="color:#f59e0b; font-size:18px; flex-shrink:0;" aria-hidden="true"></i>
+                <span><strong>Importante:</strong> Feche completamente o aplicativo do <strong>ChatGPT / Codex</strong> (inclusive na bandeja do sistema) antes de executar o comando para carregar o novo token.</span>
+              </div>
+
               <div class="access-terminal-line">
                 <div class="terminal-text-area">
                   <span class="terminal-prompt">$</span>
@@ -202,15 +207,15 @@
                   <div class="install-card">
                     <div class="install-card-title"><i class="ph ph-terminal-window"></i><strong>Codex CLI (Terminal)</strong></div>
                     <div data-platform-copy="windows">
-                      <p>Requer <a href="https://nodejs.org/en/download" target="_blank" rel="noopener noreferrer">Node.js LTS</a>. No PowerShell ou CMD:</p>
+                      <p>Requer <a href="https://nodejs.org/en/download" target="_blank" rel="noopener noreferrer">Node.js LTS</a>. No <strong>PowerShell</strong> ou <strong>Prompt de Comando (CMD)</strong>:</p>
                       <pre><code>npm install -g @openai/codex</code></pre>
                     </div>
                     <div data-platform-copy="macos" hidden>
-                      <p>No Terminal do macOS:</p>
+                      <p>No <strong>Terminal do macOS (Zsh ou Bash)</strong>:</p>
                       <pre><code>npm install -g @openai/codex</code></pre>
                     </div>
                     <div data-platform-copy="linux" hidden>
-                      <p>No Terminal do Linux:</p>
+                      <p>No <strong>Terminal do Linux (Bash ou Zsh)</strong>:</p>
                       <pre><code>npm install -g @openai/codex</code></pre>
                     </div>
                     <a class="guide-doc-link" href="https://learn.chatgpt.com/docs/codex/cli" target="_blank" rel="noopener noreferrer">Documentação oficial do Codex CLI <i class="ph ph-arrow-square-out"></i></a>
@@ -227,27 +232,72 @@
                 </div>
               </article>
 
+              <!-- Method Choice Container -->
+              <div class="guide-method-choice-card panel">
+                <div class="guide-choice-header">
+                  <i class="ph ph-git-fork" aria-hidden="true"></i>
+                  <div>
+                    <strong>Escolha o seu método de configuração preferido</strong>
+                    <p>Ambos os métodos abaixo realizam a <strong>mesma configuração</strong> no seu arquivo <code>config.toml</code> e chegam exatamente ao mesmo resultado. Escolha a opção que você preferir:</p>
+                  </div>
+                </div>
+                <div class="guide-choice-grid">
+                  <div class="choice-col">
+                    <span class="choice-tag is-recommended"><i class="ph ph-sparkle" aria-hidden="true"></i> Opção 1 (Recomendada)</span>
+                    <strong>Método Fácil (1 Clique no Terminal)</strong>
+                    <p>Ideal para agilidade. Executa o comando que cria backup e configura tudo automaticamente em 1 segundo.</p>
+                  </div>
+                  <div class="choice-col">
+                    <span class="choice-tag"><i class="ph ph-wrench" aria-hidden="true"></i> Opção 2 (Manual)</span>
+                    <strong>Método Manual Passo a Passo</strong>
+                    <p>Para quem prefere não rodar comandos automáticos e quer abrir, verificar e editar o arquivo manualmente no editor.</p>
+                  </div>
+                </div>
+              </div>
+
+              <!-- High-attention Backup Alert -->
+              <div class="guide-backup-alert panel">
+                <div class="backup-alert-icon"><i class="ph ph-shield-warning" aria-hidden="true"></i></div>
+                <div class="backup-alert-content">
+                  <strong>⚠️ Atenção ao Backup do seu <code>config.toml</code></strong>
+                  <p>Antes de aplicar qualquer alteração, o comando cria uma cópia de segurança renomeando para <code>config.toml.bak</code>. <strong>Anote ou confira o caminho do backup informado no seu terminal</strong> para que você possa reverter facilmente e voltar à sua conta pessoal quando terminar sua sessão.</p>
+                </div>
+              </div>
+
               <!-- Section 2: Quick Method -->
               <article class="guide-section-card panel">
                 <div class="section-badge-header">
-                  <span class="section-number-pill">2</span>
-                  <h2>Método Fácil: 1 Clique no Terminal (Ativar vs Desinstalar)</h2>
+                  <span class="section-number-pill">2A</span>
+                  <h2>Opção 1: Método Fácil — 1 Clique no Terminal (Ativar vs Desinstalar)</h2>
                 </div>
-                <p class="section-sub-desc">Copie e cole o comando no terminal do seu sistema para aplicar ou remover a configuração automaticamente:</p>
+                <div data-platform-copy="windows">
+                  <p class="section-sub-desc">Abra o <strong>Windows PowerShell</strong> (ou Terminal do Windows com PowerShell) e cole o comando para aplicar ou remover a configuração automaticamente:</p>
+                </div>
+                <div data-platform-copy="macos" hidden>
+                  <p class="section-sub-desc">Abra o <strong>Terminal do macOS (Zsh / Bash)</strong> e cole o comando para aplicar ou remover a configuração automaticamente:</p>
+                </div>
+                <div data-platform-copy="linux" hidden>
+                  <p class="section-sub-desc">Abra o <strong>Terminal do Linux (Bash / Zsh)</strong> e cole o comando para aplicar ou remover a configuração automaticamente:</p>
+                </div>
 
                 <div class="guide-actions-grid">
                   <!-- Auto Config Box -->
                   <div class="action-box is-config">
                     <div class="action-box-header">
                       <div class="action-box-title">
-                        <i class="ph ph-check-circle"></i>
-                        <strong>Ativar / Configurar FECART</strong>
+                        <i class="ph ph-check-circle" aria-hidden="true"></i>
+                        <div>
+                          <strong>Ativar / Configurar FECART</strong>
+                          <small data-platform-copy="windows">Terminal: Windows PowerShell</small>
+                          <small data-platform-copy="macos" hidden>Terminal: macOS (Bash / Zsh)</small>
+                          <small data-platform-copy="linux" hidden>Terminal: Linux (Bash / Zsh)</small>
+                        </div>
                       </div>
                       <button id="copy-auto-config" class="primary-button copy-mini-btn" type="button">
-                        <i class="ph ph-copy"></i><span>Copiar comando</span>
+                        <i class="ph ph-copy" aria-hidden="true"></i><span>Copiar comando</span>
                       </button>
                     </div>
-                    <p class="action-box-desc">Cria backup do seu <code>config.toml</code> atual e configura o acesso compartilhado da FECART.</p>
+                    <p class="action-box-desc">Cria backup destacado do seu <code>config.toml</code> atual e configura o acesso compartilhado da FECART.</p>
                     
                     <div data-platform-copy="windows">
                       <pre class="terminal-preview"><code data-auto-config-cmd="windows"></code></pre>
@@ -264,11 +314,16 @@
                   <div class="action-box is-restore">
                     <div class="action-box-header">
                       <div class="action-box-title">
-                        <i class="ph ph-arrow-counter-clockwise"></i>
-                        <strong>Desinstalar / Restaurar Padrão</strong>
+                        <i class="ph ph-arrow-counter-clockwise" aria-hidden="true"></i>
+                        <div>
+                          <strong>Desinstalar / Restaurar Padrão</strong>
+                          <small data-platform-copy="windows">Terminal: Windows PowerShell</small>
+                          <small data-platform-copy="macos" hidden>Terminal: macOS (Bash / Zsh)</small>
+                          <small data-platform-copy="linux" hidden>Terminal: Linux (Bash / Zsh)</small>
+                        </div>
                       </div>
                       <button id="copy-restore-config" class="secondary-button copy-mini-btn" type="button">
-                        <i class="ph ph-copy"></i><span>Copiar comando</span>
+                        <i class="ph ph-copy" aria-hidden="true"></i><span>Copiar comando</span>
                       </button>
                     </div>
                     <p class="action-box-desc">Restaura seu backup original ou remove a configuração da FECART para voltar à sua conta pessoal.</p>
@@ -289,29 +344,29 @@
               <!-- Section 3: Manual Step-by-Step -->
               <article class="guide-section-card panel">
                 <div class="section-badge-header">
-                  <span class="section-number-pill">3</span>
-                  <h2>Método Manual Passo a Passo</h2>
+                  <span class="section-number-pill">2B</span>
+                  <h2>Opção 2: Método Manual Passo a Passo (Sem Scripts Automáticos)</h2>
                 </div>
-                <p class="section-sub-desc">Se preferir editar o arquivo diretamente no seu editor:</p>
+                <p class="section-sub-desc">Se você preferir não rodar comandos automáticos e quiser editar o arquivo diretamente no Bloco de Notas, VS Code ou outro editor:</p>
 
                 <div class="guide-manual-steps">
                   <div class="manual-step-item">
-                    <strong>1. Localização do arquivo:</strong>
+                    <strong>1. Localização do arquivo no seu computador:</strong>
                     <div data-platform-copy="windows">
-                      <p>Abra o Explorador de Arquivos e acesse: <code>%USERPROFILE%\.codex\config.toml</code> (ex: <code>C:\Users\SeuNome\.codex\config.toml</code>)</p>
+                      <p>Abra o Explorador de Arquivos do Windows e acesse a pasta: <code>%USERPROFILE%\.codex</code> (ex: <code>C:\Users\SeuNome\.codex\config.toml</code>)</p>
                     </div>
                     <div data-platform-copy="macos" hidden>
-                      <p>No Finder ou Terminal: <code>~/.codex/config.toml</code> (ou <code>/Users/seu-usuario/.codex/config.toml</code>)</p>
+                      <p>No Finder ou Terminal do macOS: <code>~/.codex/config.toml</code> (ou <code>/Users/seu-usuario/.codex/config.toml</code>)</p>
                     </div>
                     <div data-platform-copy="linux" hidden>
-                      <p>No Terminal: <code>~/.codex/config.toml</code> (ou <code>/home/seu-usuario/.codex/config.toml</code>)</p>
+                      <p>No Terminal ou Gerenciador de Arquivos do Linux: <code>~/.codex/config.toml</code> (ou <code>/home/seu-usuario/.codex/config.toml</code>)</p>
                     </div>
-                    <p class="guide-note" style="margin-top:8px;"><i class="ph ph-shield-check"></i><span><strong>Dica de Segurança:</strong> Antes de modificar, faça uma cópia do seu arquivo original renomeando-o para <code>config.toml.bak</code> na mesma pasta.</span></p>
+                    <p class="guide-note" style="margin-top:8px;"><i class="ph ph-shield-check" aria-hidden="true"></i><span><strong>Passo Importante de Backup:</strong> Antes de modificar, faça uma cópia do seu arquivo original renomeando-o para <code>config.toml.bak</code> na mesma pasta. Anote esta localização para restaurar depois.</span></p>
                   </div>
 
                   <div class="manual-step-item">
                     <strong>2. Como Ativar Manualmente:</strong>
-                    <p>Abra ou crie o arquivo <code>config.toml</code> e cole o bloco abaixo:</p>
+                    <p>Abra ou crie o arquivo <code>config.toml</code> no seu editor e cole o bloco abaixo:</p>
                     <pre><code data-config-toml-snippet></code></pre>
                   </div>
 
@@ -333,37 +388,47 @@
               <!-- Section 4: Execution / How to use -->
               <article class="guide-section-card panel">
                 <div class="section-badge-header">
-                  <span class="section-number-pill">4</span>
+                  <span class="section-number-pill">3</span>
                   <h2>Como Executar seu Acesso na Sessão Aprovada</h2>
                 </div>
+                <p class="section-sub-desc">Com o <code>config.toml</code> configurado (pela Opção 1 ou Opção 2), utilize o comando da sua sessão quando ela estiver ativa:</p>
                 <div class="guide-execution-flow">
                   <div class="exec-step">
-                    <div class="install-card-title"><i class="ph ph-terminal-window"></i><strong>No Codex CLI (Terminal):</strong></div>
+                    <div class="install-card-title"><i class="ph ph-terminal-window" aria-hidden="true"></i><strong>No Codex CLI (Terminal):</strong></div>
                     <ol>
                       <li>Abra a pasta do seu projeto no terminal (<code>cd "C:\meu-projeto"</code>).</li>
                       <li>Na tela de <strong>Visão Geral</strong>, copie o comando da sessão aprovada:
                         <div data-platform-copy="windows">
+                          <p style="margin:4px 0; font-size:12px; color:var(--text-soft);">No <strong>Windows PowerShell</strong>:</p>
                           <pre><code>$env:FECART_CODEX_TOKEN = "••••••••"; codex</code></pre>
+                          <p style="margin:4px 0; font-size:12px; color:var(--text-soft);">No <strong>Windows CMD</strong>:</p>
+                          <pre><code>set "FECART_CODEX_TOKEN=••••••••" && codex</code></pre>
                         </div>
                         <div data-platform-copy="macos" hidden>
+                          <p style="margin:4px 0; font-size:12px; color:var(--text-soft);">No <strong>Terminal do macOS</strong>:</p>
                           <pre><code>export FECART_CODEX_TOKEN='••••••••' && codex</code></pre>
                         </div>
                         <div data-platform-copy="linux" hidden>
+                          <p style="margin:4px 0; font-size:12px; color:var(--text-soft);">No <strong>Terminal do Linux</strong>:</p>
                           <pre><code>export FECART_CODEX_TOKEN='••••••••' && codex</code></pre>
                         </div>
                       </li>
-                      <li>Cole e execute. O CLI conectará instantaneamente ao proxy!</li>
+                      <li>Cole e execute. O CLI conectará instantaneamente ao proxy da FECART!</li>
                     </ol>
                   </div>
                   <div class="exec-step">
-                    <div class="install-card-title"><i class="ph ph-app-window"></i><strong>No ChatGPT Desktop (Modo Codex):</strong></div>
+                    <div class="install-card-title"><i class="ph ph-app-window" aria-hidden="true"></i><strong>No ChatGPT Desktop (Modo Codex):</strong></div>
+                    <div class="guide-backup-alert" style="margin: 8px 0 14px 0; border-color: rgba(245, 158, 11, 0.4); background: rgba(245, 158, 11, 0.08);">
+                      <div class="backup-alert-title"><i class="ph ph-warning-circle" aria-hidden="true" style="color: #f59e0b;"></i><strong>Atenção: Feche o aplicativo antes de executar o comando</strong></div>
+                      <p style="font-size: 13px; margin: 4px 0 0 0; color: var(--text-soft);">Se o <strong>ChatGPT Desktop</strong> já estiver aberto no seu computador, feche-o completamente (inclusive na bandeja ao lado do relógio) antes de rodar o comando, para que a nova variável de ambiente <code>FECART_CODEX_TOKEN</code> seja carregada na inicialização.</p>
+                    </div>
                     <p>Como o app lê o mesmo <code>config.toml</code>, abra o aplicativo carregando a variável de ambiente:</p>
                     <div data-platform-copy="windows">
-                      <p><strong>Opção A (Variável de Usuário no Windows):</strong></p>
+                      <p><strong>Opção A (Variável de Usuário no Windows — Recomendado):</strong></p>
                       <pre><code>setx FECART_CODEX_TOKEN "••••••••"</code></pre>
-                      <p style="font-size:11px; margin-top:4px;">(Abra o ChatGPT pelo Menu Iniciar após definir)</p>
-                      <p style="margin-top:8px;"><strong>Opção B (Iniciar pelo PowerShell com a variável):</strong></p>
-                      <pre><code>$env:FECART_CODEX_TOKEN = "••••••••"; Start-Process "ChatGPT"</code></pre>
+                      <p style="font-size:12px; margin-top:4px; color:var(--text-soft);">(Após executar o comando acima no terminal, basta abrir o <strong>ChatGPT</strong> normalmente pelo Menu Iniciar ou Barra de Tarefas)</p>
+                      <p style="margin-top:8px;"><strong>Opção B (Iniciar direto pelo PowerShell / Microsoft Store):</strong></p>
+                      <pre><code>setx FECART_CODEX_TOKEN "••••••••"; Start-Process "explorer.exe" "shell:AppsFolder\OpenAI.Codex_2p2nqsd0c76g0!App"</code></pre>
                     </div>
                     <div data-platform-copy="macos" hidden>
                       <p><strong>Opção A (Via Terminal):</strong></p>
@@ -377,7 +442,7 @@
                     </div>
                   </div>
                 </div>
-                <button class="primary-button" type="button" data-go-overview><i class="ph ph-arrow-left"></i><span>Voltar para o Painel de Acesso</span></button>
+                <button class="primary-button" type="button" data-go-overview><i class="ph ph-arrow-left" aria-hidden="true"></i><span>Voltar para o Painel de Acesso</span></button>
               </article>
             </div>
           </section>
@@ -393,7 +458,7 @@
           <div class="dialog-field"><label for="booking-date">Início</label><input id="booking-date" type="date" required></div>
           <div class="dialog-field"><label for="booking-time">Horário</label><input id="booking-time" type="time" step="3600" required></div>
           <div class="dialog-field"><label for="booking-duration">Duração</label><select id="booking-duration"><option value="1">1 hora</option><option value="2">2 horas</option><option value="3">3 horas</option></select></div>
-          <div class="dialog-field"><label for="booking-quota">Uso solicitado</label><select id="booking-quota"><option value="1">1%</option><option value="2">2%</option><option value="3">3%</option><option value="4">4%</option><option value="5" selected>5%</option><option value="10">10%</option><option value="15">15%</option><option value="20">20%</option></select></div>
+          <div class="dialog-field"><label for="booking-quota">Uso solicitado</label><select id="booking-quota"><option value="5" selected>5%</option><option value="10">10%</option><option value="15">15%</option><option value="20">20%</option><option value="25">25%</option></select></div>
           <div class="dialog-field"><label for="booking-end">Fim previsto</label><input id="booking-end" type="text" readonly aria-readonly="true" placeholder="Calculado automaticamente"></div>
           <div class="dialog-field dialog-field--full"><label for="booking-note">Observação <span>opcional</span></label><textarea id="booking-note" rows="3" maxlength="500" placeholder="Descreva brevemente o que será feito com a API..."></textarea></div>
           <aside class="approval-callout"><i class="ph ph-clock" aria-hidden="true"></i><p>O pedido será enviado para aprovação. Depois de aprovado, o token será gerado quando o horário começar.</p></aside>

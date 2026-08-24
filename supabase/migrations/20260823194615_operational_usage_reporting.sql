@@ -1,6 +1,19 @@
 -- Operational usage history used by the final multi-week utilization report.
 -- Raw prompts, assistant messages and command output are deliberately excluded.
 
+-- The migration chain must be self-contained: this table is referenced below
+-- before the later scheduling migration adds its final policy details.
+create table if not exists public.profiles (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  username text not null unique,
+  group_name text not null default 'Geral',
+  weekly_quota_percent integer not null default 5 check (weekly_quota_percent between 1 and 100),
+  enabled boolean not null default true,
+  scheduling_enabled boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 create table if not exists public.codex_usage_events (
   id uuid primary key default gen_random_uuid(),
   event_key text not null unique,

@@ -31,8 +31,11 @@ tar -xzf "$APP_ARCHIVE" -C "$RELEASE_DIR"
 
 cd "$RELEASE_DIR"
 echo "==> Instalando dependências e compilando release..."
-npm ci --omit=dev || npm ci
+# TypeScript and Vite are devDependencies, so they must be present while the
+# release is compiled. Remove them only after the build artifact is ready.
+npm ci --include=dev
 npm run build
+npm prune --omit=dev
 
 echo "==> Atualizando symlink atômico /opt/fecart/current -> $RELEASE_DIR..."
 ln -sfn "$RELEASE_DIR" /opt/fecart/current_next

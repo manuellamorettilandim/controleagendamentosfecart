@@ -506,18 +506,18 @@ export async function exportReportToPdf(report: UsageReportData): Promise<Buffer
         doc.rect(startX, currentY, pageWidth, 66).fillAndStroke("#ffffff", "#e2e8f0");
 
         // Header Bar do Grupo (Retangular Sólido)
-        doc.rect(startX, currentY, pageWidth, 16).fill("#0f172a");
+        doc.rect(startX, currentY, pageWidth, 17).fill("#0f172a");
         doc.fontSize(7.5).font("Helvetica-Bold").fillColor("#38bdf8").text(
           `${g.rank}º  ${g.groupName} (@${g.username})`,
           startX + 6,
-          currentY + 4,
-          { width: 330, lineBreak: false },
+          currentY + 4.5,
+          { width: 235, lineBreak: false },
         );
         doc.fontSize(7).font("Helvetica-Bold").fillColor("#f1f5f9").text(
-          `${formatCompactTokens(g.totalTokens)} tokens (${g.shareOfTotalPercent}%)   |   Cota: ${g.weeklyQuotaUsedPercent}%   |   Cache: ${g.cacheEfficiencyPercent}%`,
-          startX + 340,
-          currentY + 4,
-          { width: pageWidth - 346, align: "right", lineBreak: false },
+          `${formatCompactTokens(g.totalTokens)} tokens (${g.shareOfTotalPercent}%)   •   Cota: ${g.weeklyQuotaUsedPercent}%   •   Cache: ${g.cacheEfficiencyPercent}%`,
+          startX + 245,
+          currentY + 4.5,
+          { width: pageWidth - 251, align: "right", lineBreak: false },
         );
 
         // Linha 1: Sessões e Horas

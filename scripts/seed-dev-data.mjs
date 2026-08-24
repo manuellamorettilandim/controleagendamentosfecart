@@ -6,6 +6,11 @@ import { loginEmailForUsername } from "../dist/src/user-identity.js";
 const url = process.env.SUPABASE_URL?.trim();
 const secretKey = process.env.SUPABASE_SECRET_KEY?.trim() || process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
 
+if (process.env.FECART_ENV !== "development" || process.env.FECART_ALLOW_DEV_SEED !== "true") {
+  console.error("Seed bloqueado. Defina FECART_ENV=development e FECART_ALLOW_DEV_SEED=true para confirmar que o banco é descartável.");
+  process.exit(1);
+}
+
 if (!url || !secretKey) {
   console.error("Configure SUPABASE_URL e SUPABASE_SECRET_KEY no .env.");
   process.exit(1);
@@ -169,7 +174,17 @@ async function main() {
       username: team.username,
       group_name: team.name,
       weekly_quota_percent: 25,
-      enabled: true
+      enabled: true,
+      scheduling_enabled: true,
+    }], "user_id");
+    await client.upsert("codex_user_profiles", [{
+      user_id: userId,
+      username: team.username,
+      login_email: email,
+      group_name: team.name,
+      weekly_quota_percent: 25,
+      enabled: true,
+      scheduling_enabled: true,
     }], "user_id");
 
     // 3. 3 Sessões por equipe distribuídas em 3 semanas e contas rotacionadas

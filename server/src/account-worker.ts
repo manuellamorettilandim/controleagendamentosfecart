@@ -14,6 +14,7 @@ import {
   type RateLimitWindow,
 } from "./protocol.js";
 import { createOpaqueToken } from "./crypto.js";
+import { codexChildEnvironment } from "./codex-child-env.js";
 
 const CONTROL_TIMEOUT_MS = 20_000;
 
@@ -404,6 +405,8 @@ export class AccountWorker {
   private startAppServer(): void {
     const args = [
       "app-server",
+      "-c",
+      'model_provider="openai"',
       "--listen",
       `ws://127.0.0.1:${this.account.appServerPort}`,
       "--ws-auth",
@@ -414,12 +417,11 @@ export class AccountWorker {
     const useShell = process.platform === "win32" && /\.(cmd|bat)$/i.test(this.config.codexBin);
     this.process = spawn(this.config.codexBin, args, {
       cwd: this.account.codeHome,
-      env: {
-        ...process.env,
+      env: codexChildEnvironment({
         CODEX_HOME: this.account.codeHome,
         CODEX_MODEL_PROVIDER: "openai",
         CODEX_PROVIDER: "openai",
-      },
+      }),
       stdio: "inherit",
       shell: useShell,
     });

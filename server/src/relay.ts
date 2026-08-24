@@ -20,7 +20,7 @@ import {
   type StreamCloseMessage,
   type WireMessage,
 } from "./protocol.js";
-import { SupabaseAuthClient, SupabaseServiceClient, type SupabaseAdminIdentity } from "./supabase.js";
+import { SupabaseAuthClient, type SupabaseAdminIdentity } from "./supabase.js";
 import {
   SlidingWindowRateLimiter,
   extractClientIp,
@@ -65,7 +65,6 @@ export interface RelayOptions {
   maxPayload?: number;
   supabaseUrl?: string;
   supabasePublishableKey?: string;
-  supabaseSecretKey?: string;
   globalRateLimitMax?: number;
   globalRateLimitWindowMs?: number;
   apiRateLimitMax?: number;
@@ -396,7 +395,6 @@ export class RelayServer {
   private readonly options: Required<Pick<RelayOptions, "agentTokenHash" | "host" | "port" | "siteDir" | "heartbeatTimeoutMs" | "maxPayload" | "globalRateLimitMax" | "globalRateLimitWindowMs" | "apiRateLimitMax" | "reservationRateLimitMax" | "sessionRateLimitMax" | "wsRateLimitMax" | "maxConcurrentStreamsPerDevice" | "trustProxy">> & {
     supabaseUrl?: string;
     supabasePublishableKey?: string;
-    supabaseSecretKey?: string;
   };
   private readonly devices = new Map<string, RelayDevice>();
   private readonly streams = new Map<string, ClientStream>();
@@ -405,7 +403,6 @@ export class RelayServer {
   private readonly lastAccountSnapshots = new Map<string, AccountSnapshot>();
   private readonly pendingControls = new Map<string, { resolve: (value: unknown) => void; reject: (error: Error) => void; timer: NodeJS.Timeout }>();
   private readonly authClient: SupabaseAuthClient | null;
-  private readonly serviceClient: SupabaseServiceClient | null;
   private readonly globalLimiter: SlidingWindowRateLimiter;
   private readonly apiLimiter: SlidingWindowRateLimiter;
   private readonly reservationLimiter: SlidingWindowRateLimiter;
@@ -439,7 +436,6 @@ export class RelayServer {
       maxPayload: options.maxPayload ?? DEFAULT_MAX_PAYLOAD,
       supabaseUrl: options.supabaseUrl?.trim() || undefined,
       supabasePublishableKey: options.supabasePublishableKey?.trim() || undefined,
-      supabaseSecretKey: options.supabaseSecretKey?.trim() || undefined,
       globalRateLimitMax: options.globalRateLimitMax ?? DEFAULT_RATE_LIMIT_GLOBAL_MAX,
       globalRateLimitWindowMs: options.globalRateLimitWindowMs ?? 60_000,
       apiRateLimitMax: options.apiRateLimitMax ?? DEFAULT_RATE_LIMIT_API_MAX,
@@ -455,9 +451,6 @@ export class RelayServer {
     }
     this.authClient = this.options.supabaseUrl && this.options.supabasePublishableKey
       ? new SupabaseAuthClient(this.options.supabaseUrl, this.options.supabasePublishableKey)
-      : null;
-    this.serviceClient = this.options.supabaseUrl && this.options.supabaseSecretKey
-      ? new SupabaseServiceClient(this.options.supabaseUrl, this.options.supabaseSecretKey)
       : null;
 
     this.globalLimiter = new SlidingWindowRateLimiter({
@@ -477,9 +470,9 @@ export class RelayServer {
       windowMs: 60_000,
     });
     this.authLimiter = new SlidingWindowRateLimiter({
-      maxRequests: 10,
-      windowMs: 5 * 60_000,
-      blockDurationMs: 5 * 60_000,
+      maxRequests: 120,
+      windowMs: 60_000,
+      blockDurationMs: 60_000,
     });
     this.wsLimiter = new SlidingWindowRateLimiter({
       maxRequests: this.options.wsRateLimitMax,
@@ -487,7 +480,15 @@ export class RelayServer {
     });
 
     this.server = http.createServer((request, response) => {
-      void this.handleHttp(request, response);
+      void this.handleHttp(request, response).catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`[relay] HTTP request failed: ${message}`);
+        if (response.headersSent) {
+          response.destroy();
+          return;
+        }
+        jsonResponse(response, 500, { error: "Erro interno do relay." });
+      });
     });
 
     // Slowloris and hanging socket mitigations
@@ -851,7 +852,7 @@ export class RelayServer {
       }
       if (method === "GET" && parts.length === 3 && parts[2] === "users") {
         const profilesResultPromise = this.authClient.rest(token, "profiles", {
-          select: "user_id,username,group_name,weekly_quota_percent,enabled,created_at,updated_at",
+          select: "user_id,username,group_name,weekly_quota_percent,enabled,scheduling_enabled,created_at,updated_at",
           order: "group_name.asc,username.asc",
         });
         let usersResult = await this.authClient.rest(token, "codex_user_profiles", {
@@ -870,7 +871,10 @@ export class RelayServer {
           for (const row of profilesResult.data) {
             const profile = row as Record<string, unknown>;
             const userId = typeof profile.user_id === "string" ? profile.user_id : "";
-            if (userId) mergedUsers.set(userId, { ...profile, scheduling_enabled: true });
+            if (userId) mergedUsers.set(userId, {
+              ...profile,
+              scheduling_enabled: profile.scheduling_enabled !== false,
+            });
           }
         }
         if (usersResult.ok && Array.isArray(usersResult.data)) {
@@ -971,7 +975,7 @@ export class RelayServer {
           return;
         }
 
-        const [profilesRes, reservationsRes, devicesRes, accountsRes, usageSamplesRes, usageEventsRes] = await Promise.all([
+        const [profilesRes, reservationsRes, devicesRes, accountsRes, usageSamplesRes, usageEventsRes, adminAuditRes] = await Promise.all([
           this.authClient.queryAdmin<Record<string, unknown>>(token, "profiles", { select: "user_id,username,group_name,enabled" }),
           this.authClient.queryAdminAll<Record<string, unknown>>(token, "codex_reservations", {
             select: "id,user_id,account_id,starts_at,ends_at,status,approval_status,requested_quota_percent,quota_budget_percent,device_id,activated_at",
@@ -997,6 +1001,11 @@ export class RelayServer {
             order: "observed_at.asc",
             observed_at: `gte.${from}`,
           }),
+          this.authClient.queryAdminAll<Record<string, unknown>>(token, "codex_admin_audit", {
+            select: "id,actor_user_id,action,target_type,target_id,metadata,created_at",
+            order: "created_at.asc",
+            created_at: `gte.${from}`,
+          }).catch(() => []),
         ]);
 
         const rawData: RawDatabaseData = {
@@ -1006,6 +1015,7 @@ export class RelayServer {
           accountSnapshots: accountsRes,
           accountUsageSamples: usageSamplesRes,
           usageEvents: usageEventsRes,
+          adminAudit: adminAuditRes,
           hostConnected: this.status().hostConnected,
           lastHostSyncAt: this.lastSyncAt ? new Date(this.lastSyncAt).toISOString() : null,
         };
@@ -1063,13 +1073,25 @@ export class RelayServer {
           jsonResponse(response, 400, { error: "Informe se o grupo pode agendar." });
           return;
         }
-        const updated = await this.authClient.rest(token, "codex_user_profiles", {
-          user_id: `eq.${parts[3]}`,
-        }, {
-          method: "PATCH",
-          body: { scheduling_enabled: body.enabled },
-          headers: { Prefer: "return=representation" },
-        });
+        const [profileUpdated, legacyUpdated] = await Promise.all([
+          this.authClient.rest(token, "profiles", {
+            user_id: `eq.${parts[3]}`,
+          }, {
+            method: "PATCH",
+            body: { scheduling_enabled: body.enabled },
+            headers: { Prefer: "return=representation" },
+          }),
+          this.authClient.rest(token, "codex_user_profiles", {
+            user_id: `eq.${parts[3]}`,
+          }, {
+            method: "PATCH",
+            body: { scheduling_enabled: body.enabled },
+            headers: { Prefer: "return=representation" },
+          }),
+        ]);
+        const updated = profileUpdated.ok && Array.isArray(profileUpdated.data) && profileUpdated.data.length === 1
+          ? profileUpdated
+          : legacyUpdated;
         if (!updated.ok || !Array.isArray(updated.data) || updated.data.length !== 1) {
           jsonResponse(response, 404, { error: "Grupo não encontrado." });
           return;
@@ -1244,11 +1266,11 @@ export class RelayServer {
       return;
     }
     let profileResult = await this.authClient.rest(token, "profiles", {
-      select: "user_id,username,group_name,enabled,weekly_quota_percent,created_at,updated_at",
+      select: "user_id,username,group_name,enabled,scheduling_enabled,weekly_quota_percent,created_at,updated_at",
       user_id: `eq.${identity.userId}`,
       limit: "1",
     });
-    if (!profileResult.ok) {
+    if (!profileResult.ok || !Array.isArray(profileResult.data) || profileResult.data.length !== 1) {
       profileResult = await this.authClient.rest(token, "codex_user_profiles", {
         select: "user_id,username,group_name,enabled,scheduling_enabled,created_at",
         user_id: `eq.${identity.userId}`,
@@ -1291,54 +1313,34 @@ export class RelayServer {
         // Include the current week's past sessions so the user calendar matches admin history.
         rangeStart.setDate(rangeStart.getDate() - 7);
         const rangeEnd = new Date(rangeStart.getTime() + 21 * 24 * 60 * 60_000);
-        const dbClient = this.serviceClient ?? this.authClient;
         const [reservationsResult, accountResult, devicesResult, busyResult, settingsResult] = await Promise.all([
           this.authClient.rest(token, "codex_reservations", {
             select: "id,account_id,starts_at,ends_at,status,approval_status,requested_quota_percent,reviewed_at,review_note,device_id,quota_base_used_percent,quota_budget_percent,activated_at,cancelled_at,created_at",
             order: "starts_at.asc",
             limit: "120",
           }),
-          this.serviceClient
-            ? this.serviceClient.rest("codex_account_snapshots", {
-                select: "account_id,label,status,is_default,rate_limits,usage,observed_at",
-                status: "eq.ready",
-                order: "label.asc",
-              })
-            : this.authClient.rest(token, "codex_account_snapshots", {
-                select: "account_id,label,status,is_default,rate_limits,usage,observed_at",
-                status: "eq.ready",
-                order: "label.asc",
-              }),
+          this.authClient.rest(token, "codex_account_snapshots", {
+            select: "account_id,label,status,is_default,rate_limits,usage,observed_at",
+            status: "eq.ready",
+            order: "label.asc",
+          }),
           this.authClient.rest(token, "codex_device_snapshots", {
             select: "device_id,reservation_id,status,expires_at,last_seen_at,observed_tokens,observed_input_tokens,observed_cached_input_tokens,observed_output_tokens,observed_reasoning_tokens,usage_last_seen_at,account_used_percent,account_window_duration_mins,account_resets_at,quota_base_used_percent,quota_budget_percent,usage_limit_reached_at",
             user_id: `eq.${identity.userId}`,
             order: "created_at.desc",
             limit: "30",
           }),
-          this.serviceClient
-            ? this.serviceClient.rest("codex_busy_slots", {
-                select: "account_id,starts_at,ends_at",
-                starts_at: `lt.${rangeEnd.toISOString()}`,
-                ends_at: `gt.${rangeStart.toISOString()}`,
-                order: "starts_at.asc",
-              })
-            : this.authClient.rest(token, "codex_busy_slots", {
-                select: "account_id,starts_at,ends_at",
-                starts_at: `lt.${rangeEnd.toISOString()}`,
-                ends_at: `gt.${rangeStart.toISOString()}`,
-                order: "starts_at.asc",
-              }),
-          this.serviceClient
-            ? this.serviceClient.rest("codex_app_settings", {
-                select: "max_request_quota_percent,auto_approve_quota_percent,enabled_models",
-                singleton: "eq.true",
-                limit: "1",
-              })
-            : this.authClient.rest(token, "codex_app_settings", {
-                select: "max_request_quota_percent,auto_approve_quota_percent,enabled_models",
-                singleton: "eq.true",
-                limit: "1",
-              }),
+          this.authClient.rest(token, "codex_busy_slots", {
+            select: "account_id,starts_at,ends_at",
+            starts_at: `lt.${rangeEnd.toISOString()}`,
+            ends_at: `gt.${rangeStart.toISOString()}`,
+            order: "starts_at.asc",
+          }),
+          this.authClient.rest(token, "codex_app_settings", {
+            select: "max_request_quota_percent,auto_approve_quota_percent,enabled_models",
+            singleton: "eq.true",
+            limit: "1",
+          }),
         ]);
 
         let accountsList = accountResult.ok && Array.isArray(accountResult.data) ? accountResult.data as Record<string, unknown>[] : [];
@@ -1410,63 +1412,6 @@ export class RelayServer {
           jsonResponse(response, 400, { error: "A reserva deve começar no horário atual ou em uma hora cheia futura." });
           return;
         }
-        const endsAt = new Date(startsAt.getTime() + durationHours * 60 * 60 * 1000);
-
-        // Fetch settings for auto-approve quota
-        let autoApproveQuota = 20;
-        if (this.serviceClient) {
-          const settingsRes = await this.serviceClient.rest("codex_app_settings", { select: "auto_approve_quota_percent", singleton: "eq.true", limit: "1" });
-          if (settingsRes.ok && Array.isArray(settingsRes.data) && (settingsRes.data[0] as Record<string, unknown>)?.auto_approve_quota_percent != null) {
-            autoApproveQuota = Number((settingsRes.data[0] as Record<string, unknown>).auto_approve_quota_percent);
-          }
-        }
-
-        // Direct reservation insertion via serviceClient if available
-        if (this.serviceClient) {
-          // Check for busy conflict
-          const conflictCheck = await this.serviceClient.rest("codex_reservations", {
-            select: "id",
-            account_id: `eq.${accountId}`,
-            status: "eq.scheduled",
-            approval_status: "in.(pending,approved)",
-            starts_at: `lt.${endsAt.toISOString()}`,
-            ends_at: `gt.${startsAt.toISOString()}`,
-            limit: "1",
-          });
-          if (conflictCheck.ok && Array.isArray(conflictCheck.data) && (conflictCheck.data as unknown[]).length > 0) {
-            jsonResponse(response, 409, { error: "Esse horário já está reservado para esta conta." });
-            return;
-          }
-
-          const autoApproved = requestedQuotaPercent <= autoApproveQuota;
-          const inserted = await this.serviceClient.rest("codex_reservations", {}, {
-            method: "POST",
-            body: {
-              user_id: identity.userId,
-              account_id: accountId,
-              starts_at: startsAt.toISOString(),
-              ends_at: endsAt.toISOString(),
-              requested_quota_percent: requestedQuotaPercent,
-              quota_budget_percent: autoApproved ? requestedQuotaPercent : null,
-              status: "scheduled",
-              approval_status: autoApproved ? "approved" : "pending",
-              reviewed_at: autoApproved ? new Date().toISOString() : null,
-              review_note: autoApproved ? "Aprovado automaticamente pela política do projeto." : null,
-            },
-            headers: { Prefer: "return=representation" },
-          });
-
-          if (!inserted.ok) {
-            const message = dataError(inserted.data, "Não foi possível criar a reserva.");
-            const conflict = inserted.status === 409 || /conflit|reservad|exclusion/i.test(message);
-            jsonResponse(response, conflict ? 409 : 400, { error: conflict ? "Esse horário já está reservado." : message });
-            return;
-          }
-          const reservation = Array.isArray(inserted.data) ? inserted.data[0] as Record<string, unknown> : inserted.data as Record<string, unknown>;
-          jsonResponse(response, 201, { reservation, autoApproved, message: autoApproved ? "Solicitação aprovada automaticamente." : "Pedido enviado para aprovação." });
-          return;
-        }
-
         const inserted = await this.authClient.rest(token, "rpc/codex_request_reservation", {}, {
           method: "POST",
           body: {
@@ -2380,6 +2325,9 @@ export function relayAgentHashFromEnvironment(env: NodeJS.ProcessEnv = process.e
 }
 
 export function relayOptionsFromEnvironment(env: NodeJS.ProcessEnv = process.env): RelayOptions {
+  if (env.SUPABASE_SECRET_KEY?.trim() || env.SUPABASE_SERVICE_ROLE_KEY?.trim()) {
+    throw new Error("SUPABASE_SECRET_KEY/SUPABASE_SERVICE_ROLE_KEY só podem existir no host central, nunca no relay.");
+  }
   return {
     agentTokenHash: relayAgentHashFromEnvironment(env),
     host: env.HOST || DEFAULT_HOST,
@@ -2388,7 +2336,6 @@ export function relayOptionsFromEnvironment(env: NodeJS.ProcessEnv = process.env
     heartbeatTimeoutMs: Number(env.RELAY_HEARTBEAT_TIMEOUT_MS || DEFAULT_HEARTBEAT_TIMEOUT_MS),
     supabaseUrl: env.SUPABASE_URL?.trim() || undefined,
     supabasePublishableKey: env.SUPABASE_PUBLISHABLE_KEY?.trim() || undefined,
-    supabaseSecretKey: env.SUPABASE_SECRET_KEY?.trim() || undefined,
     globalRateLimitMax: env.RATE_LIMIT_GLOBAL_MAX ? Number(env.RATE_LIMIT_GLOBAL_MAX) : undefined,
     globalRateLimitWindowMs: env.RATE_LIMIT_GLOBAL_WINDOW_MS ? Number(env.RATE_LIMIT_GLOBAL_WINDOW_MS) : undefined,
     apiRateLimitMax: env.RATE_LIMIT_API_MAX ? Number(env.RATE_LIMIT_API_MAX) : undefined,

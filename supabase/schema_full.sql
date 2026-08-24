@@ -11,6 +11,7 @@ create table if not exists public.profiles (
   group_name text not null,
   weekly_quota_percent integer not null default 5 check (weekly_quota_percent between 1 and 100),
   enabled boolean not null default true,
+  scheduling_enabled boolean not null default true,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -363,6 +364,7 @@ revoke all on table public.codex_account_usage_samples from anon, authenticated;
 
 -- Grants para authenticated
 grant select on table public.profiles to authenticated;
+grant update (scheduling_enabled) on table public.profiles to authenticated;
 grant select on table public.codex_admins to authenticated;
 grant select on table public.codex_account_snapshots to authenticated;
 grant select, insert, update on table public.codex_reservations to authenticated;
@@ -389,6 +391,12 @@ create policy profiles_read on public.profiles
   for select to authenticated
   using ((select auth.uid()) = user_id or (select public.codex_is_admin()));
 
+drop policy if exists profiles_update_scheduling_admin on public.profiles;
+create policy profiles_update_scheduling_admin on public.profiles
+  for update to authenticated
+  using ((select public.codex_is_admin()))
+  with check ((select public.codex_is_admin()));
+
 -- Codex Admins
 drop policy if exists codex_admins_read on public.codex_admins;
 create policy codex_admins_read on public.codex_admins
@@ -399,7 +407,15 @@ create policy codex_admins_read on public.codex_admins
 drop policy if exists codex_account_snapshots_read on public.codex_account_snapshots;
 create policy codex_account_snapshots_read on public.codex_account_snapshots
   for select to authenticated
-  using ((select public.codex_is_admin()));
+  using (
+    (select public.codex_is_admin())
+    or exists (
+      select 1 from public.profiles profile
+      where profile.user_id = (select auth.uid())
+        and profile.enabled = true
+        and profile.scheduling_enabled = true
+    )
+  );
 
 -- Reservations
 drop policy if exists codex_reservations_read on public.codex_reservations;
@@ -425,7 +441,15 @@ create policy codex_reservations_update on public.codex_reservations
 drop policy if exists codex_busy_slots_read on public.codex_busy_slots;
 create policy codex_busy_slots_read on public.codex_busy_slots
   for select to authenticated
-  using (true);
+  using (
+    (select public.codex_is_admin())
+    or exists (
+      select 1 from public.profiles profile
+      where profile.user_id = (select auth.uid())
+        and profile.enabled = true
+        and profile.scheduling_enabled = true
+    )
+  );
 
 -- Device Snapshots
 drop policy if exists codex_device_snapshots_read on public.codex_device_snapshots;

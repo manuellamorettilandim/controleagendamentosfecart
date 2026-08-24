@@ -563,9 +563,10 @@
     if (endInput) endInput.value = dateTimeInputValue(time.endDate);
     const quotaInput = $("#review-quota");
     if (quotaInput) {
+      const maxAvailable = account?.quota !== undefined && account?.quota !== null ? Number(account.quota) : 100;
       quotaInput.min = "1";
       quotaInput.step = "1";
-      quotaInput.max = "100";
+      quotaInput.max = String(Math.max(1, Math.min(100, maxAvailable)));
       quotaInput.value = String(schedule.adjustedQuota || schedule.quota || 1);
     }
     setText("#review-requested-quota", `solicitado: ${formatQuota(schedule.quota)}`);

@@ -1,4 +1,35 @@
+-- Some projects were created from the migration chain without the original
+-- application profile table. Create the minimum canonical shape before later
+-- scheduling functions and policies reference it.
+create table if not exists public.profiles (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  username text not null unique,
+  group_name text not null default 'Geral',
+  weekly_quota_percent integer not null default 5 check (weekly_quota_percent between 1 and 100),
+  enabled boolean not null default true,
+  scheduling_enabled boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 alter table public.profiles add column if not exists scheduling_enabled boolean not null default true;
+alter table public.profiles enable row level security;
+grant select on table public.profiles to authenticated;
+grant update (scheduling_enabled) on table public.profiles to authenticated;
+grant all on table public.profiles to service_role;
+
+drop policy if exists profiles_read on public.profiles;
+create policy profiles_read
+  on public.profiles for select
+  to authenticated
+  using ((select auth.uid()) = user_id or (select public.codex_is_admin()));
+
+drop policy if exists profiles_update_scheduling_admin on public.profiles;
+create policy profiles_update_scheduling_admin
+  on public.profiles for update
+  to authenticated
+  using ((select public.codex_is_admin()))
+  with check ((select public.codex_is_admin()));
 
 create or replace function public.enforce_reservation_integrity()
 returns trigger

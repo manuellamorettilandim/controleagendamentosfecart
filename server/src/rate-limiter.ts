@@ -95,7 +95,18 @@ export class SlidingWindowRateLimiter {
     };
   }
 
-  public recordFailure(key: string, maxFailures = 5, quarantineMs = 5 * 60_000, now = Date.now()): { quarantined: boolean; retryAfterSec?: number } {
+  public isBlocked(key: string, now = Date.now()): { blocked: boolean; retryAfterSec?: number } {
+    const record = this.entries.get(key);
+    if (record?.blockedUntil && now < record.blockedUntil) {
+      const retryAfterSec = Math.max(1, Math.ceil((record.blockedUntil - now) / 1_000));
+      return { blocked: true, retryAfterSec };
+    }
+    return { blocked: false };
+  }
+
+  public recordFailure(key: string, maxFailures = 25, quarantineMs = 60_000, now = Date.now()): { quarantined: boolean; retryAfterSec?: number } {
+    const isLoopback = key === "127.0.0.1" || key === "::1" || key === "localhost";
+    const effectiveLimit = isLoopback ? Math.max(maxFailures, 100) : maxFailures;
     const record = this.entries.get(key) ?? { timestamps: [] };
     const cutoff = now - quarantineMs;
 
@@ -106,7 +117,7 @@ export class SlidingWindowRateLimiter {
     }
     record.lastFailureAt = now;
 
-    if (record.failureCount >= maxFailures) {
+    if (record.failureCount >= effectiveLimit) {
       record.blockedUntil = now + quarantineMs;
       this.entries.set(key, record);
       const retryAfterSec = Math.max(1, Math.ceil(quarantineMs / 1_000));

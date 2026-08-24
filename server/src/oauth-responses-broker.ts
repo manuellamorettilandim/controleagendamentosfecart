@@ -1,4 +1,4 @@
-﻿import fs from "node:fs/promises";
+import fs from "node:fs/promises";
 import path from "node:path";
 import type { AccountRecord } from "./account-store.js";
 import type { DeviceUsageCounters, UsageObservation } from "./access-store.js";
@@ -270,7 +270,10 @@ export class OAuthResponsesBroker {
         method: method || "POST",
         headers,
         body,
-        signal: abortController.signal,
+        signal: AbortSignal.any([
+          abortController.signal,
+          AbortSignal.timeout(600_000),
+        ]),
       });
     } catch (err: unknown) {
       if (abortController.signal.aborted) {

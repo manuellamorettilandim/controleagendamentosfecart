@@ -59,6 +59,15 @@ interface SupabaseRequestOptions {
   token?: string;
   body?: unknown;
   headers?: Record<string, string>;
+  signal?: AbortSignal;
+  timeoutMs?: number;
+}
+
+const SUPABASE_REQUEST_TIMEOUT_MS = 15_000;
+
+function requestSignal(options: SupabaseRequestOptions): AbortSignal {
+  const timeout = AbortSignal.timeout(options.timeoutMs ?? SUPABASE_REQUEST_TIMEOUT_MS);
+  return options.signal ? AbortSignal.any([options.signal, timeout]) : timeout;
 }
 
 function baseUrl(value: string): string {
@@ -171,6 +180,7 @@ export class SupabaseAuthClient {
       method: options.method ?? "GET",
       headers,
       body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      signal: requestSignal(options),
     });
     return { ok: response.ok, status: response.status, data: await parseResponse(response) };
   }
@@ -303,8 +313,20 @@ export class SupabaseServiceClient {
       group_name: input.groupName,
       weekly_quota_percent: input.weeklyQuotaPercent,
       enabled: true,
+      scheduling_enabled: true,
       updated_at: new Date().toISOString(),
     }], "user_id");
+    // Keep the legacy scheduling table in sync with the canonical profile row if it exists
+    await this.upsert("codex_user_profiles", [{
+      user_id: userId,
+      username: input.username,
+      login_email: input.loginEmail,
+      group_name: input.groupName,
+      enabled: true,
+      scheduling_enabled: true,
+      weekly_quota_percent: input.weeklyQuotaPercent,
+      updated_at: new Date().toISOString(),
+    }], "user_id").catch(() => {});
     return { userId };
   }
 
@@ -540,6 +562,7 @@ export class SupabaseServiceClient {
         ...options.headers,
       },
       body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      signal: requestSignal(options),
     });
     return { ok: response.ok, status: response.status, data: await parseResponse(response) };
   }
@@ -555,6 +578,7 @@ export class SupabaseServiceClient {
         ...options.headers,
       },
       body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      signal: requestSignal(options),
     });
     const data = await parseResponse(response);
     if (!response.ok) {
