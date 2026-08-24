@@ -1317,7 +1317,13 @@
     });
 
     $("#open-booking").addEventListener("click", () => openBooking());
-    $("#open-booking-top").addEventListener("click", () => openBooking());
+    $("#open-booking-top")?.addEventListener("click", () => {
+      activateTab("overview");
+      const calendar = document.querySelector(".calendar-section");
+      if (calendar) {
+        calendar.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    });
     $("#booking-close").addEventListener("click", closeBooking);
     $("#booking-cancel").addEventListener("click", closeBooking);
     $("#booking-form").addEventListener("submit", submitBooking);
