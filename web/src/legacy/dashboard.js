@@ -1232,35 +1232,6 @@
         renderToken();
       });
     });
-    $("#copy-app-ssh-config").addEventListener("click", async () => {
-      const app = appAccessFor(activeReservation());
-      if (!app) {
-        components().showToast("A configuração só fica disponível durante a sessão ativa.", "warning");
-        return;
-      }
-      try {
-        await navigator.clipboard.writeText(appSshConfig(app));
-        $("#access-copy-status").textContent = "Configuração SSH copiada. Cole no arquivo ~/.ssh/config.";
-        components().showToast("Configuração SSH copiada.", "success");
-      } catch {
-        components().showToast("Não foi possível copiar a configuração SSH.", "error");
-      }
-    });
-    $("#copy-token").addEventListener("click", async () => {
-      const reservation = activeReservation();
-      const token = sessionTokenAvailable(reservation) ? tokenFor(reservation) : null;
-      if (!token) {
-        components().showToast("O token só está disponível durante uma sessão ativa.", "warning");
-        return;
-      }
-      try {
-        await navigator.clipboard.writeText(token);
-        $("#access-copy-status").textContent = "Token copiado. Ele continua oculto nesta tela.";
-        components().showToast("Token copiado.", "success");
-      } catch {
-        components().showToast("Não foi possível copiar o token neste navegador.", "error");
-      }
-    });
 
     $("#copy-cli-command").addEventListener("click", async () => {
       const reservation = activeReservation();

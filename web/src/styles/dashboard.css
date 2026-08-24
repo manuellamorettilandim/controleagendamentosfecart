@@ -1940,6 +1940,62 @@ summary:focus-visible {
   overflow-wrap: anywhere;
 }
 
+.guide-info-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0 14px;
+  padding: 10px 14px;
+  border: 1px solid rgba(var(--accent-rgb), 0.25);
+  border-radius: 8px;
+  background: rgba(var(--accent-rgb), 0.07);
+  color: var(--text-soft);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.guide-info-banner .ph {
+  color: var(--accent);
+  font-size: 18px;
+  flex: 0 0 auto;
+}
+
+.guide-sub-block {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.guide-sub-block:first-of-type {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.guide-sub-block h3 {
+  margin: 0 0 8px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.guide-quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.guide-quick-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .guide-check,
 .guide-note,
 .guide-security {
