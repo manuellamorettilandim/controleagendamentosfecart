@@ -9,7 +9,9 @@ param(
 
   [string]$RemoteUser = 'ubuntu',
   [string]$PublicHost,
-  [string]$EnvironmentFile = '.env'
+  [string]$EnvironmentFile = '.env',
+  [switch]$Bootstrap,
+  [switch]$SkipLocalTests
 )
 
 $ErrorActionPreference = 'Stop'
@@ -59,6 +61,17 @@ Assert-Command 'ssh'
 Assert-Command 'scp'
 Assert-Command 'tar'
 
+if (-not $SkipLocalTests) {
+  Write-Host '==> Executando suite completa de testes locais antes do deploy...'
+  Push-Location $projectRoot
+  try {
+    & npm test
+    if ($LASTEXITCODE -ne 0) { throw 'Os testes locais falharam. Deploy abortado para protecao do ambiente.' }
+  } finally {
+    Pop-Location
+  }
+}
+
 $environment = Read-DotEnv $resolvedEnvironmentPath
 $required = @('SUPABASE_URL', 'SUPABASE_PUBLISHABLE_KEY', 'SUPABASE_SECRET_KEY', 'RELAY_AGENT_TOKEN')
 foreach ($name in $required) {
@@ -80,6 +93,9 @@ $relayValues = [ordered]@{
   RELAY_AGENT_TOKEN_SHA256 = $relayTokenHash
   SUPABASE_URL = $environment['SUPABASE_URL']
   SUPABASE_PUBLISHABLE_KEY = $environment['SUPABASE_PUBLISHABLE_KEY']
+  TRUST_PROXY = 'true'
+  RATE_LIMIT_GLOBAL_MAX = '1200'
+  ANTIGRAVITY_ENABLED = 'false'
 }
 $hostValues = [ordered]@{
   RELAY_URL = 'ws://127.0.0.1:10000/tunnel'
@@ -103,6 +119,7 @@ $hostValues = [ordered]@{
   ACCOUNT_REFRESH_INTERVAL_MS = '60000'
   ACCESS_SYNC_INTERVAL_MS = '1000'
   RELAY_HEARTBEAT_INTERVAL_MS = '5000'
+  ANTIGRAVITY_ENABLED = 'false'
 }
 
 $relayEnv = ($relayValues.GetEnumerator() | ForEach-Object { "$($_.Key)=$(Quote-SystemdValue ([string]$_.Value))" }) -join "`n"
@@ -115,7 +132,11 @@ $temporaryDirectory = Join-Path ([IO.Path]::GetTempPath()) ("fecart-aws-" + [Gui
 $archivePath = Join-Path $temporaryDirectory 'fecart-app.tar.gz'
 
 try {
-  Write-Host 'Empacotando o projeto sem .env, Git, dependencias ou builds locais...'
+  $gitCommit = (& git rev-parse --short HEAD 2>$null)
+  if (-not $gitCommit) { $gitCommit = 'release' }
+  $releaseId = "$(Get-Date -Format 'yyyyMMddHHmmss')-$gitCommit"
+
+  Write-Host "==> Empacotando release $releaseId sem .env, Git ou dependencias locais..."
   & tar -czf $archivePath `
     --exclude='.git' `
     --exclude='.env' `
@@ -127,30 +148,48 @@ try {
   if ($LASTEXITCODE -ne 0) { throw 'Falha ao empacotar o projeto.' }
 
   $destination = "${RemoteUser}@${IpAddress}"
-  Write-Host 'Enviando codigo e instalador para a Lightsail...'
+  Write-Host "==> Enviando pacote para $destination..."
   & scp -i $resolvedKeyPath -o StrictHostKeyChecking=accept-new $archivePath "${destination}:/tmp/fecart-app.tar.gz"
-  if ($LASTEXITCODE -ne 0) { throw 'Falha ao enviar o projeto.' }
-  $bootstrapContent = [IO.File]::ReadAllText((Join-Path $projectRoot 'deploy/aws/bootstrap.sh')).Replace("`r`n", "`n")
-  $remoteBootstrap = Join-Path $temporaryDirectory 'fecart-bootstrap.sh'
-  [IO.File]::WriteAllBytes($remoteBootstrap, [Text.Encoding]::UTF8.GetBytes($bootstrapContent))
+  if ($LASTEXITCODE -ne 0) { throw 'Falha ao enviar o pacote.' }
 
-  & scp -i $resolvedKeyPath -o StrictHostKeyChecking=accept-new $remoteBootstrap "${destination}:/tmp/fecart-bootstrap.sh"
-  if ($LASTEXITCODE -ne 0) { throw 'Falha ao enviar o bootstrap.' }
+  if ($Bootstrap) {
+    Write-Host '==> Modo Bootstrap: Provisionando servidor, pacotes de sistema e configuracao inicial...'
+    $bootstrapContent = [IO.File]::ReadAllText((Join-Path $projectRoot 'deploy/aws/bootstrap.sh')).Replace("`r`n", "`n")
+    $remoteBootstrap = Join-Path $temporaryDirectory 'fecart-bootstrap.sh'
+    [IO.File]::WriteAllBytes($remoteBootstrap, [Text.Encoding]::UTF8.GetBytes($bootstrapContent))
 
-  Write-Host 'Instalando Node.js, Codex CLI, Caddy e os servicos...'
-  & ssh -i $resolvedKeyPath -o StrictHostKeyChecking=accept-new $destination "sed -i 's/\r$//' /tmp/fecart-bootstrap.sh && sudo bash /tmp/fecart-bootstrap.sh '$PublicHost'"
-  if ($LASTEXITCODE -ne 0) { throw 'Falha no bootstrap remoto.' }
+    & scp -i $resolvedKeyPath -o StrictHostKeyChecking=accept-new $remoteBootstrap "${destination}:/tmp/fecart-bootstrap.sh"
+    if ($LASTEXITCODE -ne 0) { throw 'Falha ao enviar o bootstrap.' }
 
-  Write-Host 'Transmitindo os ambientes protegidos diretamente para a maquina...'
+    & ssh -i $resolvedKeyPath -o StrictHostKeyChecking=accept-new $destination "sed -i 's/\r$//' /tmp/fecart-bootstrap.sh && sudo bash /tmp/fecart-bootstrap.sh '$PublicHost'"
+    if ($LASTEXITCODE -ne 0) { throw 'Falha no bootstrap remoto.' }
+  } else {
+    Write-Host '==> Modo Rotina: Executando publicacao versionada com rollback automatico...'
+    $routineContent = [IO.File]::ReadAllText((Join-Path $projectRoot 'deploy/aws/routine-deploy.sh')).Replace("`r`n", "`n")
+    $remoteRoutine = Join-Path $temporaryDirectory 'fecart-routine-deploy.sh'
+    [IO.File]::WriteAllBytes($remoteRoutine, [Text.Encoding]::UTF8.GetBytes($routineContent))
+
+    & scp -i $resolvedKeyPath -o StrictHostKeyChecking=accept-new $remoteRoutine "${destination}:/tmp/fecart-routine-deploy.sh"
+    if ($LASTEXITCODE -ne 0) { throw 'Falha ao enviar script de deploy de rotina.' }
+
+    & ssh -i $resolvedKeyPath -o StrictHostKeyChecking=accept-new $destination "sed -i 's/\r$//' /tmp/fecart-routine-deploy.sh && sudo bash /tmp/fecart-routine-deploy.sh '$PublicHost' '$releaseId'"
+    if ($LASTEXITCODE -ne 0) { throw 'Falha no deploy remoto.' }
+  }
+
+  Write-Host '==> Transmitindo variaveis de ambiente protegidas...'
   ($relayEnvBase64 + "`n" + $hostEnvBase64 + "`n") | & ssh -i $resolvedKeyPath -o StrictHostKeyChecking=accept-new $destination 'sudo /usr/local/sbin/fecart-install-env'
-  if ($LASTEXITCODE -ne 0) { throw 'Falha ao instalar os ambientes remotos.' }
+  if ($LASTEXITCODE -ne 0) { throw 'Falha ao atualizar variaveis de ambiente remotas.' }
 
-  Write-Host 'Verificando servicos e endpoints...'
+  Write-Host '==> Verificando integridade final dos servicos...'
   & ssh -i $resolvedKeyPath -o StrictHostKeyChecking=accept-new $destination "curl -fsS http://127.0.0.1:10000/healthz && echo && systemctl is-active fecart-relay fecart-host caddy"
-  if ($LASTEXITCODE -ne 0) { throw 'A verificacao remota falhou.' }
+  if ($LASTEXITCODE -ne 0) { throw 'A verificacao final de integridade falhou.' }
 
-  Write-Host "Deploy concluido: https://$PublicHost"
-  Write-Host "Admin: https://$PublicHost/admin"
+  Write-Host ''
+  Write-Host "=========================================================="
+  Write-Host "   DEPLOY FINALIZADO COM SUCESSO: Release $releaseId"
+  Write-Host "   Public URL : https://$PublicHost"
+  Write-Host "   Painel Adm : https://$PublicHost/admin"
+  Write-Host "=========================================================="
 } finally {
   if (Test-Path -LiteralPath $temporaryDirectory) {
     Remove-Item -LiteralPath $temporaryDirectory -Recurse -Force

@@ -148,7 +148,7 @@ export class SlidingWindowRateLimiter {
   }
 }
 
-export function extractClientIp(request: IncomingMessage, trustProxy = true): string {
+export function extractClientIp(request: IncomingMessage, trustProxy = false): string {
   if (trustProxy) {
     // Cloudflare IP header
     const cfIp = request.headers["cf-connecting-ip"];

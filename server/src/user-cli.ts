@@ -45,7 +45,6 @@ async function main(): Promise<void> {
       loginEmail: loginEmailForUsername(user.username),
       password: user.password,
       groupName: user.groupName,
-      accountId: "primary",
       weeklyQuotaPercent: 100,
     });
     console.log(`Usuário migrado: ${user.username} · ${user.groupName}`);

@@ -69,7 +69,7 @@
     if (roleOutput) roleOutput.textContent = role === "owner" ? "Owner" : role === "admin" ? "Administrador" : "Usuário";
     if (initialsOutput) initialsOutput.textContent = login.slice(0, 2).toUpperCase();
     const telemetry = sidebar.querySelector('[data-section="telemetry"]');
-    if (telemetry) telemetry.hidden = role !== "owner";
+    if (telemetry) telemetry.hidden = !(role === "owner" || role === "admin");
   }
 
   window.FecartAdminShell = {

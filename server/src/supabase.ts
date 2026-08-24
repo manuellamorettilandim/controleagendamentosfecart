@@ -14,6 +14,38 @@ export interface SupabaseUserIdentity {
   login: string;
 }
 
+export type OperationalUsageEventType =
+  | "turn_started"
+  | "turn_completed"
+  | "token_usage"
+  | "model_rerouted"
+  | "session_opened"
+  | "session_closed"
+  | "heartbeat"
+  | "connection_dropped";
+
+export interface OperationalUsageEvent {
+  eventKey: string;
+  eventType: OperationalUsageEventType;
+  deviceId: string;
+  userId: string | null;
+  reservationId: string | null;
+  accountId: string;
+  threadId: string | null;
+  turnId: string | null;
+  modelId: string | null;
+  status: string | null;
+  totalTokens: number;
+  inputTokens: number;
+  cachedInputTokens: number;
+  outputTokens: number;
+  reasoningTokens: number;
+  accountUsedPercent: number | null;
+  accountWindowDurationMins: number | null;
+  accountResetsAt: number | null;
+  observedAt: string;
+}
+
 export type SupabaseAdminKeyType = "secret" | "service_role";
 
 interface SupabaseUser {
@@ -105,6 +137,22 @@ export class SupabaseAuthClient {
     return result.data as T[];
   }
 
+  public async queryAdminAll<T = unknown>(token: string, table: string, query: Record<string, string>, pageSize = 1_000, maxRows = 500_000): Promise<T[]> {
+    const rows: T[] = [];
+    let offset = 0;
+    while (offset < maxRows) {
+      const page = await this.queryAdmin<T>(token, table, {
+        ...query,
+        limit: String(pageSize),
+        offset: String(offset),
+      });
+      rows.push(...page);
+      if (page.length < pageSize) break;
+      offset += pageSize;
+    }
+    return rows;
+  }
+
   public async rest(token: string, table: string, query: Record<string, string> = {}, options: SupabaseRequestOptions = {}): Promise<{ ok: boolean; status: number; data: unknown }> {
     const params = new URLSearchParams(query);
     return this.request(`/rest/v1/${table}${params.size ? `?${params.toString()}` : ""}`, { ...options, token });
@@ -190,7 +238,7 @@ export class SupabaseServiceClient {
     const normalizedLogin = login?.normalize("NFKC").trim().toLowerCase() || "";
     const normalizedEmail = normalizedLogin ? loginEmailForUsername(normalizedLogin) : email.trim().toLowerCase();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) throw new Error("Informe um email administrativo válido.");
-    if (password.length < 20) throw new Error("A senha administrativa deve ter pelo menos 20 caracteres.");
+    if (password.length < 6) throw new Error("A senha deve ter pelo menos 6 caracteres.");
     const listed = asRecord(await this.request("/auth/v1/admin/users?per_page=1000"));
     const users = Array.isArray(listed?.users) ? listed.users : [];
     const existing = users.find((candidate) => asString(asRecord(candidate)?.email)?.toLowerCase() === normalizedEmail);
@@ -230,7 +278,6 @@ export class SupabaseServiceClient {
     loginEmail: string;
     password: string;
     groupName: string;
-    accountId: string;
     weeklyQuotaPercent: number;
   }): Promise<{ userId: string }> {
     const listed = asRecord(await this.request("/auth/v1/admin/users?per_page=1000"));
@@ -250,15 +297,12 @@ export class SupabaseServiceClient {
       userId = asString(created?.id);
     }
     if (!userId) throw new Error(`Supabase não retornou o usuário ${input.username}.`);
-    await this.upsert("codex_user_profiles", [{
+    await this.upsert("profiles", [{
       user_id: userId,
       username: input.username,
-      login_email: input.loginEmail,
       group_name: input.groupName,
-      enabled: true,
-      scheduling_enabled: true,
-      account_id: input.accountId,
       weekly_quota_percent: input.weeklyQuotaPercent,
+      enabled: true,
       updated_at: new Date().toISOString(),
     }], "user_id");
     return { userId };
@@ -390,6 +434,79 @@ export class SupabaseServiceClient {
     }
   }
 
+  public async expireOverdueReservations(now = new Date()): Promise<string[]> {
+    const overdueResult = await this.request(
+      `/rest/v1/codex_reservations?select=id,ends_at&approval_status=eq.pending&ends_at=lte.${encodeURIComponent(now.toISOString())}&order=ends_at.asc`
+    );
+    const rows = Array.isArray(overdueResult) ? overdueResult as Array<Record<string, unknown>> : [];
+    const expiredIds: string[] = [];
+    for (const row of rows) {
+      const id = typeof row.id === "string" ? row.id : null;
+      const endsAt = typeof row.ends_at === "string" ? row.ends_at : now.toISOString();
+      if (!id) continue;
+      try {
+        await this.request(`/rest/v1/codex_reservations?id=eq.${encodeURIComponent(id)}&approval_status=eq.pending`, {
+          method: "PATCH",
+          body: {
+            approval_status: "expired",
+            status: "cancelled",
+            cancelled_at: endsAt,
+          },
+          headers: { Prefer: "return=minimal" },
+        });
+        expiredIds.push(id);
+        await this.audit(null, "reservation.expire", "reservation", id, { reason: "schedule_ended", ends_at: endsAt });
+      } catch (error) {
+        console.error(`[supabase] Falha ao expirar reserva ${id}:`, error);
+      }
+    }
+    return expiredIds;
+  }
+
+  public async insertAccountUsageSamples(accounts: AccountSnapshot[], now = new Date()): Promise<void> {
+    if (accounts.length === 0) return;
+    const nowIso = now.toISOString();
+    const rows = accounts.map((account) => {
+      const windows = Object.values(account.rateLimits || {}).flatMap((limit) => [limit.primary, limit.secondary]).filter((w): w is NonNullable<typeof w> => Boolean(w));
+      const primaryWindow = windows.sort((a, b) => (b.windowDurationMins ?? 0) - (a.windowDurationMins ?? 0))[0];
+      return {
+        account_id: account.accountId,
+        status: account.status,
+        rate_limits: account.rateLimits ?? {},
+        usage: account.usage ?? null,
+        used_percent: primaryWindow?.usedPercent ?? null,
+        window_duration_mins: primaryWindow?.windowDurationMins ?? null,
+        resets_at: primaryWindow?.resetsAt ? new Date(primaryWindow.resetsAt * 1_000).toISOString() : null,
+        observed_at: nowIso,
+      };
+    });
+    await this.upsert("codex_account_usage_samples", rows);
+  }
+
+  public async upsertOperationalUsageEvent(event: OperationalUsageEvent): Promise<void> {
+    await this.upsert("codex_usage_events", [{
+      event_key: event.eventKey,
+      event_type: event.eventType,
+      device_id: event.deviceId,
+      user_id: event.userId,
+      reservation_id: event.reservationId,
+      account_id: event.accountId,
+      thread_id: event.threadId,
+      turn_id: event.turnId,
+      model_id: event.modelId,
+      status: event.status,
+      thread_total_tokens: event.totalTokens,
+      thread_input_tokens: event.inputTokens,
+      thread_cached_input_tokens: event.cachedInputTokens,
+      thread_output_tokens: event.outputTokens,
+      thread_reasoning_tokens: event.reasoningTokens,
+      account_used_percent: event.accountUsedPercent,
+      account_window_duration_mins: event.accountWindowDurationMins,
+      account_resets_at: event.accountResetsAt ? new Date(event.accountResetsAt * 1_000).toISOString() : null,
+      observed_at: event.observedAt,
+    }], "event_key");
+  }
+
   public async audit(actorUserId: string | null, action: string, targetType: string, targetId: string | null, metadata: Record<string, unknown> = {}): Promise<void> {
     await this.upsert("codex_admin_audit", [{
       actor_user_id: actorUserId,
@@ -410,13 +527,30 @@ export class SupabaseServiceClient {
     });
   }
 
-  private async request(path: string, options: SupabaseRequestOptions = {}): Promise<unknown> {
+  public async rest(table: string, query: Record<string, string> = {}, options: SupabaseRequestOptions = {}): Promise<{ ok: boolean; status: number; data: unknown }> {
+    const params = new URLSearchParams(query);
+    const path = `/rest/v1/${table}${params.size ? `?${params.toString()}` : ""}`;
     const response = await fetch(`${this.url}${path}`, {
       method: options.method ?? "GET",
       headers: {
         apikey: this.adminKey,
         Accept: "application/json",
-        ...(this.adminKeyType === "service_role" ? { Authorization: `Bearer ${this.adminKey}` } : {}),
+        ...(this.adminKeyType === "service_role" || this.adminKey.startsWith("eyJ") ? { Authorization: `Bearer ${this.adminKey}` } : {}),
+        ...(options.body === undefined ? {} : { "Content-Type": "application/json" }),
+        ...options.headers,
+      },
+      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+    });
+    return { ok: response.ok, status: response.status, data: await parseResponse(response) };
+  }
+
+  public async request(path: string, options: SupabaseRequestOptions = {}): Promise<unknown> {
+    const response = await fetch(`${this.url}${path}`, {
+      method: options.method ?? "GET",
+      headers: {
+        apikey: this.adminKey,
+        Accept: "application/json",
+        ...(this.adminKeyType === "service_role" || this.adminKey.startsWith("eyJ") ? { Authorization: `Bearer ${this.adminKey}` } : {}),
         ...(options.body === undefined ? {} : { "Content-Type": "application/json" }),
         ...options.headers,
       },

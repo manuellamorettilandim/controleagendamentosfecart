@@ -323,9 +323,9 @@
       ? '<span class="permission-pill">Pode agendar</span>'
       : '<span class="permission-pill is-blocked">Bloqueado</span>';
     return `<tr class="${selected}" data-group-id="${escapeHtml(group.id)}" tabindex="0">
-      <td>${escapeHtml(group.name)}</td>
-      <td>${escapeHtml(group.className)}</td>
-      <td><span class="token-status"><i class="status-dot ${tokenClass(group.token)}"></i>${escapeHtml(tokenLabel(group.token))}</span></td>
+      <td title="${escapeHtml(group.name)}">${escapeHtml(group.name)}</td>
+      <td title="${escapeHtml(group.className)}">${escapeHtml(group.className)}</td>
+      <td><span class="token-status" title="${escapeHtml(tokenLabel(group.token))}"><i class="status-dot ${tokenClass(group.token)}"></i>${escapeHtml(tokenLabel(group.token))}</span></td>
       <td>${permission}</td>
       <td>${renderSchedule(group)}</td>
       <td>${escapeHtml(group.lastActivity)}</td>

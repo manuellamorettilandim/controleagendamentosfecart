@@ -456,14 +456,16 @@
 
 .groups-table td {
   height: 47px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .groups-table th:nth-child(1) { width: 14%; }
-.groups-table th:nth-child(2) { width: 13%; }
-.groups-table th:nth-child(3) { width: 16%; }
+.groups-table th:nth-child(2) { width: 22%; }
+.groups-table th:nth-child(3) { width: 15%; }
 .groups-table th:nth-child(4) { width: 16%; }
-.groups-table th:nth-child(5) { width: 23%; }
-.groups-table th:nth-child(6) { width: 15%; }
+.groups-table th:nth-child(5) { width: 18%; }
+.groups-table th:nth-child(6) { width: 12%; }
 .groups-table th:nth-child(7) { width: 3%; }
 
 .groups-table tbody tr {
@@ -489,8 +491,14 @@
 .token-status,
 .detail-token-status {
   display: inline-flex;
+  max-width: 100%;
   align-items: center;
   gap: 8px;
+}
+
+.groups-table .token-status {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .token-status .status-dot {

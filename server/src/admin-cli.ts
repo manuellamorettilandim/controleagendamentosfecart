@@ -26,6 +26,7 @@ async function main(): Promise<void> {
   }
   const email = option("--email");
   const login = option("--login");
+  const passwordOpt = option("--password");
   if (!email && !(command === "create" && login)) throw new Error("Informe --email ou, para create, --login.");
   const url = process.env.SUPABASE_URL?.trim();
   const secretKey = process.env.SUPABASE_SECRET_KEY?.trim();
@@ -48,11 +49,15 @@ async function main(): Promise<void> {
   if (command === "create") {
     const role = option("--role");
     if (role !== "owner" && role !== "admin") throw new Error("Informe --role owner ou --role admin.");
-    const password = crypto.randomBytes(24).toString("base64url");
+    const password = passwordOpt || crypto.randomBytes(24).toString("base64url");
     const created = await client.createAdmin(email || `${login}@remote-codex.invalid`, password, role, null, login || undefined);
     console.log(`${role === "owner" ? "Owner" : "Administrador"} configurado: ${login || created.email || email} (${created.userId}).`);
-    console.log("SENHA TEMPORÁRIA FORTE (copie agora e troque após o primeiro acesso):");
-    console.log(password);
+    if (!passwordOpt) {
+      console.log("SENHA TEMPORÁRIA FORTE (copie agora e troque após o primeiro acesso):");
+      console.log(password);
+    } else {
+      console.log("Senha personalizada definida com sucesso!");
+    }
     return;
   }
   usage();

@@ -5,13 +5,13 @@
     <header class="admin-header">
       <div class="page-heading">
         <p class="eyebrow">Fecart AI Share</p>
-        <h1>Telemetria</h1>
-        <p>Acessos, contas e trilha de ações administrativas</p>
+        <h1>Telemetria & Relatórios</h1>
+        <p>Utilização por grupo, métricas oficiais da feira e auditoria</p>
       </div>
       <div class="admin-header-actions">
         <label class="admin-search" for="telemetry-search">
           <i class="ph ph-magnifying-glass" aria-hidden="true"></i>
-          <input id="telemetry-search" type="search" placeholder="Buscar login, ação ou conta..." autocomplete="off">
+          <input id="telemetry-search" type="search" placeholder="Buscar grupo, login ou ação..." autocomplete="off">
         </label>
         <button id="telemetry-refresh" class="telemetry-refresh" type="button"><i class="ph ph-arrows-clockwise" aria-hidden="true"></i><span>Atualizar</span></button>
         <button id="theme-toggle" class="admin-theme-toggle" type="button" aria-label="Ativar tema claro" aria-pressed="true" title="Ativar tema claro">
@@ -21,6 +21,7 @@
     </header>
 
     <div class="admin-content telemetry-content">
+      <!-- Resumo da Telemetria Geral -->
       <section class="telemetry-summary" aria-label="Resumo da telemetria">
         <article class="telemetry-metric"><span class="telemetry-metric-icon is-blue"><i class="ph ph-shield-check" aria-hidden="true"></i></span><div><small>Acessos privilegiados</small><strong id="telemetry-admin-count">—</strong><p>admins e owners ativos</p></div></article>
         <article class="telemetry-metric"><span class="telemetry-metric-icon is-purple"><i class="ph ph-crown" aria-hidden="true"></i></span><div><small>Owners</small><strong id="telemetry-owner-count">—</strong><p>acesso total ao painel</p></div></article>
@@ -29,7 +30,7 @@
       </section>
 
       <section class="telemetry-grid">
-        <article class="panel telemetry-panel telemetry-people-panel">
+        <article class="panel telemetry-panel telemetry-people-panel" id="telemetry-people-card">
           <header class="telemetry-panel-header"><div><h2>Admins e owners</h2><p>Quem possui acesso e quando entrou pela última vez</p></div><span id="telemetry-people-total" class="telemetry-count">0</span></header>
           <div class="telemetry-table-wrap">
             <table class="telemetry-table">
@@ -45,18 +46,73 @@
         </article>
       </section>
 
-      <section class="panel telemetry-panel telemetry-audit-panel">
-        <header class="telemetry-panel-header telemetry-audit-header">
-          <div><h2>Trilha de ações</h2><p>Aprovações, recusas, permissões, revogações e alterações administrativas</p></div>
-          <label class="telemetry-filter" for="telemetry-action-filter"><span class="sr-only">Filtrar ações</span><select id="telemetry-action-filter"><option value="all">Todas as ações</option><option value="reservation">Aprovações e recusas</option><option value="group">Grupos e tokens</option><option value="account">Contas</option><option value="admin">Admins e acessos</option></select><i class="ph ph-caret-down" aria-hidden="true"></i></label>
+      <section class="panel telemetry-panel telemetry-activity-panel" aria-labelledby="telemetry-activity-title">
+        <header class="telemetry-activity-header">
+          <div class="telemetry-activity-heading">
+            <span class="telemetry-activity-icon"><i class="ph ph-chart-line-up" aria-hidden="true"></i></span>
+            <div><h2 id="telemetry-activity-title">Atividade e desempenho</h2><p>Auditoria administrativa e ranking de utilização em um só lugar</p></div>
+          </div>
+          <div class="telemetry-activity-tabs" role="tablist" aria-label="Visualização de atividade e desempenho">
+            <button id="telemetry-tab-audit" class="telemetry-activity-tab is-active" type="button" role="tab" aria-selected="true" aria-controls="telemetry-audit-card" data-telemetry-tab="audit"><i class="ph ph-list-checks" aria-hidden="true"></i>Trilha de ações</button>
+            <button id="telemetry-tab-ranking" class="telemetry-activity-tab" type="button" role="tab" aria-selected="false" aria-controls="telemetry-ranking-card" data-telemetry-tab="ranking"><i class="ph ph-ranking" aria-hidden="true"></i>Ranking de utilização</button>
+          </div>
         </header>
-        <div class="telemetry-table-wrap telemetry-audit-wrap">
-          <table class="telemetry-table telemetry-audit-table">
-            <thead><tr><th>Data e hora</th><th>Responsável</th><th>Ação</th><th>Alvo</th><th>Detalhes</th></tr></thead>
-            <tbody id="telemetry-audit-body"><tr><td colspan="5" class="telemetry-empty">Carregando histórico...</td></tr></tbody>
-          </table>
+
+        <div id="telemetry-audit-card" class="telemetry-tab-panel" role="tabpanel" aria-labelledby="telemetry-tab-audit" data-telemetry-panel="audit">
+          <header class="telemetry-panel-header telemetry-audit-header">
+            <div><h3>Trilha de ações</h3><p>Aprovações, recusas, permissões, revogações e alterações administrativas</p></div>
+            <label class="telemetry-filter" for="telemetry-action-filter"><span class="sr-only">Filtrar ações</span><select id="telemetry-action-filter"><option value="all">Todas as ações</option><option value="reservation">Aprovações e recusas</option><option value="group">Grupos e tokens</option><option value="account">Contas</option><option value="admin">Admins e acessos</option></select><i class="ph ph-caret-down" aria-hidden="true"></i></label>
+          </header>
+          <div class="telemetry-table-wrap telemetry-audit-wrap">
+            <table class="telemetry-table telemetry-audit-table">
+              <thead><tr><th>Data e hora</th><th>Responsável</th><th>Ação</th><th>Alvo</th><th>Detalhes</th></tr></thead>
+              <tbody id="telemetry-audit-body"><tr><td colspan="5" class="telemetry-empty">Carregando histórico...</td></tr></tbody>
+            </table>
+          </div>
+          <footer class="telemetry-audit-footer"><span id="telemetry-audit-total">0 ações exibidas</span><span id="telemetry-updated-at">—</span></footer>
         </div>
-        <footer class="telemetry-audit-footer"><span id="telemetry-audit-total">0 ações exibidas</span><span id="telemetry-updated-at">—</span></footer>
+
+        <div id="telemetry-ranking-card" class="telemetry-tab-panel" role="tabpanel" aria-labelledby="telemetry-tab-ranking" data-telemetry-panel="ranking" hidden>
+          <header class="telemetry-panel-header telemetry-report-header">
+            <div class="telemetry-report-title">
+              <span class="telemetry-report-icon"><i class="ph ph-chart-bar" aria-hidden="true"></i></span>
+              <div><h3>Relatório Operacional de Utilização</h3><p>Panorama auditável de cotas, contas, horas, sessões, tokens e modelos por período</p></div>
+            </div>
+            <div class="telemetry-report-controls">
+              <div class="telemetry-date-group">
+                <label class="telemetry-date-field"><span>De</span><input id="report-date-from" type="date"></label>
+                <label class="telemetry-date-field"><span>Até</span><input id="report-date-to" type="date"></label>
+                <button id="report-preset-30d" class="report-btn report-btn-ghost" type="button" title="Últimos 30 dias"><span>30D</span></button>
+                <button id="report-preset-7d" class="report-btn report-btn-ghost" type="button" title="Últimos 7 dias"><span>7D</span></button>
+                <button id="report-preset-all" class="report-btn report-btn-ghost" type="button" title="Todo o período"><span>Tudo</span></button>
+              </div>
+              <div class="telemetry-button-group">
+                <button id="report-preview-btn" class="report-btn report-btn-primary" type="button"><i class="ph ph-arrows-clockwise" aria-hidden="true"></i><span>Atualizar</span></button>
+                <button id="report-export-pdf" class="report-btn report-btn-export" type="button" title="Baixar relatório em PDF"><i class="ph ph-file-pdf" aria-hidden="true"></i><span>PDF</span></button>
+                <button id="report-export-xlsx" class="report-btn report-btn-export" type="button" title="Baixar planilha em Excel"><i class="ph ph-file-xls" aria-hidden="true"></i><span>Excel</span></button>
+                <button id="report-export-csv" class="report-btn report-btn-export" type="button" title="Baixar arquivo CSV"><i class="ph ph-file-csv" aria-hidden="true"></i><span>CSV</span></button>
+              </div>
+            </div>
+          </header>
+
+          <div class="report-summary-bar">
+            <div class="report-stat-item"><small>Grupos ativos</small><strong id="rep-summary-groups">—</strong><p id="rep-summary-groups-sub">no período selecionado</p></div>
+            <div class="report-stat-item"><small>Cota semanal acumulada</small><strong id="rep-summary-quota">—</strong><p id="rep-summary-capacity">0% da capacidade</p></div>
+            <div class="report-stat-item"><small>Cota perdida em resets</small><strong id="rep-summary-waste">—</strong><p id="rep-summary-balance">0% ainda disponível</p></div>
+            <div class="report-stat-item"><small>Horas reservadas / reais</small><strong id="rep-summary-hours">—</strong><p id="rep-summary-sessions">0 sessões ativadas</p></div>
+            <div class="report-stat-item"><small>Tokens atribuídos</small><strong id="rep-summary-attributed-tokens">—</strong><p id="rep-summary-models">0 modelos observados</p></div>
+            <div class="report-stat-item"><small>Total geral observado</small><strong id="rep-summary-total-tokens">—</strong><p id="rep-summary-unattributed">0 não atribuídos</p></div>
+          </div>
+
+          <div class="telemetry-table-wrap telemetry-ranking-wrap">
+            <table class="telemetry-table" id="report-groups-table">
+              <thead><tr><th style="width: 38px;">#</th><th>Grupo</th><th>Sessões (Ativ./Aprov./Sol.)</th><th>Horas reserv./reais</th><th>Tokens totais</th><th>Entrada</th><th>Cache*</th><th>Saída</th><th>Thinking*</th><th>Eficiência cache</th><th>Cota (usada/aprov.)</th><th>Modelos e contas</th><th>Último uso</th></tr></thead>
+              <tbody id="report-groups-body"><tr><td colspan="13" class="telemetry-empty">Carregando dados do período...</td></tr></tbody>
+            </table>
+          </div>
+
+          <footer class="telemetry-report-footer"><i class="ph ph-info" aria-hidden="true"></i><span><strong>Leitura:</strong> a cota acumulada soma janelas semanais e pode superar 100%. Saldo só vira desperdício quando o reset encerra a janela. Cache e thinking detalham componentes e não são somados novamente ao total.</span></footer>
+        </div>
       </section>
     </div>
   </main>

@@ -4,8 +4,6 @@
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
   const ADMIN_AGENDA_SLOT_HEIGHT = 48;
-  // Authentication bypasses and demo logins are intentionally disabled.
-  const preview = false;
 
   const WEEKDAY_NAMES = ["SEG", "TER", "QUA", "QUI", "SEX", "SÁB", "DOM"];
   const MONTH_FORMATTER = new Intl.DateTimeFormat("pt-BR", { month: "long" });
@@ -135,6 +133,7 @@
     accountLogin: null,
     accountLoginPoll: null,
     removeAccountId: null,
+    modelCatalog: [],
   };
 
   function escapeHtml(value) {
@@ -563,7 +562,12 @@
     if (startInput) startInput.value = dateTimeInputValue(time.startDate);
     if (endInput) endInput.value = dateTimeInputValue(time.endDate);
     const quotaInput = $("#review-quota");
-    if (quotaInput) quotaInput.value = String(schedule.adjustedQuota || schedule.quota || 5);
+    if (quotaInput) {
+      quotaInput.min = "1";
+      quotaInput.step = "1";
+      quotaInput.max = "100";
+      quotaInput.value = String(schedule.adjustedQuota || schedule.quota || 1);
+    }
     setText("#review-requested-quota", `solicitado: ${formatQuota(schedule.quota)}`);
     renderReviewAdjustment();
     const reviewNote = $("#review-note");
@@ -616,8 +620,8 @@
 
   function renderReviewAdjustment() {
     const schedule = selectedSchedule();
-    const approved = Number($("#review-quota")?.value || schedule?.quota || 5);
-    const requested = Number(schedule?.quota || 5);
+    const approved = Number($("#review-quota")?.value || schedule?.quota || 1);
+    const requested = Number(schedule?.quota || 1);
     setText("#review-quota-output", `${approved}%`);
     setText("#review-adjustment-label", approved === requested
       ? "Sem ajuste de uso"
@@ -672,6 +676,83 @@
 
   async function adminRequest(path, options = {}) {
     return window.FecartApi.admin(path, options);
+  }
+
+  function fillPercentSelect(select, maximum, selected) {
+    if (!select) return;
+    const max = Math.max(1, Math.min(100, Number(maximum) || 100));
+    const value = Math.max(1, Math.min(max, Number(selected) || 1));
+    select.innerHTML = Array.from({ length: max }, (_, index) => {
+      const percent = index + 1;
+      return `<option value="${percent}"${percent === value ? " selected" : ""}>${percent}%</option>`;
+    }).join("");
+  }
+
+  function syncAutoApproveControls() {
+    const enabled = Boolean($("#settings-auto-approve-enabled")?.checked);
+    const autoSelect = $("#settings-auto-approve");
+    if (autoSelect) autoSelect.disabled = !enabled;
+    setText("#settings-auto-label", enabled ? "Ativada" : "Desativada");
+  }
+
+  function modelPresentation(modelId) {
+    if (modelId.includes("sol")) return ["sol", "ph-sun"];
+    if (modelId.includes("terra")) return ["terra", "ph-globe-hemisphere-west"];
+    if (modelId.includes("luna") || modelId.includes("mini")) return ["luna", "ph-moon-stars"];
+    return ["legacy", "ph-stack"];
+  }
+
+  function renderModelCatalog(settings) {
+    const target = $("#settings-models");
+    if (!target) return;
+    const enabledModels = new Set(Array.isArray(settings?.enabled_models) ? settings.enabled_models : []);
+    target.innerHTML = state.modelCatalog.length ? state.modelCatalog.map((model) => {
+      const [tone, icon] = modelPresentation(model.id);
+      const checked = enabledModels.has(model.id);
+      return `<label class="model-policy-card${checked ? " is-enabled" : ""}" data-model-card="${escapeHtml(model.id)}">
+        <span class="model-policy-icon ${tone}"><i class="ph ${icon}" aria-hidden="true"></i></span>
+        <span><strong>${escapeHtml(model.displayName || model.id)}</strong><small>${escapeHtml(model.description || model.id)}</small></span>
+        <input type="checkbox" value="${escapeHtml(model.id)}" data-model-toggle${checked ? " checked" : ""}>
+      </label>`;
+    }).join("") : '<p class="settings-models-loading is-error">Nenhum modelo retornado pela API da conta. Verifique a conexão do host.</p>';
+    const save = $("#settings-save");
+    if (save) save.disabled = state.modelCatalog.length === 0;
+  }
+
+  function renderSettings(settings) {
+    const maxQuota = Math.max(1, Math.min(100, Number(settings?.max_request_quota_percent) || 20));
+    const autoQuota = Math.max(0, Math.min(maxQuota, Number(settings?.auto_approve_quota_percent) || 0));
+    fillPercentSelect($("#settings-max-quota"), 100, maxQuota);
+    fillPercentSelect($("#settings-auto-approve"), maxQuota, autoQuota || Math.min(20, maxQuota));
+    const autoToggle = $("#settings-auto-approve-enabled");
+    if (autoToggle) autoToggle.checked = autoQuota > 0;
+    renderModelCatalog(settings);
+    syncAutoApproveControls();
+    setText("#settings-status", settings?.updated_at ? `Atualizado em ${formatDateTime(settings.updated_at)}` : "Políticas carregadas.");
+  }
+
+  async function loadSettings() {
+    try {
+      const result = await adminRequest("/api/admin/settings");
+      state.modelCatalog = Array.isArray(result?.models) ? result.models : [];
+      renderSettings(result?.settings || {});
+    } catch (error) {
+      setText("#settings-status", error instanceof Error ? error.message : "Não foi possível carregar as políticas.");
+      throw error;
+    }
+  }
+
+  async function saveSettings() {
+    const maxRequestQuotaPercent = Number($("#settings-max-quota")?.value);
+    const autoApproveEnabled = Boolean($("#settings-auto-approve-enabled")?.checked);
+    const autoApproveQuotaPercent = Number($("#settings-auto-approve")?.value);
+    const enabledModels = $$('[data-model-toggle]:checked').map((input) => input.value);
+    if (enabledModels.length === 0) throw new Error("Mantenha ao menos um modelo disponível.");
+    const result = await adminRequest("/api/admin/settings", {
+      method: "POST",
+      body: JSON.stringify({ maxRequestQuotaPercent, autoApproveEnabled, autoApproveQuotaPercent, enabledModels }),
+    });
+    renderSettings(result?.settings || {});
   }
 
   async function sendReservationDecision(action, schedule, note, adjustments = {}) {
@@ -799,6 +880,32 @@
   }
 
   function bindEvents() {
+    $("#settings-max-quota")?.addEventListener("change", (event) => {
+      const previous = Number($("#settings-auto-approve")?.value || 1);
+      fillPercentSelect($("#settings-auto-approve"), Number(event.currentTarget.value), previous);
+    });
+    $("#settings-auto-approve-enabled")?.addEventListener("change", syncAutoApproveControls);
+    $("#settings-models")?.addEventListener("change", (event) => {
+      const input = event.target.closest("[data-model-toggle]");
+      if (input) input.closest("[data-model-card]")?.classList.toggle("is-enabled", input.checked);
+    });
+    $("#general-settings-form")?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const button = $("#settings-save");
+      if (button) button.disabled = true;
+      setText("#settings-status", "Salvando políticas...");
+      try {
+        await saveSettings();
+        showToast("Políticas de acesso salvas.");
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Não foi possível salvar as políticas.";
+        setText("#settings-status", message);
+        showToast(message, "error");
+      } finally {
+        if (button) button.disabled = false;
+      }
+    });
+
     $("#admin-search")?.addEventListener("input", (event) => {
       state.search = event.currentTarget.value || "";
       renderApprovals();
@@ -953,7 +1060,7 @@
       const note = $("#review-note")?.value.trim() || "";
       const startsAt = new Date($("#review-start")?.value || "");
       const endsAt = new Date($("#review-end")?.value || "");
-      const quotaBudgetPercent = Number($("#review-quota")?.value || schedule.quota || 5);
+      const quotaBudgetPercent = Number($("#review-quota")?.value || schedule.quota || 1);
       const button = $("#review-approve");
       if (Number.isNaN(startsAt.getTime()) || Number.isNaN(endsAt.getTime()) || endsAt <= startsAt) {
         showToast("Confira o início e o fim aprovados.", "error");
@@ -1112,7 +1219,7 @@
     document.body.classList.add("admin-auth-ready");
     bindEvents();
     renderAll();
-    await loadLiveData();
+    await Promise.allSettled([loadLiveData(), loadSettings()]);
   });
 })();
 

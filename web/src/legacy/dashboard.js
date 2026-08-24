@@ -143,6 +143,8 @@
     if (!reservation || !device) return false;
     if (device.status === "limited" || device.usage_limit_reached_at) return true;
     const budget = Number(device.quota_budget_percent ?? reservation.quota_budget_percent ?? reservation.requested_quota_percent);
+    const accumulated = Number(device.quota_consumed_percent);
+    if (Number.isFinite(budget) && Number.isFinite(accumulated)) return accumulated >= budget;
     const base = Number(device.quota_base_used_percent ?? reservation.quota_base_used_percent ?? 0);
     const current = Number(device.account_used_percent);
     if (!Number.isFinite(budget) || !Number.isFinite(current)) return false;
@@ -152,9 +154,16 @@
 
   function sessionUsage(reservation, device = deviceFor(reservation)) {
     const budget = Number(device?.quota_budget_percent ?? reservation?.quota_budget_percent ?? reservation?.requested_quota_percent ?? 0);
+    const accumulated = Number(device?.quota_consumed_percent);
     const base = Number(device?.quota_base_used_percent ?? reservation?.quota_base_used_percent ?? 0);
     const current = Number(device?.account_used_percent);
-    const consumed = Number.isFinite(current) ? Math.max(0, current >= base ? current - base : current) : 0;
+    const consumed = Number.isFinite(accumulated)
+      ? Math.max(0, accumulated)
+      : Number.isFinite(current) ? Math.max(0, current >= base ? current - base : current) : 0;
+    const exhausted = device?.status === "limited" || Boolean(device?.usage_limit_reached_at);
+    if (exhausted) {
+      return { budget, consumed: Math.max(consumed, budget), remaining: 0, remainingPercent: 0 };
+    }
     const remaining = Math.max(0, budget - consumed);
     const remainingPercent = budget > 0 ? Math.max(0, Math.min(100, Math.round((remaining / budget) * 100))) : 0;
     return { budget, consumed, remaining, remainingPercent };
@@ -184,7 +193,26 @@
     return `${protocol}//${hostWithPort}`;
   }
 
+  function providerBaseUrl() {
+    return `${window.location.origin}/api/codex/v1`;
+  }
+
+  function configTomlSnippet(model = "gpt-5.6-sol") {
+    const baseUrl = providerBaseUrl();
+    return `model = "${model}"\nmodel_provider = "fecart"\n\n[model_providers.fecart]\nname = "FECART Codex"\nbase_url = "${baseUrl}"\nenv_key = "FECART_CODEX_TOKEN"\nwire_api = "responses"\nsupports_websockets = false`;
+  }
+
   function cliCommandFor(token, platform = state.platform) {
+    if (platform === "cmd") {
+      return `set "FECART_CODEX_TOKEN=${token}" && codex`;
+    }
+    if (platform === "macos" || platform === "linux") {
+      return `export FECART_CODEX_TOKEN='${token}' && codex`;
+    }
+    return `$env:FECART_CODEX_TOKEN = "${token}"; codex`;
+  }
+
+  function legacyCliCommandFor(token, platform = state.platform) {
     const remoteUrl = remoteCliUrl();
     if (platform === "cmd") {
       return `set "CODEX_REMOTE_TOKEN=${token}" && codex --remote "${remoteUrl}" --remote-auth-token-env CODEX_REMOTE_TOKEN`;
@@ -193,6 +221,21 @@
       return `export CODEX_REMOTE_TOKEN='${token}'; codex --remote '${remoteUrl}' --remote-auth-token-env CODEX_REMOTE_TOKEN`;
     }
     return `$env:CODEX_REMOTE_TOKEN = "${token}"; codex --remote "${remoteUrl}" --remote-auth-token-env CODEX_REMOTE_TOKEN`;
+  }
+
+  function autoConfigCommand(platform = "windows") {
+    const toml = configTomlSnippet();
+    if (platform === "macos" || platform === "linux") {
+      return `mkdir -p ~/.codex && cat << 'EOF' > ~/.codex/config.toml\n${toml}\nEOF\necho "Configuração do FECART Codex aplicada com sucesso!"`;
+    }
+    return `$cfg="$HOME\\.codex\\config.toml"; New-Item -ItemType Directory -Force "$HOME\\.codex" | Out-Null; @'\n${toml}\n'@ | Set-Content -Path $cfg -Encoding UTF8; Write-Host "Configuração do FECART Codex aplicada com sucesso!" -ForegroundColor Green`;
+  }
+
+  function restoreConfigCommand(platform = "windows") {
+    if (platform === "macos" || platform === "linux") {
+      return `rm -f ~/.codex/config.toml && echo "Configuração do FECART removida! Codex restaurado para o padrão."`;
+    }
+    return `$cfg="$HOME\\.codex\\config.toml"; if (Test-Path $cfg) { Remove-Item $cfg -Force; Write-Host "Configuração do FECART removida! Codex restaurado para o padrão." -ForegroundColor Yellow } else { Write-Host "Nenhuma configuração personalizada encontrada." }`;
   }
 
   function formatTokenCount(value) {
@@ -219,6 +262,7 @@
       account_used_percent: usage.accountUsedPercent ?? null,
       account_window_duration_mins: usage.accountWindowDurationMins ?? null,
       account_resets_at: Number.isFinite(resetSeconds) && resetSeconds > 0 ? new Date(resetSeconds * 1_000).toISOString() : null,
+      quota_consumed_percent: Number(usage.quotaConsumedPercent || 0),
       quota_base_used_percent: device.quotaBaseUsedPercent ?? null,
       quota_budget_percent: device.quotaBudgetPercent ?? null,
       usage_limit_reached_at: usage.usageLimitReachedAt || null,
@@ -434,11 +478,21 @@
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
+  function updateGuideDynamicSnippets() {
+    const toml = configTomlSnippet();
+    document.querySelectorAll("[data-config-toml-snippet]").forEach((el) => {
+      el.textContent = toml;
+    });
+  }
+
   function showGuidePage(name, updateHistory = true) {
     const page = name === "cli" || name === "app" ? name : "home";
     $("#guides-home").hidden = page !== "home";
     $("#guide-cli").hidden = page !== "cli";
     $("#guide-app").hidden = page !== "app";
+    if (page === "cli") {
+      updateGuideDynamicSnippets();
+    }
     if (updateHistory) {
       const hash = page === "home" ? "#guides" : `#guides/${page}`;
       window.history.pushState({ guide: page }, "", hash);
@@ -448,7 +502,7 @@
 
   function setGuidePlatform(guide, platform) {
     if (!guide) return;
-    const selected = platform === "macos" ? "macos" : "windows";
+    const selected = platform === "macos" ? "macos" : platform === "linux" ? "linux" : "windows";
     guide.querySelectorAll("[data-guide-platform]").forEach((button) => {
       const active = button.dataset.guidePlatform === selected;
       button.classList.toggle("is-active", active);
@@ -586,7 +640,7 @@
       $("#session-time").textContent = formatCountdown(remainingTime);
       $("#session-time-total").textContent = `até ${components().formatTime(end)}`;
       status.textContent = limited ? "Uso esgotado" : state.activationInFlight ? "Inicializando sessão" : "Sessão ativa";
-      dot.classList.toggle("is-active", true);
+      dot.classList.toggle("is-active", !limited);
       dot.classList.toggle("is-limited", limited);
       $("#session-started").textContent = state.activationInFlight
         ? "Gerando a credencial real no host central…"
@@ -1079,7 +1133,7 @@
     const duration = Number($("#booking-duration").value);
     const accountId = $("#booking-account").value;
     const requestedQuotaPercent = Number($("#booking-quota").value);
-    if (!start || ![1, 2, 3].includes(duration) || ![5, 10, 15, 20].includes(requestedQuotaPercent) || !accountId) {
+    if (!start || ![1, 2, 3].includes(duration) || requestedQuotaPercent < 1 || requestedQuotaPercent > 100 || !accountId) {
       setBookingMessage("Confira os dados do agendamento.");
       return;
     }
@@ -1233,6 +1287,44 @@
       } catch {
         components().showToast("Não foi possível copiar o comando neste navegador.", "error");
       }
+    });
+
+    $("#copy-auto-config")?.addEventListener("click", async () => {
+      const activeGuide = document.querySelector("#guide-cli");
+      const activeBtn = activeGuide?.querySelector("[data-guide-platform].is-active");
+      const platform = activeBtn?.dataset?.guidePlatform || "windows";
+      try {
+        await navigator.clipboard.writeText(autoConfigCommand(platform));
+        components().showToast("Comando de configuração automática copiado!", "success");
+      } catch {
+        components().showToast("Não foi possível copiar o comando.", "error");
+      }
+    });
+
+    $("#copy-restore-config")?.addEventListener("click", async () => {
+      const activeGuide = document.querySelector("#guide-cli");
+      const activeBtn = activeGuide?.querySelector("[data-guide-platform].is-active");
+      const platform = activeBtn?.dataset?.guidePlatform || "windows";
+      try {
+        await navigator.clipboard.writeText(restoreConfigCommand(platform));
+        components().showToast("Comando para restaurar padrão copiado!", "success");
+      } catch {
+        components().showToast("Não foi possível copiar o comando.", "error");
+      }
+    });
+
+    $("#download-config-toml")?.addEventListener("click", () => {
+      const toml = configTomlSnippet();
+      const blob = new Blob([toml], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "config.toml";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      components().showToast("Download do config.toml iniciado.", "success");
     });
 
     $("#open-booking").addEventListener("click", () => openBooking());

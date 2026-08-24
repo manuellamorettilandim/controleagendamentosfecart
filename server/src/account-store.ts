@@ -182,11 +182,17 @@ export class AccountStore {
         return existing;
       }
 
+      const usedPorts = new Set(registry.accounts.map((a) => a.appServerPort));
+      let assignedPort = options.appServerPort;
+      while (usedPorts.has(assignedPort)) {
+        assignedPort++;
+      }
+
       const account: AccountRecord = {
         accountId,
         label: options.label?.trim() || "Conta principal",
         codeHome: path.resolve(options.codeHome),
-        appServerPort: options.appServerPort,
+        appServerPort: assignedPort,
         enabled: true,
         createdAt: now.toISOString(),
         updatedAt: now.toISOString(),

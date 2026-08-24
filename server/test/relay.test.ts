@@ -7,11 +7,77 @@ import { WebSocket } from "ws";
 import type { RawData } from "ws";
 
 import { hashToken } from "../src/crypto.js";
-import { RelayServer } from "../src/relay.js";
+import {
+  applyModelPolicyToClientFrame,
+  applyModelPolicyToServerFrame,
+  normalizeModelCatalog,
+  RelayServer,
+  type ModelPolicyStream,
+} from "../src/relay.js";
 import { decodeMessage, encodeMessage, PROTOCOL_VERSION, type RelayDevice, type WireMessage } from "../src/protocol.js";
 
 const agentToken = "agent-secret-used-only-by-central-host";
 const deviceToken = "device-secret-shown-once";
+
+test("model catalog is populated from the account API and excludes hidden entries", () => {
+  assert.deepEqual(normalizeModelCatalog({ result: { data: [
+    { id: "gpt-live", displayName: "GPT Live", description: "From API", isDefault: true, defaultReasoningEffort: "medium", hidden: false },
+    { id: "gpt-hidden", displayName: "Hidden", hidden: true },
+    { id: "gpt-live", displayName: "Duplicate", hidden: false },
+  ] } }), [{
+    id: "gpt-live",
+    displayName: "GPT Live",
+    description: "From API",
+    isDefault: true,
+    defaultReasoningEffort: "medium",
+  }]);
+});
+
+test("model policy injects an allowed default, rejects disabled models, and filters model/list", () => {
+  const stream: ModelPolicyStream = {
+    allowedModels: ["gpt-5.6-terra", "gpt-5.4"],
+    pendingModelListRequestIds: new Set(),
+  };
+
+  const injected = applyModelPolicyToClientFrame(JSON.stringify({
+    jsonrpc: "2.0",
+    id: 1,
+    method: "thread/start",
+    params: { cwd: "C:/workspace" },
+  }), stream);
+  assert.equal(injected.error, undefined);
+  assert.equal(JSON.parse(injected.payload ?? "{}").params.model, "gpt-5.6-terra");
+
+  const denied = applyModelPolicyToClientFrame(JSON.stringify({
+    jsonrpc: "2.0",
+    id: 2,
+    method: "turn/start",
+    params: { model: "gpt-5.6-sol" },
+  }), stream);
+  assert.match(denied.error ?? "", /desativado pelo administrador/);
+
+  const modelListRequest = applyModelPolicyToClientFrame(JSON.stringify({
+    jsonrpc: "2.0",
+    id: "models",
+    method: "model/list",
+    params: {},
+  }), stream);
+  assert.ok(modelListRequest.payload);
+
+  const filtered = JSON.parse(applyModelPolicyToServerFrame(JSON.stringify({
+    jsonrpc: "2.0",
+    id: "models",
+    result: {
+      data: [
+        { id: "gpt-5.6-sol" },
+        { id: "gpt-5.6-terra" },
+        { model: "gpt-5.4" },
+      ],
+    },
+  }), stream));
+  assert.deepEqual(filtered.result.data, [{ id: "gpt-5.6-terra" }, { model: "gpt-5.4" }]);
+  assert.equal(stream.pendingModelListRequestIds.size, 0);
+});
 
 function addressPort(relay: RelayServer): number {
   const address = relay.address() as AddressInfo;
@@ -160,7 +226,7 @@ test("relay forwards opaque frames, rejects invalid access, and closes a revoked
     tunnel = await open(`${base}/tunnel`, { Authorization: `Bearer ${agentToken}` });
     tunnel.send(encodeMessage({ v: PROTOCOL_VERSION, type: "register", hostId: "test-host" }));
     tunnel.send(encodeMessage(syncAccounts()));
-    const testDevice = syncDevice();
+    const testDevice = { ...syncDevice(), allowedModels: ["gpt-5.6-sol"] };
     tunnel.send(encodeMessage({ v: PROTOCOL_VERSION, type: "access.sync", devices: [testDevice] }));
     await waitFor(() => relay.status(), (status) => status.ready && status.activeDevices === 1);
 
@@ -170,6 +236,16 @@ test("relay forwards opaque frames, rejects invalid access, and closes a revoked
     const opened = await nextDecodedMessage(tunnel);
     assert.equal(opened.type, "stream.open");
     const streamId = opened.type === "stream.open" ? opened.streamId : "";
+
+    client.send(Buffer.from(JSON.stringify({
+      jsonrpc: "2.0",
+      id: "binary-model-change",
+      method: "turn/start",
+      params: { model: "gpt-5.4-mini" },
+    }), "utf8"));
+    const deniedBinaryModel = await nextClientFrame(client);
+    assert.equal(deniedBinaryModel.binary, true);
+    assert.match(JSON.parse(deniedBinaryModel.data).error.message, /desativado pelo administrador/);
 
     client.send("opaque app-server request");
     const outbound = await nextDecodedMessage(tunnel);
