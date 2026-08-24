@@ -486,7 +486,14 @@
     });
     $("#overview-view").hidden = !overview;
     $("#guides-view").hidden = overview;
-    if (!overview) showGuidePage("home", false);
+    if (!overview) {
+      updateGuideDynamicSnippets();
+      const guide = $("#guide-cli");
+      if (guide) {
+        const plat = state.platform === "macos" ? "macos" : state.platform === "linux" ? "linux" : "windows";
+        setGuidePlatform(guide, plat);
+      }
+    }
     if (overview && state.calendar) window.setTimeout(() => state.calendar.updateSize?.(), 40);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -506,17 +513,15 @@
     });
   }
 
-  function showGuidePage(name, updateHistory = true) {
-    const page = name === "cli" || name === "app" ? name : "home";
-    $("#guides-home").hidden = page !== "home";
-    $("#guide-cli").hidden = page !== "cli";
-    $("#guide-app").hidden = page !== "app";
-    if (page === "cli") {
-      updateGuideDynamicSnippets();
+  function showGuidePage(_name = "unified", updateHistory = true) {
+    updateGuideDynamicSnippets();
+    const guide = $("#guide-cli");
+    if (guide) {
+      const plat = state.platform === "macos" ? "macos" : state.platform === "linux" ? "linux" : "windows";
+      setGuidePlatform(guide, plat);
     }
     if (updateHistory) {
-      const hash = page === "home" ? "#guides" : `#guides/${page}`;
-      window.history.pushState({ guide: page }, "", hash);
+      window.history.pushState({ guide: "unified" }, "", "#guides");
     }
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -536,10 +541,8 @@
   }
 
   function restoreGuideFromLocation() {
-    const match = window.location.hash.match(/^#guides\/(cli|app)$/);
-    if (window.location.hash === "#guides" || match) {
+    if (window.location.hash.startsWith("#guide")) {
       activateTab("guides");
-      showGuidePage(match?.[1] || "home", false);
       return;
     }
     activateTab("overview");
@@ -1219,25 +1222,28 @@
     document.querySelectorAll(".main-tab").forEach((tab) => tab.addEventListener("click", () => {
       if (tab.dataset.tab === "guides") {
         activateTab("guides");
-        showGuidePage("home");
+        showGuidePage("unified");
         return;
       }
       window.history.pushState({}, "", window.location.pathname);
       activateTab("overview");
     }));
-    $("#guides-back").addEventListener("click", () => {
+    $("#guides-back")?.addEventListener("click", () => {
       window.history.pushState({}, "", window.location.pathname);
       activateTab("overview");
     });
     $("#help-button").addEventListener("click", () => {
       activateTab("guides");
-      showGuidePage("home");
+      showGuidePage("unified");
     });
     document.querySelectorAll("[data-open-guide]").forEach((button) => button.addEventListener("click", () => {
       activateTab("guides");
-      showGuidePage(button.dataset.openGuide);
+      showGuidePage("unified");
     }));
-    document.querySelectorAll("[data-guide-back]").forEach((button) => button.addEventListener("click", () => showGuidePage("home")));
+    document.querySelectorAll("[data-guide-back]").forEach((button) => button.addEventListener("click", () => {
+      window.history.pushState({}, "", window.location.pathname);
+      activateTab("overview");
+    }));
     document.querySelectorAll("[data-guide-platform]").forEach((button) => button.addEventListener("click", () => {
       setGuidePlatform(button.closest(".guide-detail"), button.dataset.guidePlatform);
     }));

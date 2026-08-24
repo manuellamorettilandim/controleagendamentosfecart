@@ -151,33 +151,32 @@
         </section>
 
         <section id="guides-view" class="tab-view guides-view" role="tabpanel" aria-labelledby="tab-guides" hidden>
-          <section id="guides-home" class="guide-page">
-            <div class="guides-intro"><div><span class="section-kicker">Central de ajuda</span><h1>Como você quer usar o Codex?</h1><p>Escolha uma ferramenta para abrir o guia completo de instalação, configuração e acesso.</p></div><button id="guides-back" class="secondary-button" type="button"><i class="ph ph-arrow-left" aria-hidden="true"></i> Voltar para visão geral</button></div>
-            <div class="guide-tool-grid">
-              <button class="guide-tool-card panel" type="button" data-open-guide="cli">
-                <span class="guide-tool-art is-cli"><i class="ph ph-terminal-window" aria-hidden="true"></i></span>
-                <span class="guide-tool-copy"><span class="guide-availability is-ready"><i class="ph ph-check-circle" aria-hidden="true"></i>Acesso temporário disponível</span><strong>Guia do Codex CLI</strong><span>Instale no Windows ou macOS, copie o comando da sua sessão e trabalhe no terminal.</span><small>Abrir guia <i class="ph ph-arrow-right" aria-hidden="true"></i></small></span>
-              </button>
-              <button class="guide-tool-card panel" type="button" data-open-guide="app">
-                <span class="guide-tool-art is-app"><i class="ph ph-app-window" aria-hidden="true"></i></span>
-                <span class="guide-tool-copy"><span class="guide-availability is-ready"><i class="ph ph-check-circle" aria-hidden="true"></i>Acesso temporário por SSH</span><strong>Guia do Codex App</strong><span>Instale o aplicativo no Windows ou macOS e conecte ao workspace remoto da sua sessão.</span><small>Abrir guia <i class="ph ph-arrow-right" aria-hidden="true"></i></small></span>
-              </button>
-            </div>
-          </section>
-
-          <section id="guide-cli" class="guide-page guide-detail" hidden>
+          <section id="guide-cli" class="guide-page guide-detail">
             <header class="guide-detail-header">
-              <button class="guide-back-button" type="button" data-guide-back>
-                <i class="ph ph-arrow-left" aria-hidden="true"></i>Todos os guias
-              </button>
-              <div class="guide-detail-heading">
-                <span class="guide-tool-art is-cli"><i class="ph ph-terminal-window" aria-hidden="true"></i></span>
-                <div>
-                  <span class="guide-availability is-ready"><i class="ph ph-check-circle" aria-hidden="true"></i>Configuração Unificada</span>
-                  <h1>Guia de Configuração: Codex CLI & Desktop App</h1>
-                  <p>Aprenda a instalar, ativar o provedor compartilhado do FECART ou desinstalar para voltar à sua conta pessoal.</p>
+              <div class="guide-detail-header-main">
+                <button class="guide-back-button" type="button" data-go-overview>
+                  <i class="ph ph-arrow-left" aria-hidden="true"></i>
+                  <span>Voltar para a Visão Geral</span>
+                </button>
+                <div class="guide-detail-heading">
+                  <span class="guide-tool-art is-cli"><i class="ph ph-terminal-window" aria-hidden="true"></i></span>
+                  <div>
+                    <span class="guide-availability is-ready"><i class="ph ph-check-circle" aria-hidden="true"></i>Guia Unificado</span>
+                    <h1>Guia de Configuração: Codex CLI &amp; ChatGPT Desktop</h1>
+                    <p>Aprenda a instalar, ativar o provedor compartilhado do FECART ou desinstalar para voltar à sua conta pessoal.</p>
+                  </div>
                 </div>
               </div>
+
+              <aside class="guide-support-box panel">
+                <div class="guide-support-icon">
+                  <i class="ph ph-chats-circle" aria-hidden="true"></i>
+                </div>
+                <div class="guide-support-content">
+                  <strong>Precisa de ajuda ou tem dúvidas?</strong>
+                  <p>Em caso de qualquer dúvida, problema com agendamento ou configuração, contate o <strong>Comitê de Gestão de Projetos</strong> (qualquer integrante) ou o <strong>representante da sua sala</strong>.</p>
+                </div>
+              </aside>
             </header>
 
             <div class="guide-platform-switch" role="tablist" aria-label="Sistema operacional">
@@ -190,7 +189,7 @@
               <div class="guide-notice-icon"><i class="ph ph-info" aria-hidden="true"></i></div>
               <div class="guide-notice-content">
                 <strong>Compatibilidade Total entre CLI e App Desktop</strong>
-                <p>O <strong>Codex CLI</strong> (terminal) e o <strong>Codex App</strong> (aplicativo desktop) utilizam o mesmo arquivo de configuração (<code>config.toml</code>). Ao ativar a configuração abaixo, ambos passam a usar o provedor compartilhado. Para voltar a usar qualquer <strong>conta pessoal</strong> ou o padrão oficial da OpenAI a qualquer momento, basta utilizar os comandos de <strong>Desinstalar / Restaurar</strong>.</p>
+                <p>O <strong>Codex CLI</strong> (terminal) e o <strong>ChatGPT Desktop</strong> (aplicativo) utilizam o mesmo arquivo de configuração (<code>config.toml</code>). Ao ativar a configuração abaixo, ambos passam a usar o provedor compartilhado. Para voltar a usar qualquer <strong>conta pessoal</strong> ou o padrão oficial da OpenAI a qualquer momento, basta utilizar os comandos de <strong>Desinstalar / Restaurar</strong>.</p>
               </div>
             </div>
 
@@ -199,7 +198,7 @@
               <article class="guide-section-card panel">
                 <div class="section-badge-header">
                   <span class="section-number-pill">1</span>
-                  <h2>Instalação do Codex</h2>
+                  <h2>Instalação do Codex &amp; ChatGPT</h2>
                 </div>
                 <p class="section-sub-desc">Instale o CLI no seu terminal ou baixe o aplicativo desktop oficial da OpenAI:</p>
                 <div class="guide-install-grid">
@@ -231,73 +230,72 @@
                 </div>
               </article>
 
-              <!-- Section 2: Quick Method (Side by Side: Config vs Uninstall) -->
+              <!-- Section 2: Quick Method -->
               <article class="guide-section-card panel">
                 <div class="section-badge-header">
                   <span class="section-number-pill">2</span>
                   <h2>Método Fácil: 1 Clique no Terminal (Ativar vs Desinstalar)</h2>
                 </div>
                 <p class="section-sub-desc">Copie e cole o comando no terminal do seu sistema para aplicar ou remover a configuração automaticamente:</p>
-                
-                <div class="guide-side-by-side-grid">
-                  <!-- Col 1: Install / Configure -->
-                  <div class="guide-action-box is-config">
+
+                <div class="guide-actions-grid">
+                  <!-- Auto Config Box -->
+                  <div class="action-box is-config">
                     <div class="action-box-header">
                       <div class="action-box-title">
-                        <i class="ph ph-magic-wand"></i>
-                        <div>
-                          <strong>Ativar / Configurar FECART</strong>
-                          <small>Cria o <code>config.toml</code> com as rotas do proxy</small>
-                        </div>
+                        <i class="ph ph-check-circle"></i>
+                        <strong>Ativar / Configurar FECART</strong>
                       </div>
-                      <button class="primary-button copy-cmd-btn" id="copy-auto-config" type="button"><i class="ph ph-copy"></i><span>Copiar comando</span></button>
+                      <button id="copy-auto-config" class="primary-button copy-mini-btn" type="button">
+                        <i class="ph ph-copy"></i><span>Copiar comando</span>
+                      </button>
                     </div>
+                    <p class="action-box-desc">Cria backup do seu <code>config.toml</code> atual e configura o acesso compartilhado da FECART.</p>
+                    
                     <div data-platform-copy="windows">
-                      <pre><code data-auto-config-cmd="windows"></code></pre>
+                      <pre class="terminal-preview"><code data-auto-config-cmd="windows"></code></pre>
                     </div>
                     <div data-platform-copy="macos" hidden>
-                      <pre><code data-auto-config-cmd="macos"></code></pre>
+                      <pre class="terminal-preview"><code data-auto-config-cmd="macos"></code></pre>
                     </div>
                     <div data-platform-copy="linux" hidden>
-                      <pre><code data-auto-config-cmd="linux"></code></pre>
+                      <pre class="terminal-preview"><code data-auto-config-cmd="linux"></code></pre>
                     </div>
                   </div>
 
-                  <!-- Col 2: Uninstall / Restore -->
-                  <div class="guide-action-box is-restore">
+                  <!-- Restore / Uninstall Box -->
+                  <div class="action-box is-restore">
                     <div class="action-box-header">
                       <div class="action-box-title">
                         <i class="ph ph-arrow-counter-clockwise"></i>
-                        <div>
-                          <strong>Desinstalar / Restaurar Padrão</strong>
-                          <small>Remove a configuração para usar conta pessoal da OpenAI</small>
-                        </div>
+                        <strong>Desinstalar / Restaurar Padrão</strong>
                       </div>
-                      <button class="secondary-button copy-cmd-btn" id="copy-restore-config" type="button"><i class="ph ph-copy"></i><span>Copiar comando</span></button>
+                      <button id="copy-restore-config" class="secondary-button copy-mini-btn" type="button">
+                        <i class="ph ph-copy"></i><span>Copiar comando</span>
+                      </button>
                     </div>
+                    <p class="action-box-desc">Restaura seu backup original ou remove a configuração da FECART para voltar à sua conta pessoal.</p>
+                    
                     <div data-platform-copy="windows">
-                      <pre><code data-restore-config-cmd="windows"></code></pre>
+                      <pre class="terminal-preview"><code data-restore-config-cmd="windows"></code></pre>
                     </div>
                     <div data-platform-copy="macos" hidden>
-                      <pre><code data-restore-config-cmd="macos"></code></pre>
+                      <pre class="terminal-preview"><code data-restore-config-cmd="macos"></code></pre>
                     </div>
                     <div data-platform-copy="linux" hidden>
-                      <pre><code data-restore-config-cmd="linux"></code></pre>
+                      <pre class="terminal-preview"><code data-restore-config-cmd="linux"></code></pre>
                     </div>
                   </div>
                 </div>
-                <div class="guide-download-row">
-                  <button id="download-config-toml" class="secondary-button" type="button"><i class="ph ph-download-simple"></i><span>Baixar arquivo config.toml pronto</span></button>
-                </div>
               </article>
 
-              <!-- Section 3: Manual Step by Step (Configure and Uninstall) -->
+              <!-- Section 3: Manual Step-by-Step -->
               <article class="guide-section-card panel">
                 <div class="section-badge-header">
                   <span class="section-number-pill">3</span>
-                  <h2>Método Manual: Passo a Passo</h2>
+                  <h2>Método Manual Passo a Passo</h2>
                 </div>
-                <p class="section-sub-desc">Se preferir editar o arquivo de configuração manualmente no seu editor de texto:</p>
+                <p class="section-sub-desc">Se preferir editar o arquivo diretamente no seu editor:</p>
 
                 <div class="guide-manual-steps">
                   <div class="manual-step-item">
@@ -384,26 +382,6 @@
                 </div>
                 <button class="primary-button" type="button" data-go-overview><i class="ph ph-arrow-left"></i><span>Voltar para o Painel de Acesso</span></button>
               </article>
-            </div>
-          </section>
-
-          <section id="guide-app" class="guide-page guide-detail" hidden>
-            <header class="guide-detail-header"><button class="guide-back-button" type="button" data-guide-back><i class="ph ph-arrow-left" aria-hidden="true"></i>Todos os guias</button><div class="guide-detail-heading"><span class="guide-tool-art is-app"><i class="ph ph-app-window" aria-hidden="true"></i></span><div><span class="guide-availability is-ready"><i class="ph ph-check-circle" aria-hidden="true"></i>Suporte por SSH</span><h1>Codex App</h1><p>Use o aplicativo no Windows ou macOS conectado ao ambiente remoto da sessão.</p></div></div></header>
-            <div class="guide-platform-switch" role="tablist" aria-label="Sistema operacional"><button class="is-active" type="button" role="tab" aria-selected="true" data-guide-platform="windows"><i class="ph ph-windows-logo" aria-hidden="true"></i>Windows</button><button type="button" role="tab" aria-selected="false" data-guide-platform="macos"><i class="ph ph-apple-logo" aria-hidden="true"></i>macOS</button></div>
-            <aside class="guide-app-warning"><i class="ph ph-shield-check" aria-hidden="true"></i><div><strong>O App usa uma chave SSH temporária, não o token do CLI</strong><p>A chave aparece em Geral &gt; Acesso temporário somente durante a sessão ativa. Revogar, desabilitar ou deixar a sessão expirar também encerra o acesso SSH.</p></div></aside>
-            <div class="guide-steps">
-              <article class="guide-step panel"><span class="guide-step-number">1</span><div><h2>Instale e abra o aplicativo</h2><div data-platform-copy="windows"><p>Acesse a página oficial, escolha <strong>Windows</strong> e conclua a instalação. Confirme também que o recurso <strong>Cliente OpenSSH</strong> está instalado no Windows.</p></div><div data-platform-copy="macos" hidden><p>Acesse a página oficial, escolha <strong>macOS</strong> e mova o aplicativo para a pasta Aplicativos quando solicitado. O cliente SSH já acompanha o macOS.</p></div><p>Entre no aplicativo com sua conta pessoal do ChatGPT; a conta compartilhada da sessão permanece autenticada somente no host.</p><a class="guide-doc-link" href="https://learn.chatgpt.com/docs/app" target="_blank" rel="noopener noreferrer">Abrir download oficial <i class="ph ph-arrow-square-out" aria-hidden="true"></i></a></div></article>
-              <article class="guide-step panel"><span class="guide-step-number">2</span><div><h2>Ative sua sessão no site</h2><ol><li>Faça um agendamento e aguarde a aprovação.</li><li>Durante o horário aprovado, abra <strong>Geral &gt; Acesso temporário</strong>.</li><li>Selecione <strong>Codex App</strong> e baixe a chave privada.</li></ol><p class="guide-security"><i class="ph ph-key" aria-hidden="true"></i>A chave é exclusiva da sessão. O guia nunca mostra uma chave ou token real.</p></div></article>
-              <article class="guide-step panel"><span class="guide-step-number">3</span><div><h2>Instale a chave na pasta SSH</h2><div data-platform-copy="windows"><p>Mova o arquivo baixado para <code>%USERPROFILE%\.ssh</code> e mantenha o nome exibido no download.</p><pre><code>New-Item -ItemType Directory -Force "$HOME\.ssh"
-Move-Item "$HOME\Downloads\fecart-••••••••_ed25519" "$HOME\.ssh\fecart-••••••••_ed25519"
-icacls "$HOME\.ssh\fecart-••••••••_ed25519" /inheritance:r /grant:r "$($env:USERNAME):(R)"</code></pre></div><div data-platform-copy="macos" hidden><p>No Terminal, mova a chave e restrinja as permissões:</p><pre><code>mkdir -p ~/.ssh
-mv ~/Downloads/fecart-••••••••_ed25519 ~/.ssh/
-chmod 600 ~/.ssh/fecart-••••••••_ed25519</code></pre></div></div></article>
-              <article class="guide-step panel"><span class="guide-step-number">4</span><div><h2>Adicione o host ao SSH</h2><p>No card do Codex App, clique em <strong>Copiar configuração SSH</strong> e cole o conteúdo no arquivo <code>~/.ssh/config</code>. O exemplo é propositalmente mascarado:</p><pre><code>Host fecart-••••••••
-  HostName servidor.exemplo
-  User fecart-host
-  IdentityFile ~/.ssh/fecart-••••••••_ed25519</code></pre><p class="guide-check"><i class="ph ph-check" aria-hidden="true"></i>Confira sem conectar usando <code>ssh -G fecart-••••••••</code>.</p></div></article>
-              <article class="guide-step panel guide-step-wide"><span class="guide-step-number">5</span><div><h2>Abra o workspace remoto no App</h2><ol><li>No Codex App, abra <strong>Settings &gt; Connections &gt; SSH</strong>.</li><li>Adicione o host cujo nome aparece no card de acesso.</li><li>Escolha a pasta remota mostrada em <strong>Pasta remota</strong>.</li><li>Inicie a conversa. Arquivos e comandos dessa conversa rodam no ambiente remoto.</li></ol><p class="guide-note"><i class="ph ph-warning" aria-hidden="true"></i>Salve ou envie seu trabalho antes do fim da sessão. A conexão é encerrada automaticamente quando o acesso termina.</p><a class="guide-doc-link" href="https://learn.chatgpt.com/docs/remote-connections" target="_blank" rel="noopener noreferrer">Documentação oficial de conexões SSH <i class="ph ph-arrow-square-out" aria-hidden="true"></i></a></div></article>
             </div>
           </section>
         </section>
