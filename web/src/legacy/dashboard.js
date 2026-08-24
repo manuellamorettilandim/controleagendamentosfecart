@@ -716,7 +716,7 @@
       const usage = upcoming ? sessionUsage(upcoming, null) : { budget: 0, remaining: 0, remainingPercent: 0 };
       components().setProgress($("#session-progress"), upcoming ? 100 : 0, upcoming ? `${formatCountdown(untilStart)} até a próxima sessão` : "Nenhuma sessão aprovada");
       components().setProgress($("#quota-progress"), upcoming ? 100 : 0, upcoming ? `${usage.budget}% aprovados para a próxima sessão` : "Sem uso aprovado");
-      $("#session-percent").textContent = upcoming ? "100%" : "0%";
+      $("#session-percent").textContent = upcoming ? "100%" : "—";
       $("#session-time").textContent = upcoming ? formatCountdown(untilStart) : "—";
       $("#session-time-total").textContent = upcoming ? `começa ${components().formatDateTime(upcoming.starts_at)}` : "sem sessão aprovada";
       $("#quota-percent").textContent = upcoming ? "100%" : "—";
