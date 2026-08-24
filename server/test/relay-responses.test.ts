@@ -123,6 +123,7 @@ test("Relay routes POST /api/codex/v1/responses to HostAgent and streams SSE bac
       RELAY_URL: `ws://127.0.0.1:${relayAddress.port}`,
       RELAY_AGENT_TOKEN: agentToken,
       RELAY_HOST_ID: "host-test-responses",
+      HOST_SKIP_APP_SERVER: "1",
       APP_SERVER_PORT: String(appPort),
       CODEX_APP_SERVER_TOKEN_FILE: path.join(codexHome, "app-server.token"),
       CODEX_ACCOUNT_REGISTRY: path.join(directory, "accounts.json"),
