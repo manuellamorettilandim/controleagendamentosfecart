@@ -11,6 +11,13 @@
         </nav>
 
         <div class="top-actions">
+          <div class="user-profile-badge" id="user-profile-badge" title="Grupo e usuário logado">
+            <span class="user-avatar-icon"><i class="ph ph-users-three" aria-hidden="true"></i></span>
+            <div class="user-profile-info">
+              <strong id="user-group-name">Carregando…</strong>
+              <small id="user-username">usuário</small>
+            </div>
+          </div>
           <button id="theme-toggle" class="top-action icon-only" type="button" aria-label="Ativar tema claro" aria-pressed="true" title="Alternar tema">
             <i class="ph ph-sun" aria-hidden="true"></i>
           </button>
@@ -99,7 +106,7 @@
 
           <section class="summary-grid" aria-label="Resumo da conta">
             <article class="panel stats-card" aria-labelledby="stats-title">
-              <header class="panel-heading"><div class="heading-icon"><i class="ph ph-chart-bar" aria-hidden="true"></i></div><h2 id="stats-title">Estatísticas gerais de uso do grupo</h2></header>
+              <header class="panel-heading"><div class="heading-icon"><i class="ph ph-chart-bar" aria-hidden="true"></i></div><h2 id="stats-title">Estatísticas de uso: <span id="stats-group-label" class="stats-group-pill">Carregando…</span></h2></header>
               <dl class="metric-list">
                 <div><dt>Solicitações aprovadas</dt><dd id="stat-approved">—</dd><small>últimos 30 dias</small></div>
                 <div><dt>Horas utilizadas</dt><dd id="stat-hours">—</dd><small>últimos 30 dias</small></div>

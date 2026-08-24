@@ -633,6 +633,19 @@
     }
   }
 
+  function renderUserProfile() {
+    const profile = state.data?.profile || null;
+    const groupName = profile?.group_name || "Grupo";
+    const username = profile?.username ? `@${profile.username}` : "";
+    const groupEl = $("#user-group-name");
+    const userEl = $("#user-username");
+    if (groupEl) groupEl.textContent = groupName;
+    if (userEl) userEl.textContent = username;
+
+    const statsGroupLabel = $("#stats-group-label");
+    if (statsGroupLabel) statsGroupLabel.textContent = groupName;
+  }
+
   function renderStats() {
     const cutoff = now().getTime() - 30 * 24 * 60 * 60_000;
     const allReservations = (state.data?.reservations || []).filter((item) => Date.parse(item.starts_at) >= cutoff);
@@ -1374,6 +1387,7 @@
   }
 
   function renderAll() {
+    renderUserProfile();
     renderAccounts();
     renderBookingOptions();
     renderToken();
