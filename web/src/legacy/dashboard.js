@@ -550,53 +550,45 @@
     }
     const usable = sessionTokenAvailable(reservation);
     const token = usable ? tokenFor(reservation) : null;
-    const app = usable ? appAccessFor(reservation) : null;
-    const tokenNode = $("#session-token");
     const toggle = $("#toggle-token");
-    const tokenLine = $("#token-copy-line");
-    const cliLine = $("#cli-copy-line");
     const visible = Boolean(token && state.tokenVisible);
-    tokenNode.dataset.token = token || "";
-    tokenNode.textContent = visible ? token : "••••••••••••••••••••••••";
-    toggle.disabled = !token;
-    toggle.setAttribute("aria-pressed", String(visible));
-    toggle.setAttribute("aria-label", visible ? "Ocultar token" : "Mostrar token");
-    toggle.innerHTML = `<i class="ph ${visible ? "ph-eye-slash" : "ph-eye"}" aria-hidden="true"></i><span>${visible ? "Ocultar" : "Mostrar"}</span>`;
-    document.querySelectorAll("[data-cli-access]").forEach((node) => { node.hidden = state.accessProduct !== "cli"; });
-    $("#app-access-panel").hidden = state.accessProduct !== "app";
-    document.querySelectorAll("[data-access-product]").forEach((button) => {
-      const active = button.dataset.accessProduct === state.accessProduct;
-      button.classList.toggle("is-active", active);
-      button.setAttribute("aria-pressed", String(active));
-    });
-    $("#app-ssh-alias").textContent = app?.alias || "—";
-    $("#app-workspace-path").textContent = app?.workspacePath || "—";
-    $("#app-access-expiry").textContent = app?.expiresAt ? components().formatDateTime(new Date(app.expiresAt)) : "—";
-    $("#app-access-summary").textContent = app
-      ? "Chave pronta. Instale-a no SSH e selecione este host no Codex App."
-      : state.activationInFlight
-        ? "Preparando a conexão SSH temporária…"
-        : "Disponível durante uma sessão aprovada e ativa.";
-    $("#download-app-key").disabled = !app;
-    $("#copy-app-ssh-config").disabled = !app;
-    $("#access-copy-status").textContent = state.activationInFlight
-      ? "Gerando as credenciais temporárias no host central…"
-      : state.activationError
-        ? state.activationError
-        : sessionLimitReached(reservation)
-          ? "A cota desta sessão foi atingida; o token foi bloqueado."
-          : token
-            ? state.accessProduct === "app"
-              ? (app ? "Conexão do Codex App pronta. Baixe a chave e copie a configuração SSH." : "O host ainda não publicou o acesso SSH do Codex App.")
-              : (visible ? "Comando pronto e token manual revelado. Oculte-o quando terminar." : "Comando pronto para o terminal selecionado; o token permanece protegido.")
-            : "O acesso temporário aparece quando houver uma sessão ativa neste navegador.";
+
+    if (toggle) {
+      toggle.disabled = !token;
+      toggle.setAttribute("aria-pressed", String(visible));
+      toggle.setAttribute("aria-label", visible ? "Ocultar token" : "Mostrar token");
+      toggle.innerHTML = `<i class="ph ${visible ? "ph-eye-slash" : "ph-eye"}" aria-hidden="true"></i>`;
+    }
 
     const commandNode = $("#cli-command");
     const maskedToken = "••••••••••••••••";
     const displayToken = visible && token ? token : maskedToken;
-    commandNode.textContent = cliCommandFor(displayToken, state.platform);
+    if (commandNode) {
+      commandNode.textContent = cliCommandFor(displayToken, state.platform);
+    }
     const copyCommand = $("#copy-cli-command");
-    copyCommand.disabled = !token;
+    if (copyCommand) {
+      copyCommand.disabled = !token;
+    }
+
+    document.querySelectorAll("[data-platform-select]").forEach((button) => {
+      const active = button.dataset.platformSelect === state.platform;
+      button.classList.toggle("is-active", active);
+      button.setAttribute("aria-selected", String(active));
+    });
+
+    const statusEl = $("#access-copy-status");
+    if (statusEl) {
+      statusEl.textContent = state.activationInFlight
+        ? "Gerando as credenciais temporárias no host central…"
+        : state.activationError
+          ? state.activationError
+          : sessionLimitReached(reservation)
+            ? "A cota desta sessão foi atingida; o token foi bloqueado."
+            : token
+              ? (visible ? "Comando pronto com token visível. Oculte-o quando terminar." : "Comando pronto para o terminal selecionado.")
+              : "Copie o comando e execute no terminal do seu projeto durante a sessão ativa.";
+    }
   }
 
   function renderStats() {
@@ -1226,7 +1218,7 @@
       if (event.key === "Escape") toggleNotifications(false);
     });
 
-    $("#toggle-token").addEventListener("click", () => {
+    $("#toggle-token")?.addEventListener("click", () => {
       if (!sessionTokenAvailable(activeReservation())) {
         components().showToast("O token só está disponível durante uma sessão ativa.", "warning");
         return;
@@ -1234,29 +1226,11 @@
       state.tokenVisible = !state.tokenVisible;
       renderToken();
     });
-    $("#access-platform").value = state.platform;
-    $("#access-platform").addEventListener("change", (event) => {
-      state.platform = ["powershell", "cmd", "macos", "linux"].includes(event.target.value) ? event.target.value : "powershell";
-      renderToken();
-    });
-    document.querySelectorAll("[data-access-product]").forEach((button) => button.addEventListener("click", () => {
-      state.accessProduct = button.dataset.accessProduct === "app" ? "app" : "cli";
-      renderToken();
-    }));
-    $("#download-app-key").addEventListener("click", () => {
-      const app = appAccessFor(activeReservation());
-      if (!app) {
-        components().showToast("A chave do Codex App só fica disponível durante a sessão ativa.", "warning");
-        return;
-      }
-      const blob = new Blob([app.privateKey], { type: "application/x-pem-file" });
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = appKeyFilename(app);
-      anchor.click();
-      window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
-      components().showToast("Chave temporária baixada.", "success");
+    document.querySelectorAll("[data-platform-select]").forEach((button) => {
+      button.addEventListener("click", () => {
+        state.platform = ["powershell", "cmd", "macos", "linux"].includes(button.dataset.platformSelect) ? button.dataset.platformSelect : "powershell";
+        renderToken();
+      });
     });
     $("#copy-app-ssh-config").addEventListener("click", async () => {
       const app = appAccessFor(activeReservation());

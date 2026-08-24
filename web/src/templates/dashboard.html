@@ -34,69 +34,50 @@
 
       <main class="dashboard-main">
         <section id="overview-view" class="tab-view" role="tabpanel" aria-labelledby="tab-overview">
-          <section class="token-card panel" aria-labelledby="token-title">
-            <div class="token-main">
-              <div class="section-kicker"><i class="ph ph-key" aria-hidden="true"></i><span>Acesso temporário</span></div>
-              <h1 id="token-title">Seu acesso</h1>
-              <p>Agende uma janela, aguarde o início e escolha o terminal do seu sistema.</p>
-              <div class="access-setup-banner" data-cli-access>
-                <div class="access-setup-icon"><i class="ph ph-sliders-horizontal" aria-hidden="true"></i></div>
-                <div class="access-setup-content">
-                  <strong>Configuração necessária (apenas 1 vez)</strong>
-                  <span>Configure o terminal antes de rodar o comando pela primeira vez.</span>
-                </div>
-                <button class="access-setup-button" type="button" data-open-guide="cli">
-                  <span>Abrir Guia CLI</span>
-                  <i class="ph ph-arrow-right" aria-hidden="true"></i>
+          <section class="panel access-card" aria-labelledby="access-title">
+            <div class="access-card-header">
+              <div class="access-card-heading">
+                <div class="section-kicker"><i class="ph ph-terminal-window" aria-hidden="true"></i><span>Codex CLI</span></div>
+                <h1 id="access-title">Comando de Acesso</h1>
+                <p id="access-copy-status">Copie o comando e execute no terminal do seu projeto durante a sessão ativa.</p>
+              </div>
+              <div class="access-card-actions">
+                <button type="button" class="secondary-button" data-open-guide="cli">
+                  <i class="ph ph-sliders-horizontal" aria-hidden="true"></i>
+                  <span>Guia de Configuração</span>
+                </button>
+                <button id="open-booking-top" class="primary-button" type="button">
+                  <i class="ph ph-calendar-plus" aria-hidden="true"></i>
+                  <span>Agendar horário</span>
                 </button>
               </div>
-              <div class="access-product-picker" role="group" aria-label="Aplicativo do Codex">
-                <button class="access-product is-active" type="button" aria-pressed="true" data-access-product="cli"><i class="ph ph-terminal-window" aria-hidden="true"></i>Codex CLI</button>
-                <button class="access-product" type="button" aria-pressed="false" data-access-product="app"><i class="ph ph-app-window" aria-hidden="true"></i>Codex App</button>
-              </div>
-              <div class="access-copy-picker" data-cli-access>
-                <label for="access-platform">Terminal</label>
-                <div class="access-copy-select">
-                  <i class="ph ph-desktop" aria-hidden="true"></i>
-                  <select id="access-platform" aria-label="Terminal para o comando">
-                    <option value="powershell">Windows PowerShell</option>
-                    <option value="cmd">Windows CMD</option>
-                    <option value="macos">macOS</option>
-                    <option value="linux">Linux</option>
-                  </select>
-                </div>
-              </div>
-              <div id="cli-copy-line" class="access-copy-line command-row" data-cli-access>
-                <i class="ph ph-command command-prefix" aria-hidden="true"></i>
-                <code id="cli-command">••••••••••••••••••••••••••••••••••••••••</code>
-                <button id="copy-cli-command" class="inline-action" type="button"><i class="ph ph-copy" aria-hidden="true"></i><span>Copiar</span></button>
-              </div>
-              <div id="token-copy-line" class="access-copy-line token-row" aria-label="Token manual" data-cli-access>
-                <i class="ph ph-terminal-window token-prefix" aria-hidden="true"></i>
-                <code id="session-token" data-token="">••••••••••••••••••••</code>
-                <div class="token-actions">
-                  <button id="toggle-token" class="inline-action" type="button" aria-label="Mostrar token" aria-pressed="false"><i class="ph ph-eye" aria-hidden="true"></i><span>Mostrar</span></button>
-                  <button id="copy-token" class="inline-action" type="button"><i class="ph ph-copy" aria-hidden="true"></i><span>Copiar</span></button>
-                </div>
-              </div>
-              <div id="app-access-panel" class="app-access-panel" data-app-access hidden>
-                <div class="app-access-heading"><i class="ph ph-lock-key-open" aria-hidden="true"></i><div><strong>Conexão SSH temporária</strong><span id="app-access-summary">Disponível durante a sessão aprovada.</span></div></div>
-                <dl class="app-access-details"><div><dt>Host no Codex App</dt><dd id="app-ssh-alias">—</dd></div><div><dt>Pasta remota</dt><dd id="app-workspace-path">—</dd></div><div><dt>Expira em</dt><dd id="app-access-expiry">—</dd></div></dl>
-                <div class="app-access-actions"><button id="download-app-key" class="primary-button" type="button"><i class="ph ph-download-simple" aria-hidden="true"></i>Baixar chave privada</button><button id="copy-app-ssh-config" class="secondary-button" type="button"><i class="ph ph-copy" aria-hidden="true"></i>Copiar configuração SSH</button></div>
-                <p class="app-access-note"><i class="ph ph-shield-check" aria-hidden="true"></i>A chave funciona somente nesta sessão e é removida do host ao revogar, desabilitar ou expirar o acesso.</p>
-              </div>
-              <p id="access-copy-status" class="component-status" role="status"></p>
             </div>
-            <div class="token-help">
-              <i class="ph ph-question-mark help-mark" aria-hidden="true"></i>
-              <div>
-                <h2>Fluxo rápido</h2>
-                <div class="token-help-steps">
-                  <div class="help-step"><span class="step-badge">1</span><p><strong>Configuração única:</strong> Aplique no Guia CLI antes de começar.</p></div>
-                  <div class="help-step"><span class="step-badge">2</span><p><strong>Agendamento:</strong> Reserve um horário no calendário.</p></div>
-                  <div class="help-step"><span class="step-badge">3</span><p><strong>Execução:</strong> Copie e cole o comando no terminal do projeto.</p></div>
+
+            <div class="access-command-box">
+              <div class="access-platform-row">
+                <span class="access-platform-label"><i class="ph ph-desktop" aria-hidden="true"></i> Terminal:</span>
+                <div class="access-platform-tabs" role="tablist" aria-label="Terminal">
+                  <button type="button" role="tab" class="platform-tab is-active" data-platform-select="powershell">Windows PowerShell</button>
+                  <button type="button" role="tab" class="platform-tab" data-platform-select="cmd">Windows CMD</button>
+                  <button type="button" role="tab" class="platform-tab" data-platform-select="macos">macOS</button>
+                  <button type="button" role="tab" class="platform-tab" data-platform-select="linux">Linux</button>
                 </div>
-                <button id="open-booking-top" class="primary-button token-booking-button" type="button"><i class="ph ph-calendar-plus" aria-hidden="true"></i><span>Agendar horário</span></button>
+              </div>
+
+              <div class="access-terminal-line">
+                <div class="terminal-text-area">
+                  <span class="terminal-prompt">$</span>
+                  <code id="cli-command">••••••••••••••••••••••••••••••••••••••••</code>
+                </div>
+                <div class="terminal-actions">
+                  <button id="toggle-token" class="secondary-button icon-only-btn" type="button" aria-label="Mostrar token" title="Mostrar ou ocultar token" aria-pressed="false">
+                    <i class="ph ph-eye" aria-hidden="true"></i>
+                  </button>
+                  <button id="copy-cli-command" class="primary-button copy-command-btn" type="button">
+                    <i class="ph ph-copy" aria-hidden="true"></i>
+                    <span>Copiar comando</span>
+                  </button>
+                </div>
               </div>
             </div>
           </section>
