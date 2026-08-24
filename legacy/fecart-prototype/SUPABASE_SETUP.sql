@@ -27,58 +27,15 @@ CREATE TABLE IF NOT EXISTS public.appointments (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- 3. Inserir Todos os Usuários e Senhas da Lista Inicial
-INSERT INTO public.users (username, password, turma) VALUES
-  -- 1IA - A
-  ('fecurity', '"joao01@"'::jsonb, '1IA - A'),
-  ('itech', '"luis02@"'::jsonb, '1IA - A'),
-  ('olhardasmaquinas', '"arthur03@"'::jsonb, '1IA - A'),
-  ('tps', '"eduardo04@"'::jsonb, '1IA - A'),
-  ('flowtificial', '"mariana05@"'::jsonb, '1IA - A'),
-  ('equipenishimori', '"caroline06@"'::jsonb, '1IA - A'),
-
-  -- 1IA - B
-  ('lgm', '"leonardo01@"'::jsonb, '1IA - B'),
-  ('miladys', '"ana02@"'::jsonb, '1IA - B'),
-  ('inteligência', '"leonardo01@"'::jsonb, '1IA - B'),
-  ('intelectuai', '"giancarlo04@"'::jsonb, '1IA - B'),
-  ('urbia', '"vitor01@"'::jsonb, '1IA - B'),
-  ('smartflow', '"thiago01@"'::jsonb, '1IA - B'),
-  ('blackinwhite', '"carlos04@"'::jsonb, '1IA - B'),
-  ('atlas', '"davi05@"'::jsonb, '1IA - B'),
-  ('elite', '"murilo06@"'::jsonb, '1IA - B'),
-  ('urbanisatech', '"angelo07@"'::jsonb, '1IA - B'),
-
-  -- 2IA - A
-  ('condorshield', '"davicho01@"'::jsonb, '2IA - A'),
-  ('ethosai', '"leonardo03@"'::jsonb, '2IA - A'),
-  ('urbanscope', '"victor03@"'::jsonb, '2IA - A'),
-  ('infranexus', '"luiz04@"'::jsonb, '2IA - A'),
-  ('cognimove', '"manuella04@"'::jsonb, '2IA - A'),
-  ('dll', '"davi08@"'::jsonb, '2IA - A'),
-  ('neurocore', '"heitor08@"'::jsonb, '2IA - A'),
-  ('essenza', '"beatriz04@"'::jsonb, '2IA - A'),
-  ('neuralnexus', '"isaac06@"'::jsonb, '2IA - A'),
-
-  -- 2IA - B
-  ('pebsmart', '"bruno06@"'::jsonb, '2IA - B'),
-  ('segurancasemstress', '"bernardo04@"'::jsonb, '2IA - B'),
-  ('urmind', '"nicolas08@"'::jsonb, '2IA - B'),
-  ('eclipse', '"afonso01@"'::jsonb, '2IA - B'),
-  ('smartciv', '"enzo05@"'::jsonb, '2IA - B'),
-  ('neuraltrio', '"gabriel08@"'::jsonb, '2IA - B'),
-  ('trigêmeos', '"lucas08@"'::jsonb, '2IA - B')
-
-  -- Administradores não são mantidos nesta tabela. Cada pessoa deve ter um
-  -- usuário próprio no Supabase Auth, com papel owner ou admin.
-ON CONFLICT (username) DO NOTHING;
+-- 3. Não há contas de demonstração neste arquivo. Crie usuários reais no
+-- Supabase Auth e replique o perfil pelo comando `npm.cmd run users`.
 
 -- 4. Habilitar Permissões de Leitura e Escrita Públicas (RLS)
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.appointments ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Permitir Leitura e Escrita em Users" ON public.users;
-CREATE POLICY "Permitir Leitura e Escrita em Users" ON public.users FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Legacy users disabled" ON public.users FOR ALL TO authenticated USING (false) WITH CHECK (false);
 
 DROP POLICY IF EXISTS "Permitir Leitura e Escrita em Appointments" ON public.appointments;
-CREATE POLICY "Permitir Leitura e Escrita em Appointments" ON public.appointments FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Legacy appointments disabled" ON public.appointments FOR ALL TO authenticated USING (false) WITH CHECK (false);

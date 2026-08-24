@@ -90,6 +90,34 @@
               </div>
             </article>
           </section>
+
+          <section class="panel general-settings-panel" aria-labelledby="general-settings-title">
+            <header class="settings-panel-header">
+              <div class="settings-heading-icon"><i class="ph ph-sliders-horizontal" aria-hidden="true"></i></div>
+              <div><h2 id="general-settings-title">Políticas de acesso</h2><p>Regras globais aplicadas a todos os grupos e contas.</p></div>
+              <span class="settings-global-badge"><i class="ph ph-globe" aria-hidden="true"></i>Global</span>
+            </header>
+            <form id="general-settings-form" class="general-settings-form">
+              <div class="settings-quota-grid">
+                <label class="settings-field" for="settings-max-quota"><span>Teto máximo por solicitação</span><select id="settings-max-quota" required></select><small>Limite que um grupo pode solicitar por sessão.</small></label>
+                <div class="settings-auto-card">
+                  <div class="settings-auto-copy"><strong>Autoaprovação</strong><small>Aprova automaticamente pedidos dentro do limite e com cota disponível.</small></div>
+                  <label class="switch-control" for="settings-auto-approve-enabled"><input id="settings-auto-approve-enabled" type="checkbox"><span aria-hidden="true"></span><b id="settings-auto-label">Desativada</b></label>
+                  <label class="settings-field settings-auto-limit" for="settings-auto-approve"><span>Aprovar automaticamente até</span><select id="settings-auto-approve" required disabled></select></label>
+                </div>
+              </div>
+
+              <fieldset class="settings-models-fieldset">
+                <legend>Modelos disponíveis</legend>
+                <p>Catálogo carregado em tempo real da API da conta Codex.</p>
+                <div id="settings-models" class="settings-model-grid">
+                  <p class="settings-models-loading">Consultando modelos da conta...</p>
+                </div>
+              </fieldset>
+
+              <footer class="settings-actions"><p id="settings-status" class="general-settings-status" role="status"></p><button id="settings-save" class="modal-button primary" type="submit"><i class="ph ph-floppy-disk" aria-hidden="true"></i>Salvar políticas</button></footer>
+            </form>
+          </section>
         </div>
       </main>
     </div>
@@ -109,7 +137,7 @@
             <div class="field-row"><label>Início aprovado<input id="review-start" type="datetime-local" step="900"></label><label>Fim aprovado<input id="review-end" type="datetime-local" step="900"></label></div>
             <label class="range-field" for="review-quota">
               <span><span>Uso aprovado <small id="review-requested-quota">solicitado: —</small></span><output id="review-quota-output" for="review-quota">5%</output></span>
-              <input id="review-quota" type="range" min="5" max="20" step="5" value="5">
+              <input id="review-quota" type="range" min="1" max="100" step="1" value="5">
               <small id="review-adjustment-label">Sem ajuste de uso</small>
             </label>
             <label class="textarea-field">Justificativa da decisão<textarea id="review-note" maxlength="200" rows="3" placeholder="Explique o motivo da decisão..."></textarea><small><span id="review-note-count">0</span>/200</small></label>

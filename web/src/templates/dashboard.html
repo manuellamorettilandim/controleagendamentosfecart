@@ -11,6 +11,13 @@
         </nav>
 
         <div class="top-actions">
+          <div class="user-profile-badge" id="user-profile-badge" title="Grupo e usuário logado">
+            <span class="user-avatar-icon"><i class="ph ph-users-three" aria-hidden="true"></i></span>
+            <div class="user-profile-info">
+              <strong id="user-group-name">Carregando…</strong>
+              <small id="user-username">usuário</small>
+            </div>
+          </div>
           <button id="theme-toggle" class="top-action icon-only" type="button" aria-label="Ativar tema claro" aria-pressed="true" title="Alternar tema">
             <i class="ph ph-sun" aria-hidden="true"></i>
           </button>
@@ -34,62 +41,86 @@
 
       <main class="dashboard-main">
         <section id="overview-view" class="tab-view" role="tabpanel" aria-labelledby="tab-overview">
-          <section class="token-card panel" aria-labelledby="token-title">
-            <div class="token-main">
-              <div class="section-kicker"><i class="ph ph-key" aria-hidden="true"></i><span>Acesso temporário</span></div>
-              <h1 id="token-title">Seu acesso</h1>
-              <p>Agende uma janela, aguarde o início e escolha o terminal do seu sistema.</p>
-              <div class="access-product-picker" role="group" aria-label="Aplicativo do Codex">
-                <button class="access-product is-active" type="button" aria-pressed="true" data-access-product="cli"><i class="ph ph-terminal-window" aria-hidden="true"></i>Codex CLI</button>
-                <button class="access-product" type="button" aria-pressed="false" data-access-product="app"><i class="ph ph-app-window" aria-hidden="true"></i>Codex App</button>
+          <section class="panel access-card" aria-labelledby="access-title">
+            <div class="access-card-header">
+              <div class="access-card-heading">
+                <div class="section-kicker"><i class="ph ph-terminal-window" aria-hidden="true"></i><span id="access-kicker-text">Codex CLI</span></div>
+                <h1 id="access-title">Comando de Acesso</h1>
+                <p id="access-copy-status">Copie o comando e execute no terminal do seu projeto durante a sessão ativa.</p>
               </div>
-              <div class="access-copy-picker" data-cli-access>
-                <label for="access-platform">Terminal</label>
-                <div class="access-copy-select">
-                  <i class="ph ph-desktop" aria-hidden="true"></i>
-                  <select id="access-platform" aria-label="Terminal para o comando">
-                    <option value="powershell">Windows PowerShell</option>
-                    <option value="cmd">Windows CMD</option>
-                    <option value="macos">macOS</option>
-                    <option value="linux">Linux</option>
-                  </select>
-                </div>
+              <div class="access-card-actions">
+                <button type="button" class="secondary-button" data-open-guide="cli">
+                  <i class="ph ph-sliders-horizontal" aria-hidden="true"></i>
+                  <span>Guia de Configuração</span>
+                </button>
+                <button id="open-booking-top" class="primary-button" type="button">
+                  <i class="ph ph-calendar-plus" aria-hidden="true"></i>
+                  <span>Agendar horário</span>
+                </button>
               </div>
-              <div id="cli-copy-line" class="access-copy-line command-row" data-cli-access>
-                <i class="ph ph-command command-prefix" aria-hidden="true"></i>
-                <code id="cli-command">••••••••••••••••••••••••••••••••••••••••</code>
-                <button id="copy-cli-command" class="inline-action" type="button"><i class="ph ph-copy" aria-hidden="true"></i><span>Copiar</span></button>
-              </div>
-              <div id="token-copy-line" class="access-copy-line token-row" aria-label="Token manual" data-cli-access>
-                <i class="ph ph-terminal-window token-prefix" aria-hidden="true"></i>
-                <code id="session-token" data-token="">••••••••••••••••••••</code>
-                <div class="token-actions">
-                  <button id="toggle-token" class="inline-action" type="button" aria-label="Mostrar token" aria-pressed="false"><i class="ph ph-eye" aria-hidden="true"></i><span>Mostrar</span></button>
-                  <button id="copy-token" class="inline-action" type="button"><i class="ph ph-copy" aria-hidden="true"></i><span>Copiar</span></button>
-                </div>
-              </div>
-              <div id="app-access-panel" class="app-access-panel" data-app-access hidden>
-                <div class="app-access-heading"><i class="ph ph-lock-key-open" aria-hidden="true"></i><div><strong>Conexão SSH temporária</strong><span id="app-access-summary">Disponível durante a sessão aprovada.</span></div></div>
-                <dl class="app-access-details"><div><dt>Host no Codex App</dt><dd id="app-ssh-alias">—</dd></div><div><dt>Pasta remota</dt><dd id="app-workspace-path">—</dd></div><div><dt>Expira em</dt><dd id="app-access-expiry">—</dd></div></dl>
-                <div class="app-access-actions"><button id="download-app-key" class="primary-button" type="button"><i class="ph ph-download-simple" aria-hidden="true"></i>Baixar chave privada</button><button id="copy-app-ssh-config" class="secondary-button" type="button"><i class="ph ph-copy" aria-hidden="true"></i>Copiar configuração SSH</button></div>
-                <p class="app-access-note"><i class="ph ph-shield-check" aria-hidden="true"></i>A chave funciona somente nesta sessão e é removida do host ao revogar, desabilitar ou expirar o acesso.</p>
-              </div>
-              <p id="access-copy-status" class="component-status" role="status"></p>
             </div>
-            <div class="token-help">
-              <i class="ph ph-question-mark help-mark" aria-hidden="true"></i>
-              <div><h2>Fluxo rápido</h2><p>1. Agende um horário livre.</p><p>2. Quando começar, o token será gerado aqui.</p><p>3. Copie e execute o comando no diretório atual do seu projeto.</p><button id="open-booking-top" class="primary-button token-booking-button" type="button"><i class="ph ph-calendar-plus" aria-hidden="true"></i><span>Agendar horário</span></button></div>
+
+            <div class="access-command-box">
+              <div class="access-controls-bar">
+                <div class="access-mode-tabs" role="tablist" aria-label="Ferramenta">
+                  <button type="button" role="tab" class="mode-tab is-active" data-mode-select="cli">
+                    <i class="ph ph-terminal-window" aria-hidden="true"></i>
+                    <span>Codex CLI</span>
+                  </button>
+                  <button type="button" role="tab" class="mode-tab" data-mode-select="app">
+                    <i class="ph ph-app-window" aria-hidden="true"></i>
+                    <span>ChatGPT Desktop (Codex)</span>
+                  </button>
+                </div>
+
+                <div class="access-platform-tabs" role="tablist" aria-label="Sistema / Terminal">
+                  <button type="button" role="tab" class="platform-tab is-active" data-platform-select="powershell">Windows PowerShell</button>
+                  <button type="button" role="tab" class="platform-tab" data-platform-select="cmd">Windows CMD</button>
+                  <button type="button" role="tab" class="platform-tab" data-platform-select="macos">macOS</button>
+                  <button type="button" role="tab" class="platform-tab" data-platform-select="linux">Linux</button>
+                </div>
+              </div>
+
+              <div id="linux-app-note" class="linux-distro-callout" hidden>
+                <i class="ph ph-info" aria-hidden="true"></i>
+                <span><strong>Linux:</strong> O Codex App está disponível oficialmente em pacotes <code>.deb</code> (Ubuntu 24.04/26.04, Debian 13), <code>.rpm</code> (Fedora 43/44) e <code>AppImage</code>.</span>
+              </div>
+
+              <div id="app-close-warning" class="app-close-callout" style="display:flex; align-items:center; gap:8px; margin-bottom:10px; padding:10px 14px; border-radius:10px; background:rgba(245, 158, 11, 0.1); border:1px solid rgba(245, 158, 11, 0.35); font-size:13px; color:#fef3c7;" hidden>
+                <i class="ph ph-warning-circle" style="color:#f59e0b; font-size:18px; flex-shrink:0;" aria-hidden="true"></i>
+                <span><strong>Importante:</strong> Feche completamente o aplicativo do <strong>ChatGPT / Codex</strong> (inclusive na bandeja do sistema) antes de executar o comando para carregar o novo token.</span>
+              </div>
+
+              <div class="access-terminal-line">
+                <div class="terminal-text-area">
+                  <span class="terminal-prompt">$</span>
+                  <code id="cli-command">••••••••••••••••••••••••••••••••••••••••</code>
+                </div>
+                <div class="terminal-actions">
+                  <button id="toggle-token" class="secondary-button icon-only-btn" type="button" aria-label="Mostrar token" title="Mostrar ou ocultar token" aria-pressed="false">
+                    <i class="ph ph-eye" aria-hidden="true"></i>
+                  </button>
+                  <button id="copy-cli-command" class="primary-button copy-command-btn" type="button">
+                    <i class="ph ph-copy" aria-hidden="true"></i>
+                    <span>Copiar comando</span>
+                  </button>
+                </div>
+              </div>
             </div>
           </section>
 
           <section class="summary-grid" aria-label="Resumo da conta">
             <article class="panel stats-card" aria-labelledby="stats-title">
-              <header class="panel-heading"><div class="heading-icon"><i class="ph ph-chart-bar" aria-hidden="true"></i></div><h2 id="stats-title">Estatísticas gerais de uso do grupo</h2></header>
+              <header class="panel-heading"><div class="heading-icon"><i class="ph ph-chart-bar" aria-hidden="true"></i></div><h2 id="stats-title">Estatísticas de uso: <span id="stats-group-label" class="stats-group-pill">Carregando…</span></h2></header>
               <dl class="metric-list">
                 <div><dt>Solicitações aprovadas</dt><dd id="stat-approved">—</dd><small>últimos 30 dias</small></div>
                 <div><dt>Horas utilizadas</dt><dd id="stat-hours">—</dd><small>últimos 30 dias</small></div>
                 <div><dt>Dias com uso</dt><dd id="stat-days">—</dd><small>últimos 30 dias</small></div>
                 <div><dt>Último acesso</dt><dd id="stat-last-access">—</dd><small id="stat-last-access-note">aguardando dados</small></div>
+                <div><dt>Tokens consumidos</dt><dd id="stat-tokens">—</dd><small>volume de inferência</small></div>
+                <div><dt>Duração média</dt><dd id="stat-avg-duration">—</dd><small>por agendamento</small></div>
+                <div><dt>Taxa de aprovação</dt><dd id="stat-approval-rate">—</dd><small>solicitações atendidas</small></div>
+                <div><dt>Eficiência de cache</dt><dd id="stat-cache-rate">—</dd><small>reuso de contexto</small></div>
               </dl>
             </article>
 
@@ -97,7 +128,7 @@
               <header class="panel-heading"><div class="heading-icon"><i class="ph ph-activity" aria-hidden="true"></i></div><h2 id="session-title">Uso restante e próxima sessão</h2><span id="session-refresh" class="panel-meta">atualizando</span></header>
               <div class="session-overview">
                 <div class="session-state-block"><span id="session-dot" class="session-dot"></span><strong id="session-status">Sessão desligada</strong><small id="session-started">Ative um horário aprovado para começar.</small></div>
-                <div class="progress-stat"><div id="session-progress" class="progress-ring progress-ring--empty" role="img" aria-label="Tempo restante"><span id="session-percent">0%</span></div><div><span>Contagem regressiva</span><strong id="session-time">—</strong><small id="session-time-total">sem sessão aprovada</small></div></div>
+                <div class="progress-stat"><div id="session-progress" class="progress-ring progress-ring--empty" role="img" aria-label="Tempo restante"><span id="session-percent">—</span></div><div><span>Contagem regressiva</span><strong id="session-time">—</strong><small id="session-time-total">sem sessão aprovada</small></div></div>
                 <div class="progress-stat"><div id="quota-progress" class="progress-ring" role="img" aria-label="Uso restante"><span id="quota-percent">—</span></div><div><span>Uso restante</span><strong id="quota-used">—</strong><small id="quota-total">da sessão aprovada</small></div></div>
               </div>
               <div class="session-telemetry" aria-live="polite"><div><i class="ph ph-pulse" aria-hidden="true"></i><span>Atividade do Codex</span></div><strong id="session-usage-tokens">0 tokens observados</strong><small id="session-activity">Aguardando a sessão iniciar.</small></div>
@@ -122,49 +153,297 @@
         </section>
 
         <section id="guides-view" class="tab-view guides-view" role="tabpanel" aria-labelledby="tab-guides" hidden>
-          <section id="guides-home" class="guide-page">
-            <div class="guides-intro"><div><span class="section-kicker">Central de ajuda</span><h1>Como você quer usar o Codex?</h1><p>Escolha uma ferramenta para abrir o guia completo de instalação, configuração e acesso.</p></div><button id="guides-back" class="secondary-button" type="button"><i class="ph ph-arrow-left" aria-hidden="true"></i> Voltar para visão geral</button></div>
-            <div class="guide-tool-grid">
-              <button class="guide-tool-card panel" type="button" data-open-guide="cli">
-                <span class="guide-tool-art is-cli"><i class="ph ph-terminal-window" aria-hidden="true"></i></span>
-                <span class="guide-tool-copy"><span class="guide-availability is-ready"><i class="ph ph-check-circle" aria-hidden="true"></i>Acesso temporário disponível</span><strong>Guia do Codex CLI</strong><span>Instale no Windows ou macOS, copie o comando da sua sessão e trabalhe no terminal.</span><small>Abrir guia <i class="ph ph-arrow-right" aria-hidden="true"></i></small></span>
-              </button>
-              <button class="guide-tool-card panel" type="button" data-open-guide="app">
-                <span class="guide-tool-art is-app"><i class="ph ph-app-window" aria-hidden="true"></i></span>
-                <span class="guide-tool-copy"><span class="guide-availability is-ready"><i class="ph ph-check-circle" aria-hidden="true"></i>Acesso temporário por SSH</span><strong>Guia do Codex App</strong><span>Instale o aplicativo no Windows ou macOS e conecte ao workspace remoto da sua sessão.</span><small>Abrir guia <i class="ph ph-arrow-right" aria-hidden="true"></i></small></span>
-              </button>
-            </div>
-          </section>
+          <section id="guide-cli" class="guide-page guide-detail">
+            <header class="guide-detail-header">
+              <div class="guide-detail-header-main">
+                <button class="guide-back-button" type="button" data-go-overview>
+                  <i class="ph ph-arrow-left" aria-hidden="true"></i>
+                  <span>Voltar para a Visão Geral</span>
+                </button>
+                <div class="guide-detail-heading">
+                  <span class="guide-tool-art is-cli"><i class="ph ph-terminal-window" aria-hidden="true"></i></span>
+                  <div>
+                    <span class="guide-availability is-ready"><i class="ph ph-check-circle" aria-hidden="true"></i>Guia Unificado</span>
+                    <h1>Guia de Configuração: Codex CLI &amp; ChatGPT Desktop</h1>
+                    <p>Aprenda a instalar, ativar o provedor compartilhado do FECART ou desinstalar para voltar à sua conta pessoal.</p>
+                  </div>
+                </div>
+              </div>
 
-          <section id="guide-cli" class="guide-page guide-detail" hidden>
-            <header class="guide-detail-header"><button class="guide-back-button" type="button" data-guide-back><i class="ph ph-arrow-left" aria-hidden="true"></i>Todos os guias</button><div class="guide-detail-heading"><span class="guide-tool-art is-cli"><i class="ph ph-terminal-window" aria-hidden="true"></i></span><div><span class="guide-availability is-ready"><i class="ph ph-check-circle" aria-hidden="true"></i>Acesso temporário disponível</span><h1>Codex CLI</h1><p>Use o ambiente compartilhado diretamente no terminal, sem entrar na conta central.</p></div></div></header>
-            <div class="guide-platform-switch" role="tablist" aria-label="Sistema operacional"><button class="is-active" type="button" role="tab" aria-selected="true" data-guide-platform="windows"><i class="ph ph-windows-logo" aria-hidden="true"></i>Windows</button><button type="button" role="tab" aria-selected="false" data-guide-platform="macos"><i class="ph ph-apple-logo" aria-hidden="true"></i>macOS</button></div>
-            <div class="guide-steps">
-              <article class="guide-step panel"><span class="guide-step-number">1</span><div><h2>Instale o Codex CLI</h2><div data-platform-copy="windows"><p>Instale primeiro o <a href="https://nodejs.org/en/download" target="_blank" rel="noopener noreferrer">Node.js LTS</a>. Depois abra o PowerShell ou CMD e instale o CLI:</p><pre><code>npm install -g @openai/codex</code></pre></div><div data-platform-copy="macos" hidden><p>No Terminal, use o instalador oficial para macOS:</p><pre><code>curl -fsSL https://chatgpt.com/codex/install.sh | sh</code></pre></div><p class="guide-check"><i class="ph ph-check" aria-hidden="true"></i>Confira a instalação com <code>codex --version</code>.</p></div></article>
-              <article class="guide-step panel"><span class="guide-step-number">2</span><div><h2>Abra a pasta do seu projeto</h2><div data-platform-copy="windows"><p>No Explorador de Arquivos, copie o caminho da pasta. No terminal, entre nela antes de iniciar:</p><pre><code>cd "C:\caminho\do\seu-projeto"</code></pre></div><div data-platform-copy="macos" hidden><p>No Finder, localize a pasta do projeto. No Terminal, entre nela antes de iniciar:</p><pre><code>cd "/Users/seu-usuario/projetos/seu-projeto"</code></pre></div><p class="guide-note"><i class="ph ph-folder-open" aria-hidden="true"></i>O comando fornecido pelo site não muda de diretório. O Codex abre exatamente na pasta atual do terminal.</p></div></article>
-              <article class="guide-step panel"><span class="guide-step-number">3</span><div><h2>Agende e encontre seu acesso</h2><ol><li>Na aba <strong>Geral</strong>, faça o agendamento e aguarde a aprovação.</li><li>Quando a sessão começar, volte ao card <strong>Acesso temporário</strong>.</li><li>Deixe <strong>Codex CLI</strong> selecionado e escolha PowerShell, CMD ou macOS.</li><li>Clique em <strong>Copiar</strong> ao lado do comando.</li></ol><button class="guide-inline-button" type="button" data-go-overview><i class="ph ph-arrow-square-out" aria-hidden="true"></i>Ir para Acesso temporário</button></div></article>
-              <article class="guide-step panel"><span class="guide-step-number">4</span><div><h2>Execute o comando copiado</h2><p>Cole o comando no terminal já aberto na pasta do projeto. O exemplo abaixo é propositalmente mascarado:</p><div data-platform-copy="windows"><pre><code>$env:CODEX_REMOTE_TOKEN = "••••••••"; codex --remote "wss://servidor" --remote-auth-token-env CODEX_REMOTE_TOKEN</code></pre></div><div data-platform-copy="macos" hidden><pre><code>export CODEX_REMOTE_TOKEN='••••••••'; codex --remote 'wss://servidor' --remote-auth-token-env CODEX_REMOTE_TOKEN</code></pre></div><p class="guide-security"><i class="ph ph-shield-check" aria-hidden="true"></i>Não envie o token por mensagem nem salve em arquivos. Fora do computador local, o CLI só transmite a credencial por conexão segura <strong>WSS</strong>.</p></div></article>
-              <article class="guide-step panel guide-step-wide"><span class="guide-step-number">5</span><div><h2>Se algo não funcionar</h2><div class="guide-troubleshooting"><p><strong>“codex” não foi encontrado</strong><span>Feche e abra novamente o terminal. Se continuar, reinstale o CLI e confira o PATH.</span></p><p><strong>Acesso recusado</strong><span>Confirme se a sessão está ativa, se não foi revogada e copie novamente o comando na aba Geral.</span></p><p><strong>Comando antigo</strong><span>Atualize com <code>codex update</code> ou reinstale. O acesso remoto exige uma versão com suporte a <code>--remote</code>.</span></p><p><strong>Sessão terminou</strong><span>O token expira automaticamente. Faça um novo agendamento para obter outro acesso.</span></p></div><a class="guide-doc-link" href="https://learn.chatgpt.com/docs/codex/cli" target="_blank" rel="noopener noreferrer">Documentação oficial do Codex CLI <i class="ph ph-arrow-square-out" aria-hidden="true"></i></a></div></article>
-            </div>
-          </section>
+              <aside class="guide-support-box panel">
+                <div class="guide-support-icon">
+                  <i class="ph ph-chats-circle" aria-hidden="true"></i>
+                </div>
+                <div class="guide-support-content">
+                  <strong>Precisa de ajuda ou tem dúvidas?</strong>
+                  <p>Em caso de qualquer dúvida, problema com agendamento ou configuração, contate o <strong>Comitê de Gestão de Projetos</strong> (qualquer integrante) ou o <strong>representante da sua sala</strong>.</p>
+                </div>
+              </aside>
+            </header>
 
-          <section id="guide-app" class="guide-page guide-detail" hidden>
-            <header class="guide-detail-header"><button class="guide-back-button" type="button" data-guide-back><i class="ph ph-arrow-left" aria-hidden="true"></i>Todos os guias</button><div class="guide-detail-heading"><span class="guide-tool-art is-app"><i class="ph ph-app-window" aria-hidden="true"></i></span><div><span class="guide-availability is-ready"><i class="ph ph-check-circle" aria-hidden="true"></i>Suporte por SSH</span><h1>Codex App</h1><p>Use o aplicativo no Windows ou macOS conectado ao ambiente remoto da sessão.</p></div></div></header>
-            <div class="guide-platform-switch" role="tablist" aria-label="Sistema operacional"><button class="is-active" type="button" role="tab" aria-selected="true" data-guide-platform="windows"><i class="ph ph-windows-logo" aria-hidden="true"></i>Windows</button><button type="button" role="tab" aria-selected="false" data-guide-platform="macos"><i class="ph ph-apple-logo" aria-hidden="true"></i>macOS</button></div>
-            <aside class="guide-app-warning"><i class="ph ph-shield-check" aria-hidden="true"></i><div><strong>O App usa uma chave SSH temporária, não o token do CLI</strong><p>A chave aparece em Geral &gt; Acesso temporário somente durante a sessão ativa. Revogar, desabilitar ou deixar a sessão expirar também encerra o acesso SSH.</p></div></aside>
-            <div class="guide-steps">
-              <article class="guide-step panel"><span class="guide-step-number">1</span><div><h2>Instale e abra o aplicativo</h2><div data-platform-copy="windows"><p>Acesse a página oficial, escolha <strong>Windows</strong> e conclua a instalação. Confirme também que o recurso <strong>Cliente OpenSSH</strong> está instalado no Windows.</p></div><div data-platform-copy="macos" hidden><p>Acesse a página oficial, escolha <strong>macOS</strong> e mova o aplicativo para a pasta Aplicativos quando solicitado. O cliente SSH já acompanha o macOS.</p></div><p>Entre no aplicativo com sua conta pessoal do ChatGPT; a conta compartilhada da sessão permanece autenticada somente no host.</p><a class="guide-doc-link" href="https://learn.chatgpt.com/docs/app" target="_blank" rel="noopener noreferrer">Abrir download oficial <i class="ph ph-arrow-square-out" aria-hidden="true"></i></a></div></article>
-              <article class="guide-step panel"><span class="guide-step-number">2</span><div><h2>Ative sua sessão no site</h2><ol><li>Faça um agendamento e aguarde a aprovação.</li><li>Durante o horário aprovado, abra <strong>Geral &gt; Acesso temporário</strong>.</li><li>Selecione <strong>Codex App</strong> e baixe a chave privada.</li></ol><p class="guide-security"><i class="ph ph-key" aria-hidden="true"></i>A chave é exclusiva da sessão. O guia nunca mostra uma chave ou token real.</p></div></article>
-              <article class="guide-step panel"><span class="guide-step-number">3</span><div><h2>Instale a chave na pasta SSH</h2><div data-platform-copy="windows"><p>Mova o arquivo baixado para <code>%USERPROFILE%\.ssh</code> e mantenha o nome exibido no download.</p><pre><code>New-Item -ItemType Directory -Force "$HOME\.ssh"
-Move-Item "$HOME\Downloads\fecart-••••••••_ed25519" "$HOME\.ssh\fecart-••••••••_ed25519"
-icacls "$HOME\.ssh\fecart-••••••••_ed25519" /inheritance:r /grant:r "$($env:USERNAME):(R)"</code></pre></div><div data-platform-copy="macos" hidden><p>No Terminal, mova a chave e restrinja as permissões:</p><pre><code>mkdir -p ~/.ssh
-mv ~/Downloads/fecart-••••••••_ed25519 ~/.ssh/
-chmod 600 ~/.ssh/fecart-••••••••_ed25519</code></pre></div></div></article>
-              <article class="guide-step panel"><span class="guide-step-number">4</span><div><h2>Adicione o host ao SSH</h2><p>No card do Codex App, clique em <strong>Copiar configuração SSH</strong> e cole o conteúdo no arquivo <code>~/.ssh/config</code>. O exemplo é propositalmente mascarado:</p><pre><code>Host fecart-••••••••
-  HostName servidor.exemplo
-  User fecart-host
-  IdentityFile ~/.ssh/fecart-••••••••_ed25519</code></pre><p class="guide-check"><i class="ph ph-check" aria-hidden="true"></i>Confira sem conectar usando <code>ssh -G fecart-••••••••</code>.</p></div></article>
-              <article class="guide-step panel guide-step-wide"><span class="guide-step-number">5</span><div><h2>Abra o workspace remoto no App</h2><ol><li>No Codex App, abra <strong>Settings &gt; Connections &gt; SSH</strong>.</li><li>Adicione o host cujo nome aparece no card de acesso.</li><li>Escolha a pasta remota mostrada em <strong>Pasta remota</strong>.</li><li>Inicie a conversa. Arquivos e comandos dessa conversa rodam no ambiente remoto.</li></ol><p class="guide-note"><i class="ph ph-warning" aria-hidden="true"></i>Salve ou envie seu trabalho antes do fim da sessão. A conexão é encerrada automaticamente quando o acesso termina.</p><a class="guide-doc-link" href="https://learn.chatgpt.com/docs/remote-connections" target="_blank" rel="noopener noreferrer">Documentação oficial de conexões SSH <i class="ph ph-arrow-square-out" aria-hidden="true"></i></a></div></article>
+            <div class="guide-platform-switch" role="tablist" aria-label="Sistema operacional">
+              <button class="is-active" type="button" role="tab" aria-selected="true" data-guide-platform="windows"><i class="ph ph-windows-logo" aria-hidden="true"></i>Windows</button>
+              <button type="button" role="tab" aria-selected="false" data-guide-platform="macos"><i class="ph ph-apple-logo" aria-hidden="true"></i>macOS</button>
+              <button type="button" role="tab" aria-selected="false" data-guide-platform="linux"><i class="ph ph-linux-logo" aria-hidden="true"></i>Linux</button>
+            </div>
+
+            <div class="guide-notice-card panel">
+              <div class="guide-notice-icon"><i class="ph ph-info" aria-hidden="true"></i></div>
+              <div class="guide-notice-content">
+                <strong>Compatibilidade Total entre CLI e App Desktop</strong>
+                <p>O <strong>Codex CLI</strong> (terminal) e o <strong>ChatGPT Desktop</strong> (aplicativo) utilizam o mesmo arquivo de configuração (<code>config.toml</code>). Ao ativar a configuração abaixo, ambos passam a usar o provedor compartilhado. Para voltar a usar qualquer <strong>conta pessoal</strong> ou o padrão oficial da OpenAI a qualquer momento, basta utilizar os comandos de <strong>Desinstalar / Restaurar</strong>.</p>
+              </div>
+            </div>
+
+            <div class="guide-sections-list">
+              <!-- Section 1: Installation -->
+              <article class="guide-section-card panel">
+                <div class="section-badge-header">
+                  <span class="section-number-pill">1</span>
+                  <h2>Instalação do Codex &amp; ChatGPT</h2>
+                </div>
+                <p class="section-sub-desc">Instale o CLI no seu terminal ou baixe o aplicativo desktop oficial da OpenAI:</p>
+                <div class="guide-install-grid">
+                  <div class="install-card">
+                    <div class="install-card-title"><i class="ph ph-terminal-window"></i><strong>Codex CLI (Terminal)</strong></div>
+                    <div data-platform-copy="windows">
+                      <p>Requer <a href="https://nodejs.org/en/download" target="_blank" rel="noopener noreferrer">Node.js LTS</a>. No <strong>PowerShell</strong> ou <strong>Prompt de Comando (CMD)</strong>:</p>
+                      <pre><code>npm install -g @openai/codex</code></pre>
+                    </div>
+                    <div data-platform-copy="macos" hidden>
+                      <p>No <strong>Terminal do macOS (Zsh ou Bash)</strong>:</p>
+                      <pre><code>npm install -g @openai/codex</code></pre>
+                    </div>
+                    <div data-platform-copy="linux" hidden>
+                      <p>No <strong>Terminal do Linux (Bash ou Zsh)</strong>:</p>
+                      <pre><code>npm install -g @openai/codex</code></pre>
+                    </div>
+                    <a class="guide-doc-link" href="https://learn.chatgpt.com/docs/codex/cli" target="_blank" rel="noopener noreferrer">Documentação oficial do Codex CLI <i class="ph ph-arrow-square-out"></i></a>
+                  </div>
+
+                  <div class="install-card">
+                    <div class="install-card-title"><i class="ph ph-app-window"></i><strong>ChatGPT Desktop (com Codex integrado)</strong></div>
+                    <p>O aplicativo oficial do ChatGPT para Desktop possui o ambiente Codex integrado para desenvolvimento:</p>
+                    <div class="install-card-actions">
+                      <a class="primary-button" href="https://chatgpt.com/download" target="_blank" rel="noopener noreferrer"><i class="ph ph-download-simple"></i><span>Página Oficial de Download</span></a>
+                      <a class="guide-doc-link" href="https://learn.chatgpt.com/docs/app" target="_blank" rel="noopener noreferrer">Guia oficial do App <i class="ph ph-arrow-square-out"></i></a>
+                    </div>
+                  </div>
+                </div>
+              </article>
+
+              <!-- Method Choice Container -->
+              <div class="guide-method-choice-card panel">
+                <div class="guide-choice-header">
+                  <i class="ph ph-git-fork" aria-hidden="true"></i>
+                  <div>
+                    <strong>Escolha o seu método de configuração preferido</strong>
+                    <p>Ambos os métodos abaixo realizam a <strong>mesma configuração</strong> no seu arquivo <code>config.toml</code> e chegam exatamente ao mesmo resultado. Escolha a opção que você preferir:</p>
+                  </div>
+                </div>
+                <div class="guide-choice-grid">
+                  <div class="choice-col">
+                    <span class="choice-tag is-recommended"><i class="ph ph-sparkle" aria-hidden="true"></i> Opção 1 (Recomendada)</span>
+                    <strong>Método Fácil (1 Clique no Terminal)</strong>
+                    <p>Ideal para agilidade. Executa o comando que cria backup e configura tudo automaticamente em 1 segundo.</p>
+                  </div>
+                  <div class="choice-col">
+                    <span class="choice-tag"><i class="ph ph-wrench" aria-hidden="true"></i> Opção 2 (Manual)</span>
+                    <strong>Método Manual Passo a Passo</strong>
+                    <p>Para quem prefere não rodar comandos automáticos e quer abrir, verificar e editar o arquivo manualmente no editor.</p>
+                  </div>
+                </div>
+              </div>
+
+              <!-- High-attention Backup Alert -->
+              <div class="guide-backup-alert panel">
+                <div class="backup-alert-icon"><i class="ph ph-shield-warning" aria-hidden="true"></i></div>
+                <div class="backup-alert-content">
+                  <strong>⚠️ Atenção ao Backup do seu <code>config.toml</code></strong>
+                  <p>Antes de aplicar qualquer alteração, o comando cria uma cópia de segurança renomeando para <code>config.toml.bak</code>. <strong>Anote ou confira o caminho do backup informado no seu terminal</strong> para que você possa reverter facilmente e voltar à sua conta pessoal quando terminar sua sessão.</p>
+                </div>
+              </div>
+
+              <!-- Section 2: Quick Method -->
+              <article class="guide-section-card panel">
+                <div class="section-badge-header">
+                  <span class="section-number-pill">2A</span>
+                  <h2>Opção 1: Método Fácil — 1 Clique no Terminal (Ativar vs Desinstalar)</h2>
+                </div>
+                <div data-platform-copy="windows">
+                  <p class="section-sub-desc">Abra o <strong>Windows PowerShell</strong> (ou Terminal do Windows com PowerShell) e cole o comando para aplicar ou remover a configuração automaticamente:</p>
+                </div>
+                <div data-platform-copy="macos" hidden>
+                  <p class="section-sub-desc">Abra o <strong>Terminal do macOS (Zsh / Bash)</strong> e cole o comando para aplicar ou remover a configuração automaticamente:</p>
+                </div>
+                <div data-platform-copy="linux" hidden>
+                  <p class="section-sub-desc">Abra o <strong>Terminal do Linux (Bash / Zsh)</strong> e cole o comando para aplicar ou remover a configuração automaticamente:</p>
+                </div>
+
+                <div class="guide-actions-grid">
+                  <!-- Auto Config Box -->
+                  <div class="action-box is-config">
+                    <div class="action-box-header">
+                      <div class="action-box-title">
+                        <i class="ph ph-check-circle" aria-hidden="true"></i>
+                        <div>
+                          <strong>Ativar / Configurar FECART</strong>
+                          <small data-platform-copy="windows">Terminal: Windows PowerShell</small>
+                          <small data-platform-copy="macos" hidden>Terminal: macOS (Bash / Zsh)</small>
+                          <small data-platform-copy="linux" hidden>Terminal: Linux (Bash / Zsh)</small>
+                        </div>
+                      </div>
+                      <button id="copy-auto-config" class="primary-button copy-mini-btn" type="button">
+                        <i class="ph ph-copy" aria-hidden="true"></i><span>Copiar comando</span>
+                      </button>
+                    </div>
+                    <p class="action-box-desc">Cria backup destacado do seu <code>config.toml</code> atual e configura o acesso compartilhado da FECART.</p>
+                    
+                    <div data-platform-copy="windows">
+                      <pre class="terminal-preview"><code data-auto-config-cmd="windows"></code></pre>
+                    </div>
+                    <div data-platform-copy="macos" hidden>
+                      <pre class="terminal-preview"><code data-auto-config-cmd="macos"></code></pre>
+                    </div>
+                    <div data-platform-copy="linux" hidden>
+                      <pre class="terminal-preview"><code data-auto-config-cmd="linux"></code></pre>
+                    </div>
+                  </div>
+
+                  <!-- Restore / Uninstall Box -->
+                  <div class="action-box is-restore">
+                    <div class="action-box-header">
+                      <div class="action-box-title">
+                        <i class="ph ph-arrow-counter-clockwise" aria-hidden="true"></i>
+                        <div>
+                          <strong>Desinstalar / Restaurar Padrão</strong>
+                          <small data-platform-copy="windows">Terminal: Windows PowerShell</small>
+                          <small data-platform-copy="macos" hidden>Terminal: macOS (Bash / Zsh)</small>
+                          <small data-platform-copy="linux" hidden>Terminal: Linux (Bash / Zsh)</small>
+                        </div>
+                      </div>
+                      <button id="copy-restore-config" class="secondary-button copy-mini-btn" type="button">
+                        <i class="ph ph-copy" aria-hidden="true"></i><span>Copiar comando</span>
+                      </button>
+                    </div>
+                    <p class="action-box-desc">Restaura seu backup original ou remove a configuração da FECART para voltar à sua conta pessoal.</p>
+                    
+                    <div data-platform-copy="windows">
+                      <pre class="terminal-preview"><code data-restore-config-cmd="windows"></code></pre>
+                    </div>
+                    <div data-platform-copy="macos" hidden>
+                      <pre class="terminal-preview"><code data-restore-config-cmd="macos"></code></pre>
+                    </div>
+                    <div data-platform-copy="linux" hidden>
+                      <pre class="terminal-preview"><code data-restore-config-cmd="linux"></code></pre>
+                    </div>
+                  </div>
+                </div>
+              </article>
+
+              <!-- Section 3: Manual Step-by-Step -->
+              <article class="guide-section-card panel">
+                <div class="section-badge-header">
+                  <span class="section-number-pill">2B</span>
+                  <h2>Opção 2: Método Manual Passo a Passo (Sem Scripts Automáticos)</h2>
+                </div>
+                <p class="section-sub-desc">Se você preferir não rodar comandos automáticos e quiser editar o arquivo diretamente no Bloco de Notas, VS Code ou outro editor:</p>
+
+                <div class="guide-manual-steps">
+                  <div class="manual-step-item">
+                    <strong>1. Localização do arquivo no seu computador:</strong>
+                    <div data-platform-copy="windows">
+                      <p>Abra o Explorador de Arquivos do Windows e acesse a pasta: <code>%USERPROFILE%\.codex</code> (ex: <code>C:\Users\SeuNome\.codex\config.toml</code>)</p>
+                    </div>
+                    <div data-platform-copy="macos" hidden>
+                      <p>No Finder ou Terminal do macOS: <code>~/.codex/config.toml</code> (ou <code>/Users/seu-usuario/.codex/config.toml</code>)</p>
+                    </div>
+                    <div data-platform-copy="linux" hidden>
+                      <p>No Terminal ou Gerenciador de Arquivos do Linux: <code>~/.codex/config.toml</code> (ou <code>/home/seu-usuario/.codex/config.toml</code>)</p>
+                    </div>
+                    <p class="guide-note" style="margin-top:8px;"><i class="ph ph-shield-check" aria-hidden="true"></i><span><strong>Passo Importante de Backup:</strong> Antes de modificar, faça uma cópia do seu arquivo original renomeando-o para <code>config.toml.bak</code> na mesma pasta. Anote esta localização para restaurar depois.</span></p>
+                  </div>
+
+                  <div class="manual-step-item">
+                    <strong>2. Como Ativar Manualmente:</strong>
+                    <p>Abra ou crie o arquivo <code>config.toml</code> no seu editor e cole o bloco abaixo:</p>
+                    <pre><code data-config-toml-snippet></code></pre>
+                  </div>
+
+                  <div class="manual-step-item">
+                    <strong>3. Como Desinstalar Manualmente (Voltar à conta pessoal):</strong>
+                    <div data-platform-copy="windows">
+                      <p>Se você criou o backup, basta excluir o <code>config.toml</code> atual e renomear o <code>config.toml.bak</code> de volta para <code>config.toml</code>. Caso não tenha backup, apague o <code>config.toml</code> ou remova o bloco <code>[model_providers.fecart]</code>.</p>
+                    </div>
+                    <div data-platform-copy="macos" hidden>
+                      <p>Se você tem o backup, execute <code>mv ~/.codex/config.toml.bak ~/.codex/config.toml</code> no Terminal. Caso contrário, execute <code>rm ~/.codex/config.toml</code>.</p>
+                    </div>
+                    <div data-platform-copy="linux" hidden>
+                      <p>Se você tem o backup, execute <code>mv ~/.codex/config.toml.bak ~/.codex/config.toml</code> no Terminal. Caso contrário, execute <code>rm ~/.codex/config.toml</code>.</p>
+                    </div>
+                  </div>
+                </div>
+              </article>
+
+              <!-- Section 4: Execution / How to use -->
+              <article class="guide-section-card panel">
+                <div class="section-badge-header">
+                  <span class="section-number-pill">3</span>
+                  <h2>Como Executar seu Acesso na Sessão Aprovada</h2>
+                </div>
+                <p class="section-sub-desc">Com o <code>config.toml</code> configurado (pela Opção 1 ou Opção 2), utilize o comando da sua sessão quando ela estiver ativa:</p>
+                <div class="guide-execution-flow">
+                  <div class="exec-step">
+                    <div class="install-card-title"><i class="ph ph-terminal-window" aria-hidden="true"></i><strong>No Codex CLI (Terminal):</strong></div>
+                    <ol>
+                      <li>Abra a pasta do seu projeto no terminal (<code>cd "C:\meu-projeto"</code>).</li>
+                      <li>Na tela de <strong>Visão Geral</strong>, copie o comando da sessão aprovada:
+                        <div data-platform-copy="windows">
+                          <p style="margin:4px 0; font-size:12px; color:var(--text-soft);">No <strong>Windows PowerShell</strong>:</p>
+                          <pre><code>$env:FECART_CODEX_TOKEN = "••••••••"; codex</code></pre>
+                          <p style="margin:4px 0; font-size:12px; color:var(--text-soft);">No <strong>Windows CMD</strong>:</p>
+                          <pre><code>set "FECART_CODEX_TOKEN=••••••••" && codex</code></pre>
+                        </div>
+                        <div data-platform-copy="macos" hidden>
+                          <p style="margin:4px 0; font-size:12px; color:var(--text-soft);">No <strong>Terminal do macOS</strong>:</p>
+                          <pre><code>export FECART_CODEX_TOKEN='••••••••' && codex</code></pre>
+                        </div>
+                        <div data-platform-copy="linux" hidden>
+                          <p style="margin:4px 0; font-size:12px; color:var(--text-soft);">No <strong>Terminal do Linux</strong>:</p>
+                          <pre><code>export FECART_CODEX_TOKEN='••••••••' && codex</code></pre>
+                        </div>
+                      </li>
+                      <li>Cole e execute. O CLI conectará instantaneamente ao proxy da FECART!</li>
+                    </ol>
+                  </div>
+                  <div class="exec-step">
+                    <div class="install-card-title"><i class="ph ph-app-window" aria-hidden="true"></i><strong>No ChatGPT Desktop (Modo Codex):</strong></div>
+                    <div class="guide-backup-alert" style="margin: 8px 0 14px 0; border-color: rgba(245, 158, 11, 0.4); background: rgba(245, 158, 11, 0.08);">
+                      <div class="backup-alert-title"><i class="ph ph-warning-circle" aria-hidden="true" style="color: #f59e0b;"></i><strong>Atenção: Feche o aplicativo antes de executar o comando</strong></div>
+                      <p style="font-size: 13px; margin: 4px 0 0 0; color: var(--text-soft);">Se o <strong>ChatGPT Desktop</strong> já estiver aberto no seu computador, feche-o completamente (inclusive na bandeja ao lado do relógio) antes de rodar o comando, para que a nova variável de ambiente <code>FECART_CODEX_TOKEN</code> seja carregada na inicialização.</p>
+                    </div>
+                    <p>Como o app lê o mesmo <code>config.toml</code>, abra o aplicativo carregando a variável de ambiente:</p>
+                    <div data-platform-copy="windows">
+                      <p><strong>Opção A (Variável de Usuário no Windows — Recomendado):</strong></p>
+                      <pre><code>setx FECART_CODEX_TOKEN "••••••••"</code></pre>
+                      <p style="font-size:12px; margin-top:4px; color:var(--text-soft);">(Após executar o comando acima no terminal, basta abrir o <strong>ChatGPT</strong> normalmente pelo Menu Iniciar ou Barra de Tarefas)</p>
+                      <p style="margin-top:8px;"><strong>Opção B (Iniciar direto pelo PowerShell / Microsoft Store):</strong></p>
+                      <pre><code>setx FECART_CODEX_TOKEN "••••••••"; Start-Process "explorer.exe" "shell:AppsFolder\OpenAI.Codex_2p2nqsd0c76g0!App"</code></pre>
+                    </div>
+                    <div data-platform-copy="macos" hidden>
+                      <p><strong>Opção A (Via Terminal):</strong></p>
+                      <pre><code>FECART_CODEX_TOKEN="••••••••" open -a "ChatGPT"</code></pre>
+                      <p style="margin-top:8px;"><strong>Opção B (Variável Global):</strong></p>
+                      <pre><code>launchctl setenv FECART_CODEX_TOKEN "••••••••"</code></pre>
+                    </div>
+                    <div data-platform-copy="linux" hidden>
+                      <p><strong>Opção A (Via Terminal):</strong></p>
+                      <pre><code>FECART_CODEX_TOKEN="••••••••" chatgpt</code></pre>
+                    </div>
+                  </div>
+                </div>
+                <button class="primary-button" type="button" data-go-overview><i class="ph ph-arrow-left" aria-hidden="true"></i><span>Voltar para o Painel de Acesso</span></button>
+              </article>
             </div>
           </section>
         </section>
@@ -179,7 +458,7 @@ chmod 600 ~/.ssh/fecart-••••••••_ed25519</code></pre></div></div
           <div class="dialog-field"><label for="booking-date">Início</label><input id="booking-date" type="date" required></div>
           <div class="dialog-field"><label for="booking-time">Horário</label><input id="booking-time" type="time" step="3600" required></div>
           <div class="dialog-field"><label for="booking-duration">Duração</label><select id="booking-duration"><option value="1">1 hora</option><option value="2">2 horas</option><option value="3">3 horas</option></select></div>
-          <div class="dialog-field"><label for="booking-quota">Uso solicitado</label><select id="booking-quota"><option value="5">5%</option><option value="10">10%</option><option value="15">15%</option><option value="20">20%</option></select></div>
+          <div class="dialog-field"><label for="booking-quota">Uso solicitado</label><select id="booking-quota"><option value="5" selected>5%</option><option value="10">10%</option><option value="15">15%</option><option value="20">20%</option><option value="25">25%</option></select></div>
           <div class="dialog-field"><label for="booking-end">Fim previsto</label><input id="booking-end" type="text" readonly aria-readonly="true" placeholder="Calculado automaticamente"></div>
           <div class="dialog-field dialog-field--full"><label for="booking-note">Observação <span>opcional</span></label><textarea id="booking-note" rows="3" maxlength="500" placeholder="Descreva brevemente o que será feito com a API..."></textarea></div>
           <aside class="approval-callout"><i class="ph ph-clock" aria-hidden="true"></i><p>O pedido será enviado para aprovação. Depois de aprovado, o token será gerado quando o horário começar.</p></aside>

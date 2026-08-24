@@ -143,6 +143,8 @@
     if (!reservation || !device) return false;
     if (device.status === "limited" || device.usage_limit_reached_at) return true;
     const budget = Number(device.quota_budget_percent ?? reservation.quota_budget_percent ?? reservation.requested_quota_percent);
+    const accumulated = Number(device.quota_consumed_percent);
+    if (Number.isFinite(budget) && Number.isFinite(accumulated)) return accumulated >= budget;
     const base = Number(device.quota_base_used_percent ?? reservation.quota_base_used_percent ?? 0);
     const current = Number(device.account_used_percent);
     if (!Number.isFinite(budget) || !Number.isFinite(current)) return false;
@@ -152,9 +154,16 @@
 
   function sessionUsage(reservation, device = deviceFor(reservation)) {
     const budget = Number(device?.quota_budget_percent ?? reservation?.quota_budget_percent ?? reservation?.requested_quota_percent ?? 0);
+    const accumulated = Number(device?.quota_consumed_percent);
     const base = Number(device?.quota_base_used_percent ?? reservation?.quota_base_used_percent ?? 0);
     const current = Number(device?.account_used_percent);
-    const consumed = Number.isFinite(current) ? Math.max(0, current >= base ? current - base : current) : 0;
+    const consumed = Number.isFinite(accumulated)
+      ? Math.max(0, accumulated)
+      : Number.isFinite(current) ? Math.max(0, current >= base ? current - base : current) : 0;
+    const exhausted = device?.status === "limited" || Boolean(device?.usage_limit_reached_at);
+    if (exhausted) {
+      return { budget, consumed: Math.max(consumed, budget), remaining: 0, remainingPercent: 0 };
+    }
     const remaining = Math.max(0, budget - consumed);
     const remainingPercent = budget > 0 ? Math.max(0, Math.min(100, Math.round((remaining / budget) * 100))) : 0;
     return { budget, consumed, remaining, remainingPercent };
@@ -184,7 +193,39 @@
     return `${protocol}//${hostWithPort}`;
   }
 
+  function providerBaseUrl() {
+    return `${window.location.origin}/api/codex/v1`;
+  }
+
+  function configTomlSnippet(model = "gpt-5.6-sol") {
+    const baseUrl = providerBaseUrl();
+    return `model = "${model}"\nmodel_provider = "fecart"\n\n[model_providers.fecart]\nname = "FECART Codex"\nbase_url = "${baseUrl}"\nenv_key = "FECART_CODEX_TOKEN"\nwire_api = "responses"\nsupports_websockets = false`;
+  }
+
   function cliCommandFor(token, platform = state.platform) {
+    if (platform === "cmd") {
+      return `set "FECART_CODEX_TOKEN=${token}" && codex`;
+    }
+    if (platform === "macos" || platform === "linux") {
+      return `export FECART_CODEX_TOKEN='${token}' && codex`;
+    }
+    return `$env:FECART_CODEX_TOKEN = "${token}"; codex`;
+  }
+
+  function appCommandFor(token, platform = state.platform) {
+    if (platform === "cmd") {
+      return `setx FECART_CODEX_TOKEN "${token}" && start explorer.exe "shell:AppsFolder\\OpenAI.Codex_2p2nqsd0c76g0!App"`;
+    }
+    if (platform === "macos") {
+      return `FECART_CODEX_TOKEN='${token}' open -a "ChatGPT"`;
+    }
+    if (platform === "linux") {
+      return `FECART_CODEX_TOKEN='${token}' chatgpt`;
+    }
+    return `setx FECART_CODEX_TOKEN "${token}"; Start-Process "explorer.exe" "shell:AppsFolder\\OpenAI.Codex_2p2nqsd0c76g0!App"`;
+  }
+
+  function legacyCliCommandFor(token, platform = state.platform) {
     const remoteUrl = remoteCliUrl();
     if (platform === "cmd") {
       return `set "CODEX_REMOTE_TOKEN=${token}" && codex --remote "${remoteUrl}" --remote-auth-token-env CODEX_REMOTE_TOKEN`;
@@ -193,6 +234,21 @@
       return `export CODEX_REMOTE_TOKEN='${token}'; codex --remote '${remoteUrl}' --remote-auth-token-env CODEX_REMOTE_TOKEN`;
     }
     return `$env:CODEX_REMOTE_TOKEN = "${token}"; codex --remote "${remoteUrl}" --remote-auth-token-env CODEX_REMOTE_TOKEN`;
+  }
+
+  function autoConfigCommand(platform = "windows") {
+    const toml = configTomlSnippet();
+    if (platform === "macos" || platform === "linux") {
+      return `mkdir -p ~/.codex && if [ -f ~/.codex/config.toml ]; then cp ~/.codex/config.toml ~/.codex/config.toml.bak && echo -e "\n\\x1b[1;33m========================================================\n [ATENÇÃO] BACKUP DO SEU CONFIG.TOML FOI CRIADO!\n Caminho do backup: ~/.codex/config.toml.bak\n Anote este caminho caso queira restaurar manualmente.\n========================================================\\x1b[0m\n"; fi; cat << 'EOF' > ~/.codex/config.toml\n${toml}\nEOF\necho "Configuração do FECART Codex aplicada com sucesso!"`;
+    }
+    return `$dir="$HOME\\.codex"; $cfg="$dir\\config.toml"; $bak="$dir\\config.toml.bak"; New-Item -ItemType Directory -Force $dir | Out-Null; if (Test-Path $cfg) { Copy-Item $cfg $bak -Force; Write-Host "\`n========================================================" -ForegroundColor Yellow; Write-Host " [ATENCAO] BACKUP DO SEU CONFIG.TOML FOI CRIADO!" -ForegroundColor Yellow; Write-Host " Caminho do backup: $bak" -ForegroundColor Cyan; Write-Host " Anote este caminho caso queira restaurar manualmente." -ForegroundColor Gray; Write-Host "========================================================\`n" -ForegroundColor Yellow }; @'\n${toml}\n'@ | Set-Content -Path $cfg -Encoding UTF8; Write-Host "Configuração do FECART Codex aplicada com sucesso!" -ForegroundColor Green`;
+  }
+
+  function restoreConfigCommand(platform = "windows") {
+    if (platform === "macos" || platform === "linux") {
+      return `if [ -f ~/.codex/config.toml.bak ]; then mv ~/.codex/config.toml.bak ~/.codex/config.toml && echo -e "\n\\x1b[1;32m[SUCESSO] Backup restaurado de: ~/.codex/config.toml.bak\nCodex voltou à configuração anterior.\\x1b[0m\n"; else rm -f ~/.codex/config.toml && echo -e "\n\\x1b[1;33m[REMOVIDO] Configuração da FECART removida! Codex restaurado para o padrão.\\x1b[0m\n"; fi`;
+    }
+    return `$dir="$HOME\\.codex"; $cfg="$dir\\config.toml"; $bak="$dir\\config.toml.bak"; if (Test-Path $bak) { Move-Item $bak $cfg -Force; Write-Host "\`n[SUCESSO] Backup restaurado de: $bak" -ForegroundColor Green; Write-Host "Codex voltou à sua configuração pessoal anterior.\`n" -ForegroundColor Gray } elseif (Test-Path $cfg) { Remove-Item $cfg -Force; Write-Host "\`n[REMOVIDO] Configuração da FECART removida! Codex restaurado para o padrão.\`n" -ForegroundColor Yellow } else { Write-Host "\`nNenhuma configuração personalizada encontrada.\`n" }`;
   }
 
   function formatTokenCount(value) {
@@ -219,6 +275,7 @@
       account_used_percent: usage.accountUsedPercent ?? null,
       account_window_duration_mins: usage.accountWindowDurationMins ?? null,
       account_resets_at: Number.isFinite(resetSeconds) && resetSeconds > 0 ? new Date(resetSeconds * 1_000).toISOString() : null,
+      quota_consumed_percent: Number(usage.quotaConsumedPercent || 0),
       quota_base_used_percent: device.quotaBaseUsedPercent ?? null,
       quota_budget_percent: device.quotaBudgetPercent ?? null,
       usage_limit_reached_at: usage.usageLimitReachedAt || null,
@@ -429,26 +486,49 @@
     });
     $("#overview-view").hidden = !overview;
     $("#guides-view").hidden = overview;
-    if (!overview) showGuidePage("home", false);
+    if (!overview) {
+      updateGuideDynamicSnippets();
+      const guide = $("#guide-cli");
+      if (guide) {
+        const plat = state.platform === "macos" ? "macos" : state.platform === "linux" ? "linux" : "windows";
+        setGuidePlatform(guide, plat);
+      }
+    }
     if (overview && state.calendar) window.setTimeout(() => state.calendar.updateSize?.(), 40);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  function showGuidePage(name, updateHistory = true) {
-    const page = name === "cli" || name === "app" ? name : "home";
-    $("#guides-home").hidden = page !== "home";
-    $("#guide-cli").hidden = page !== "cli";
-    $("#guide-app").hidden = page !== "app";
+  function updateGuideDynamicSnippets() {
+    const toml = configTomlSnippet();
+    document.querySelectorAll("[data-config-toml-snippet]").forEach((el) => {
+      el.textContent = toml;
+    });
+    ["windows", "macos", "linux"].forEach((plat) => {
+      document.querySelectorAll(`[data-auto-config-cmd="${plat}"]`).forEach((el) => {
+        el.textContent = autoConfigCommand(plat);
+      });
+      document.querySelectorAll(`[data-restore-config-cmd="${plat}"]`).forEach((el) => {
+        el.textContent = restoreConfigCommand(plat);
+      });
+    });
+  }
+
+  function showGuidePage(_name = "unified", updateHistory = true) {
+    updateGuideDynamicSnippets();
+    const guide = $("#guide-cli");
+    if (guide) {
+      const plat = state.platform === "macos" ? "macos" : state.platform === "linux" ? "linux" : "windows";
+      setGuidePlatform(guide, plat);
+    }
     if (updateHistory) {
-      const hash = page === "home" ? "#guides" : `#guides/${page}`;
-      window.history.pushState({ guide: page }, "", hash);
+      window.history.pushState({ guide: "unified" }, "", "#guides");
     }
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   function setGuidePlatform(guide, platform) {
     if (!guide) return;
-    const selected = platform === "macos" ? "macos" : "windows";
+    const selected = platform === "macos" ? "macos" : platform === "linux" ? "linux" : "windows";
     guide.querySelectorAll("[data-guide-platform]").forEach((button) => {
       const active = button.dataset.guidePlatform === selected;
       button.classList.toggle("is-active", active);
@@ -457,13 +537,12 @@
     guide.querySelectorAll("[data-platform-copy]").forEach((copy) => {
       copy.hidden = copy.dataset.platformCopy !== selected;
     });
+    updateGuideDynamicSnippets();
   }
 
   function restoreGuideFromLocation() {
-    const match = window.location.hash.match(/^#guides\/(cli|app)$/);
-    if (window.location.hash === "#guides" || match) {
+    if (window.location.hash.startsWith("#guide")) {
       activateTab("guides");
-      showGuidePage(match?.[1] || "home", false);
       return;
     }
     activateTab("overview");
@@ -496,58 +575,86 @@
     }
     const usable = sessionTokenAvailable(reservation);
     const token = usable ? tokenFor(reservation) : null;
-    const app = usable ? appAccessFor(reservation) : null;
-    const tokenNode = $("#session-token");
     const toggle = $("#toggle-token");
-    const tokenLine = $("#token-copy-line");
-    const cliLine = $("#cli-copy-line");
     const visible = Boolean(token && state.tokenVisible);
-    tokenNode.dataset.token = token || "";
-    tokenNode.textContent = visible ? token : "••••••••••••••••••••••••";
-    toggle.disabled = !token;
-    toggle.setAttribute("aria-pressed", String(visible));
-    toggle.setAttribute("aria-label", visible ? "Ocultar token" : "Mostrar token");
-    toggle.innerHTML = `<i class="ph ${visible ? "ph-eye-slash" : "ph-eye"}" aria-hidden="true"></i><span>${visible ? "Ocultar" : "Mostrar"}</span>`;
-    document.querySelectorAll("[data-cli-access]").forEach((node) => { node.hidden = state.accessProduct !== "cli"; });
-    $("#app-access-panel").hidden = state.accessProduct !== "app";
-    document.querySelectorAll("[data-access-product]").forEach((button) => {
-      const active = button.dataset.accessProduct === state.accessProduct;
-      button.classList.toggle("is-active", active);
-      button.setAttribute("aria-pressed", String(active));
-    });
-    $("#app-ssh-alias").textContent = app?.alias || "—";
-    $("#app-workspace-path").textContent = app?.workspacePath || "—";
-    $("#app-access-expiry").textContent = app?.expiresAt ? components().formatDateTime(new Date(app.expiresAt)) : "—";
-    $("#app-access-summary").textContent = app
-      ? "Chave pronta. Instale-a no SSH e selecione este host no Codex App."
-      : state.activationInFlight
-        ? "Preparando a conexão SSH temporária…"
-        : "Disponível durante uma sessão aprovada e ativa.";
-    $("#download-app-key").disabled = !app;
-    $("#copy-app-ssh-config").disabled = !app;
-    $("#access-copy-status").textContent = state.activationInFlight
-      ? "Gerando as credenciais temporárias no host central…"
-      : state.activationError
-        ? state.activationError
-        : sessionLimitReached(reservation)
-          ? "A cota desta sessão foi atingida; o token foi bloqueado."
-          : token
-            ? state.accessProduct === "app"
-              ? (app ? "Conexão do Codex App pronta. Baixe a chave e copie a configuração SSH." : "O host ainda não publicou o acesso SSH do Codex App.")
-              : (visible ? "Comando pronto e token manual revelado. Oculte-o quando terminar." : "Comando pronto para o terminal selecionado; o token permanece protegido.")
-            : "O acesso temporário aparece quando houver uma sessão ativa neste navegador.";
 
+    if (toggle) {
+      toggle.disabled = !token;
+      toggle.setAttribute("aria-pressed", String(visible));
+      toggle.setAttribute("aria-label", visible ? "Ocultar token" : "Mostrar token");
+      toggle.innerHTML = `<i class="ph ${visible ? "ph-eye-slash" : "ph-eye"}" aria-hidden="true"></i>`;
+    }
+
+    const isApp = state.accessProduct === "app";
     const commandNode = $("#cli-command");
     const maskedToken = "••••••••••••••••";
     const displayToken = visible && token ? token : maskedToken;
-    commandNode.textContent = cliCommandFor(displayToken, state.platform);
+    if (commandNode) {
+      commandNode.textContent = isApp ? appCommandFor(displayToken, state.platform) : cliCommandFor(displayToken, state.platform);
+    }
     const copyCommand = $("#copy-cli-command");
-    copyCommand.disabled = !token;
+    if (copyCommand) {
+      copyCommand.disabled = !token;
+    }
+
+    document.querySelectorAll("[data-mode-select]").forEach((button) => {
+      const active = button.dataset.modeSelect === state.accessProduct;
+      button.classList.toggle("is-active", active);
+      button.setAttribute("aria-selected", String(active));
+    });
+
+    document.querySelectorAll("[data-platform-select]").forEach((button) => {
+      const active = button.dataset.platformSelect === state.platform;
+      button.classList.toggle("is-active", active);
+      button.setAttribute("aria-selected", String(active));
+    });
+
+    const linuxNote = $("#linux-app-note");
+    if (linuxNote) {
+      linuxNote.hidden = !(isApp && state.platform === "linux");
+    }
+
+    const appWarning = $("#app-close-warning");
+    if (appWarning) {
+      appWarning.hidden = !isApp;
+    }
+
+    const kicker = $("#access-kicker-text");
+    if (kicker) {
+      kicker.textContent = isApp ? "ChatGPT Desktop (Codex)" : "Codex CLI";
+    }
+
+    const statusEl = $("#access-copy-status");
+    if (statusEl) {
+      statusEl.textContent = state.activationInFlight
+        ? "Gerando as credenciais temporárias no host central…"
+        : state.activationError
+          ? state.activationError
+          : sessionLimitReached(reservation)
+            ? "A cota desta sessão foi atingida; o token foi bloqueado."
+            : token
+              ? (visible ? "Comando pronto com token visível. Oculte-o quando terminar." : (isApp ? "Comando de inicialização do ChatGPT pronto para o sistema selecionado." : "Comando pronto para o terminal selecionado."))
+              : (isApp ? "Inicie o aplicativo ChatGPT Desktop com o token injetado para esta sessão ativa." : "Copie o comando e execute no terminal do seu projeto durante a sessão ativa.");
+    }
+  }
+
+  function renderUserProfile() {
+    const profile = state.data?.profile || null;
+    const groupName = profile?.group_name || "Grupo";
+    const username = profile?.username ? `@${profile.username}` : "";
+    const groupEl = $("#user-group-name");
+    const userEl = $("#user-username");
+    if (groupEl) groupEl.textContent = groupName;
+    if (userEl) userEl.textContent = username;
+
+    const statsGroupLabel = $("#stats-group-label");
+    if (statsGroupLabel) statsGroupLabel.textContent = groupName;
   }
 
   function renderStats() {
     const cutoff = now().getTime() - 30 * 24 * 60 * 60_000;
-    const reservations = (state.data?.reservations || []).filter((item) => item.approval_status === "approved" && Date.parse(item.starts_at) >= cutoff);
+    const allReservations = (state.data?.reservations || []).filter((item) => Date.parse(item.starts_at) >= cutoff);
+    const reservations = allReservations.filter((item) => item.approval_status === "approved");
     const hours = reservations.reduce((sum, item) => sum + Math.max(0, (Date.parse(item.ends_at) - Date.parse(item.starts_at)) / 3_600_000), 0);
     const days = new Set(reservations.map((item) => new Date(item.starts_at).toLocaleDateString("pt-BR"))).size;
     const accesses = (state.data?.devices || [])
@@ -556,11 +663,25 @@
       .sort((a, b) => Date.parse(b) - Date.parse(a));
     const lastAccess = accesses[0] ? new Date(accesses[0]) : null;
     const today = calendarTools().sameDay(lastAccess || new Date(0), now());
+
+    const devices = state.data?.devices || [];
+    const totalTokens = devices.reduce((sum, d) => sum + Number(d.observed_tokens || 0), 0);
+    const avgHours = reservations.length > 0 ? (hours / reservations.length) : 0;
+    const avgDurationFormatted = avgHours >= 1 ? `${avgHours.toFixed(1).replace(".0", "")}h` : avgHours > 0 ? `${Math.round(avgHours * 60)}min` : "—";
+    const approvalRate = allReservations.length > 0 ? Math.round((reservations.length / allReservations.length) * 100) : 100;
+    const totalInput = devices.reduce((sum, d) => sum + Number(d.observed_input_tokens || 0), 0);
+    const totalCached = devices.reduce((sum, d) => sum + Number(d.observed_cached_input_tokens || 0), 0);
+    const cachePercent = (totalInput + totalCached) > 0 ? Math.round((totalCached / (totalInput + totalCached)) * 100) : 0;
+
     $("#stat-approved").textContent = String(reservations.length);
     $("#stat-hours").textContent = formatDuration(hours);
     $("#stat-days").textContent = String(days);
     $("#stat-last-access").textContent = lastAccess ? (today ? `Hoje, ${components().formatTime(lastAccess)}` : components().formatDateTime(lastAccess)) : "—";
     $("#stat-last-access-note").textContent = lastAccess ? formatRelative(lastAccess) : "aguardando dados";
+    if ($("#stat-tokens")) $("#stat-tokens").textContent = totalTokens > 0 ? formatTokenCount(totalTokens) : "0";
+    if ($("#stat-avg-duration")) $("#stat-avg-duration").textContent = avgDurationFormatted;
+    if ($("#stat-approval-rate")) $("#stat-approval-rate").textContent = `${approvalRate}%`;
+    if ($("#stat-cache-rate")) $("#stat-cache-rate").textContent = totalTokens > 0 ? `${cachePercent}%` : "0%";
   }
 
   function renderSession() {
@@ -585,12 +706,14 @@
       $("#session-percent").textContent = `${timePercentage}%`;
       $("#session-time").textContent = formatCountdown(remainingTime);
       $("#session-time-total").textContent = `até ${components().formatTime(end)}`;
-      status.textContent = limited ? "Uso esgotado" : state.activationInFlight ? "Inicializando sessão" : "Sessão ativa";
-      dot.classList.toggle("is-active", true);
+      status.textContent = limited ? "Ativa (Uso esgotado)" : state.activationInFlight ? "Inicializando sessão" : "Sessão ativa";
+      dot.classList.toggle("is-active", !limited);
       dot.classList.toggle("is-limited", limited);
       $("#session-started").textContent = state.activationInFlight
         ? "Gerando a credencial real no host central…"
-        : `Ativa desde ${components().formatDateTime(start)}`;
+        : limited
+          ? `Janela ativa desde ${components().formatDateTime(start)} (cota esgotada)`
+          : `Ativa desde ${components().formatDateTime(start)}`;
 
       components().setProgress($("#quota-progress"), usage.remainingPercent, `${usage.remaining.toFixed(1)}% de uso restante`);
       $("#quota-percent").textContent = `${usage.remainingPercent}%`;
@@ -598,7 +721,9 @@
       $("#quota-total").textContent = `de ${usage.budget}% aprovados`;
       $("#session-activity").textContent = state.activationInFlight
           ? "Aguardando o host central emitir o token."
-          : lastActivity
+          : limited
+            ? "Cota aprovada desta sessão foi consumida; o token está bloqueado."
+            : lastActivity
             ? `Última atividade ${formatRelative(lastActivity)}.`
             : lastSeen
               ? `CLI conectado ${formatRelative(lastSeen)}; aguardando uso.`
@@ -613,7 +738,7 @@
       const usage = upcoming ? sessionUsage(upcoming, null) : { budget: 0, remaining: 0, remainingPercent: 0 };
       components().setProgress($("#session-progress"), upcoming ? 100 : 0, upcoming ? `${formatCountdown(untilStart)} até a próxima sessão` : "Nenhuma sessão aprovada");
       components().setProgress($("#quota-progress"), upcoming ? 100 : 0, upcoming ? `${usage.budget}% aprovados para a próxima sessão` : "Sem uso aprovado");
-      $("#session-percent").textContent = upcoming ? "100%" : "0%";
+      $("#session-percent").textContent = upcoming ? "100%" : "—";
       $("#session-time").textContent = upcoming ? formatCountdown(untilStart) : "—";
       $("#session-time-total").textContent = upcoming ? `começa ${components().formatDateTime(upcoming.starts_at)}` : "sem sessão aprovada";
       $("#quota-percent").textContent = upcoming ? "100%" : "—";
@@ -655,13 +780,14 @@
       const pending = item.approval_status !== "approved";
       const ended = reservationIsEnded(item);
       const active = !ended && !pending && Date.parse(item.starts_at) <= now().getTime() && Date.parse(item.ends_at) > now().getTime();
+      const limited = active && sessionLimitReached(item);
       return {
         id: `reservation-${item.id}`,
-        title: ended ? "Encerrado" : active ? "Sessão ativa" : pending ? "Pendente" : "Aprovado",
+        title: ended ? "Encerrado" : limited ? "Ativa (Esgotada)" : active ? "Sessão ativa" : pending ? "Pendente" : "Aprovado",
         start: item.starts_at,
         end: item.ends_at,
-        className: ["calendar-event-own", pending ? "calendar-event-pending" : "", ended ? "calendar-event-ended" : "", active ? "calendar-event-active" : ""].filter(Boolean).join(" "),
-        extendedProps: { kind: "mine", pending, active, ended, reservationId: item.id },
+        className: ["calendar-event-own", pending ? "calendar-event-pending" : "", ended ? "calendar-event-ended" : "", active ? (limited ? "calendar-event-limited" : "calendar-event-active") : ""].filter(Boolean).join(" "),
+        extendedProps: { kind: "mine", pending, active, ended, limited, reservationId: item.id },
       };
     });
     const busy = (state.data?.busySlots || [])
@@ -1079,7 +1205,7 @@
     const duration = Number($("#booking-duration").value);
     const accountId = $("#booking-account").value;
     const requestedQuotaPercent = Number($("#booking-quota").value);
-    if (!start || ![1, 2, 3].includes(duration) || ![5, 10, 15, 20].includes(requestedQuotaPercent) || !accountId) {
+    if (!start || ![1, 2, 3].includes(duration) || requestedQuotaPercent < 1 || requestedQuotaPercent > 100 || !accountId) {
       setBookingMessage("Confira os dados do agendamento.");
       return;
     }
@@ -1119,25 +1245,28 @@
     document.querySelectorAll(".main-tab").forEach((tab) => tab.addEventListener("click", () => {
       if (tab.dataset.tab === "guides") {
         activateTab("guides");
-        showGuidePage("home");
+        showGuidePage("unified");
         return;
       }
       window.history.pushState({}, "", window.location.pathname);
       activateTab("overview");
     }));
-    $("#guides-back").addEventListener("click", () => {
+    $("#guides-back")?.addEventListener("click", () => {
       window.history.pushState({}, "", window.location.pathname);
       activateTab("overview");
     });
     $("#help-button").addEventListener("click", () => {
       activateTab("guides");
-      showGuidePage("home");
+      showGuidePage("unified");
     });
     document.querySelectorAll("[data-open-guide]").forEach((button) => button.addEventListener("click", () => {
       activateTab("guides");
-      showGuidePage(button.dataset.openGuide);
+      showGuidePage("unified");
     }));
-    document.querySelectorAll("[data-guide-back]").forEach((button) => button.addEventListener("click", () => showGuidePage("home")));
+    document.querySelectorAll("[data-guide-back]").forEach((button) => button.addEventListener("click", () => {
+      window.history.pushState({}, "", window.location.pathname);
+      activateTab("overview");
+    }));
     document.querySelectorAll("[data-guide-platform]").forEach((button) => button.addEventListener("click", () => {
       setGuidePlatform(button.closest(".guide-detail"), button.dataset.guidePlatform);
     }));
@@ -1157,7 +1286,7 @@
       if (event.key === "Escape") toggleNotifications(false);
     });
 
-    $("#toggle-token").addEventListener("click", () => {
+    $("#toggle-token")?.addEventListener("click", () => {
       if (!sessionTokenAvailable(activeReservation())) {
         components().showToast("O token só está disponível durante uma sessão ativa.", "warning");
         return;
@@ -1165,58 +1294,18 @@
       state.tokenVisible = !state.tokenVisible;
       renderToken();
     });
-    $("#access-platform").value = state.platform;
-    $("#access-platform").addEventListener("change", (event) => {
-      state.platform = ["powershell", "cmd", "macos", "linux"].includes(event.target.value) ? event.target.value : "powershell";
-      renderToken();
+    document.querySelectorAll("[data-mode-select]").forEach((button) => {
+      button.addEventListener("click", () => {
+        state.accessProduct = button.dataset.modeSelect === "app" ? "app" : "cli";
+        renderToken();
+      });
     });
-    document.querySelectorAll("[data-access-product]").forEach((button) => button.addEventListener("click", () => {
-      state.accessProduct = button.dataset.accessProduct === "app" ? "app" : "cli";
-      renderToken();
-    }));
-    $("#download-app-key").addEventListener("click", () => {
-      const app = appAccessFor(activeReservation());
-      if (!app) {
-        components().showToast("A chave do Codex App só fica disponível durante a sessão ativa.", "warning");
-        return;
-      }
-      const blob = new Blob([app.privateKey], { type: "application/x-pem-file" });
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = appKeyFilename(app);
-      anchor.click();
-      window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
-      components().showToast("Chave temporária baixada.", "success");
-    });
-    $("#copy-app-ssh-config").addEventListener("click", async () => {
-      const app = appAccessFor(activeReservation());
-      if (!app) {
-        components().showToast("A configuração só fica disponível durante a sessão ativa.", "warning");
-        return;
-      }
-      try {
-        await navigator.clipboard.writeText(appSshConfig(app));
-        $("#access-copy-status").textContent = "Configuração SSH copiada. Cole no arquivo ~/.ssh/config.";
-        components().showToast("Configuração SSH copiada.", "success");
-      } catch {
-        components().showToast("Não foi possível copiar a configuração SSH.", "error");
-      }
-    });
-    $("#copy-token").addEventListener("click", async () => {
-      const reservation = activeReservation();
-      const token = sessionTokenAvailable(reservation) ? tokenFor(reservation) : null;
-      if (!token) {
-        components().showToast("O token só está disponível durante uma sessão ativa.", "warning");
-        return;
-      }
-      try {
-        await navigator.clipboard.writeText(token);
-        $("#access-copy-status").textContent = "Token copiado. Ele continua oculto nesta tela.";
-        components().showToast("Token copiado.", "success");
-      } catch {
-        components().showToast("Não foi possível copiar o token neste navegador.", "error");
-      }
+
+    document.querySelectorAll("[data-platform-select]").forEach((button) => {
+      button.addEventListener("click", () => {
+        state.platform = ["powershell", "cmd", "macos", "linux"].includes(button.dataset.platformSelect) ? button.dataset.platformSelect : "powershell";
+        renderToken();
+      });
     });
 
     $("#copy-cli-command").addEventListener("click", async () => {
@@ -1226,17 +1315,63 @@
         components().showToast("O comando só fica disponível durante uma sessão ativa.", "warning");
         return;
       }
+      const isApp = state.accessProduct === "app";
+      const cmd = isApp ? appCommandFor(token, state.platform) : cliCommandFor(token, state.platform);
       try {
-        await navigator.clipboard.writeText(cliCommandFor(token, state.platform));
+        await navigator.clipboard.writeText(cmd);
         $("#access-copy-status").textContent = "Comando copiado para a área de transferência.";
-        components().showToast("Comando do Codex CLI copiado.", "success");
+        components().showToast(isApp ? "Comando do ChatGPT Desktop copiado." : "Comando do Codex CLI copiado.", "success");
       } catch {
         components().showToast("Não foi possível copiar o comando neste navegador.", "error");
       }
     });
 
+    $("#copy-auto-config")?.addEventListener("click", async () => {
+      const activeGuide = document.querySelector("#guide-cli");
+      const activeBtn = activeGuide?.querySelector("[data-guide-platform].is-active");
+      const platform = activeBtn?.dataset?.guidePlatform || "windows";
+      try {
+        await navigator.clipboard.writeText(autoConfigCommand(platform));
+        components().showToast("Comando de configuração automática copiado!", "success");
+      } catch {
+        components().showToast("Não foi possível copiar o comando.", "error");
+      }
+    });
+
+    $("#copy-restore-config")?.addEventListener("click", async () => {
+      const activeGuide = document.querySelector("#guide-cli");
+      const activeBtn = activeGuide?.querySelector("[data-guide-platform].is-active");
+      const platform = activeBtn?.dataset?.guidePlatform || "windows";
+      try {
+        await navigator.clipboard.writeText(restoreConfigCommand(platform));
+        components().showToast("Comando para restaurar padrão copiado!", "success");
+      } catch {
+        components().showToast("Não foi possível copiar o comando.", "error");
+      }
+    });
+
+    $("#download-config-toml")?.addEventListener("click", () => {
+      const toml = configTomlSnippet();
+      const blob = new Blob([toml], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "config.toml";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      components().showToast("Download do config.toml iniciado.", "success");
+    });
+
     $("#open-booking").addEventListener("click", () => openBooking());
-    $("#open-booking-top").addEventListener("click", () => openBooking());
+    $("#open-booking-top")?.addEventListener("click", () => {
+      activateTab("overview");
+      const calendar = document.querySelector(".calendar-section");
+      if (calendar) {
+        calendar.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    });
     $("#booking-close").addEventListener("click", closeBooking);
     $("#booking-cancel").addEventListener("click", closeBooking);
     $("#booking-form").addEventListener("submit", submitBooking);
@@ -1262,6 +1397,7 @@
   }
 
   function renderAll() {
+    renderUserProfile();
     renderAccounts();
     renderBookingOptions();
     renderToken();

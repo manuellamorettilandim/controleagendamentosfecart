@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -14,12 +15,28 @@ if (!agentToken) {
   throw new Error("Configure RELAY_AGENT_TOKEN no .env antes de executar npm run local.");
 }
 
-const environment = {
+const sharedEnvironment = {
   ...process.env,
   HOST: host,
   PORT: String(port),
-  RELAY_URL: `ws://127.0.0.1:${port}/tunnel`,
   SITE_DIR: process.env.SITE_DIR?.trim() || path.join(projectRoot, "site"),
+};
+
+const relayTokenHash = process.env.RELAY_AGENT_TOKEN_SHA256?.trim()
+  || createHash("sha256").update(agentToken, "utf8").digest("hex");
+const relayEnvironment = {
+  ...sharedEnvironment,
+  RELAY_AGENT_TOKEN_SHA256: relayTokenHash,
+};
+delete relayEnvironment.RELAY_AGENT_TOKEN;
+delete relayEnvironment.SUPABASE_SECRET_KEY;
+delete relayEnvironment.SUPABASE_SERVICE_ROLE_KEY;
+delete relayEnvironment.SUPABASE_SERVICE_KEY;
+delete relayEnvironment.RELAY_URL;
+
+const hostEnvironment = {
+  ...sharedEnvironment,
+  RELAY_URL: `ws://127.0.0.1:${port}/tunnel`,
 };
 
 let stopping = false;
@@ -27,6 +44,7 @@ const processes = [
   ["relay", path.join(projectRoot, "dist", "src", "relay-main.js")],
   ["host", path.join(projectRoot, "dist", "src", "host-agent.js")],
 ].map(([name, entrypoint]) => {
+  const environment = name === "relay" ? relayEnvironment : hostEnvironment;
   const child = spawn(process.execPath, [entrypoint], {
     cwd: projectRoot,
     env: environment,
@@ -58,4 +76,4 @@ process.once("SIGINT", () => void stop(0));
 process.once("SIGTERM", () => void stop(0));
 
 console.log(`[local] Site e relay: http://${host}:${port}/`);
-console.log(`[local] Host-agent conectado ao relay local em ${environment.RELAY_URL}.`);
+console.log(`[local] Host-agent conectado ao relay local em ${hostEnvironment.RELAY_URL}.`);

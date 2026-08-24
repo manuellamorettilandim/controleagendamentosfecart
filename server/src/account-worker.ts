@@ -14,6 +14,7 @@ import {
   type RateLimitWindow,
 } from "./protocol.js";
 import { createOpaqueToken } from "./crypto.js";
+import { codexChildEnvironment } from "./codex-child-env.js";
 
 const CONTROL_TIMEOUT_MS = 20_000;
 
@@ -107,6 +108,48 @@ function asUsage(value: unknown): AccountUsageSnapshot | null {
     longestStreakDays: asNumber(summary?.longestStreakDays),
     dailyUsageBuckets: buckets,
   };
+}
+
+function decodeJwtEmail(token: string | undefined): string | null {
+  if (!token || typeof token !== "string") return null;
+  const parts = token.split(".");
+  if (parts.length < 2) return null;
+  try {
+    const json = Buffer.from(parts[1], "base64").toString("utf8");
+    const payload = JSON.parse(json) as Record<string, unknown>;
+    if (typeof payload.email === "string" && payload.email) return payload.email;
+    if (typeof payload.sub === "string" && payload.sub) return payload.sub;
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+async function readDiskAuthAccount(codeHome: string): Promise<JsonRecord | null> {
+  const authPath = path.join(codeHome, "auth.json");
+  try {
+    const raw = await fs.readFile(authPath, "utf8");
+    const parsed = JSON.parse(raw) as {
+      auth_mode?: string;
+      tokens?: {
+        id_token?: string;
+        access_token?: string;
+        refresh_token?: string;
+        account_id?: string;
+      };
+    };
+    if (parsed && typeof parsed === "object" && parsed.tokens?.access_token) {
+      const email = decodeJwtEmail(parsed.tokens.id_token) || decodeJwtEmail(parsed.tokens.access_token) || parsed.tokens.account_id || "chatgpt_user";
+      return {
+        type: parsed.auth_mode || "chatgpt",
+        email,
+        planType: "chatgpt",
+      };
+    }
+  } catch {
+    // no auth.json or unreadable
+  }
+  return null;
 }
 
 function accountAuthMode(account: JsonRecord | null): string | null {
@@ -206,6 +249,14 @@ export class AccountWorker {
       requestError = true;
     }
 
+    if (!account) {
+      const diskAccount = await readDiskAuthAccount(this.account.codeHome);
+      if (diskAccount) {
+        account = diskAccount;
+        requestError = false;
+      }
+    }
+
     let rateLimits: Record<string, AccountRateLimit> = {};
     try {
       const result = await this.request("account/rateLimits/read", {}) as JsonRecord;
@@ -254,6 +305,22 @@ export class AccountWorker {
   public async loginStart(): Promise<unknown> {
     await this.ensureStarted();
     return this.request("account/login/start", { type: "chatgptDeviceCode" });
+  }
+
+  public async listModels(): Promise<unknown> {
+    await this.ensureStarted();
+    return this.request("model/list", {});
+  }
+
+  public async refreshOAuthToken(): Promise<boolean> {
+    await this.ensureStarted();
+    try {
+      await this.request("account/read", { refreshToken: true });
+      await this.refreshSnapshot();
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   public async logout(): Promise<unknown> {
@@ -324,11 +391,22 @@ export class AccountWorker {
       await fs.chmod(this.tokenFilePath(), 0o600).catch(() => undefined);
       this.ownsTokenFile = true;
     }
+
+    // Ensure account codeHome has its own isolated config.toml to prevent inheriting global client FECART provider
+    const configTomlPath = path.join(this.account.codeHome, "config.toml");
+    try {
+      await fs.access(configTomlPath);
+    } catch {
+      await fs.mkdir(this.account.codeHome, { recursive: true });
+      await fs.writeFile(configTomlPath, `# Generated host account config\nmodel_provider = "openai"\n`, "utf8").catch(() => undefined);
+    }
   }
 
   private startAppServer(): void {
     const args = [
       "app-server",
+      "-c",
+      'model_provider="openai"',
       "--listen",
       `ws://127.0.0.1:${this.account.appServerPort}`,
       "--ws-auth",
@@ -339,7 +417,11 @@ export class AccountWorker {
     const useShell = process.platform === "win32" && /\.(cmd|bat)$/i.test(this.config.codexBin);
     this.process = spawn(this.config.codexBin, args, {
       cwd: this.account.codeHome,
-      env: { ...process.env, CODEX_HOME: this.account.codeHome },
+      env: codexChildEnvironment({
+        CODEX_HOME: this.account.codeHome,
+        CODEX_MODEL_PROVIDER: "openai",
+        CODEX_PROVIDER: "openai",
+      }),
       stdio: "inherit",
       shell: useShell,
     });

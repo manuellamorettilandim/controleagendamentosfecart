@@ -7,11 +7,77 @@ import { WebSocket } from "ws";
 import type { RawData } from "ws";
 
 import { hashToken } from "../src/crypto.js";
-import { RelayServer } from "../src/relay.js";
+import {
+  applyModelPolicyToClientFrame,
+  applyModelPolicyToServerFrame,
+  normalizeModelCatalog,
+  RelayServer,
+  type ModelPolicyStream,
+} from "../src/relay.js";
 import { decodeMessage, encodeMessage, PROTOCOL_VERSION, type RelayDevice, type WireMessage } from "../src/protocol.js";
 
 const agentToken = "agent-secret-used-only-by-central-host";
 const deviceToken = "device-secret-shown-once";
+
+test("model catalog is populated from the account API and excludes hidden entries", () => {
+  assert.deepEqual(normalizeModelCatalog({ result: { data: [
+    { id: "gpt-live", displayName: "GPT Live", description: "From API", isDefault: true, defaultReasoningEffort: "medium", hidden: false },
+    { id: "gpt-hidden", displayName: "Hidden", hidden: true },
+    { id: "gpt-live", displayName: "Duplicate", hidden: false },
+  ] } }), [{
+    id: "gpt-live",
+    displayName: "GPT Live",
+    description: "From API",
+    isDefault: true,
+    defaultReasoningEffort: "medium",
+  }]);
+});
+
+test("model policy injects an allowed default, rejects disabled models, and filters model/list", () => {
+  const stream: ModelPolicyStream = {
+    allowedModels: ["gpt-5.6-terra", "gpt-5.4"],
+    pendingModelListRequestIds: new Set(),
+  };
+
+  const injected = applyModelPolicyToClientFrame(JSON.stringify({
+    jsonrpc: "2.0",
+    id: 1,
+    method: "thread/start",
+    params: { cwd: "C:/workspace" },
+  }), stream);
+  assert.equal(injected.error, undefined);
+  assert.equal(JSON.parse(injected.payload ?? "{}").params.model, "gpt-5.6-terra");
+
+  const denied = applyModelPolicyToClientFrame(JSON.stringify({
+    jsonrpc: "2.0",
+    id: 2,
+    method: "turn/start",
+    params: { model: "gpt-5.6-sol" },
+  }), stream);
+  assert.match(denied.error ?? "", /desativado pelo administrador/);
+
+  const modelListRequest = applyModelPolicyToClientFrame(JSON.stringify({
+    jsonrpc: "2.0",
+    id: "models",
+    method: "model/list",
+    params: {},
+  }), stream);
+  assert.ok(modelListRequest.payload);
+
+  const filtered = JSON.parse(applyModelPolicyToServerFrame(JSON.stringify({
+    jsonrpc: "2.0",
+    id: "models",
+    result: {
+      data: [
+        { id: "gpt-5.6-sol" },
+        { id: "gpt-5.6-terra" },
+        { model: "gpt-5.4" },
+      ],
+    },
+  }), stream));
+  assert.deepEqual(filtered.result.data, [{ id: "gpt-5.6-terra" }, { model: "gpt-5.4" }]);
+  assert.equal(stream.pendingModelListRequestIds.size, 0);
+});
 
 function addressPort(relay: RelayServer): number {
   const address = relay.address() as AddressInfo;
@@ -160,7 +226,7 @@ test("relay forwards opaque frames, rejects invalid access, and closes a revoked
     tunnel = await open(`${base}/tunnel`, { Authorization: `Bearer ${agentToken}` });
     tunnel.send(encodeMessage({ v: PROTOCOL_VERSION, type: "register", hostId: "test-host" }));
     tunnel.send(encodeMessage(syncAccounts()));
-    const testDevice = syncDevice();
+    const testDevice = { ...syncDevice(), allowedModels: ["gpt-5.6-sol"] };
     tunnel.send(encodeMessage({ v: PROTOCOL_VERSION, type: "access.sync", devices: [testDevice] }));
     await waitFor(() => relay.status(), (status) => status.ready && status.activeDevices === 1);
 
@@ -170,6 +236,16 @@ test("relay forwards opaque frames, rejects invalid access, and closes a revoked
     const opened = await nextDecodedMessage(tunnel);
     assert.equal(opened.type, "stream.open");
     const streamId = opened.type === "stream.open" ? opened.streamId : "";
+
+    client.send(Buffer.from(JSON.stringify({
+      jsonrpc: "2.0",
+      id: "binary-model-change",
+      method: "turn/start",
+      params: { model: "gpt-5.4-mini" },
+    }), "utf8"));
+    const deniedBinaryModel = await nextClientFrame(client);
+    assert.equal(deniedBinaryModel.binary, true);
+    assert.match(JSON.parse(deniedBinaryModel.data).error.message, /desativado pelo administrador/);
 
     client.send("opaque app-server request");
     const outbound = await nextDecodedMessage(tunnel);
@@ -434,3 +510,78 @@ test("admin API validates Supabase identity before exposing account snapshots", 
     await new Promise<void>((resolve) => supabaseMock.close(() => resolve()));
   }
 });
+
+test("relay enforces HTTP rate limiting and applies unified security headers", async () => {
+  const relay = new RelayServer({
+    agentTokenHash: hashToken(agentToken),
+    host: "127.0.0.1",
+    port: 0,
+    siteDir: "site",
+    heartbeatTimeoutMs: 5_000,
+    globalRateLimitMax: 5,
+    globalRateLimitWindowMs: 10_000,
+  });
+  await relay.listen();
+  const port = addressPort(relay);
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/healthz`);
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get("x-frame-options"), "DENY");
+    assert.equal(res.headers.get("x-content-type-options"), "nosniff");
+    assert.equal(res.headers.get("referrer-policy"), "strict-origin-when-cross-origin");
+    assert.equal(res.headers.get("ratelimit-limit"), "5");
+
+    // Consume remaining tokens (3 more to reach 4, then 5th is allowed, 6th is rejected)
+    for (let i = 0; i < 4; i++) {
+      const okRes = await fetch(`http://127.0.0.1:${port}/healthz`);
+      assert.equal(okRes.status, 200);
+    }
+
+    const blockedRes = await fetch(`http://127.0.0.1:${port}/healthz`);
+    assert.equal(blockedRes.status, 429);
+    assert.ok(blockedRes.headers.has("retry-after"));
+    const data = await blockedRes.json();
+    assert.match(data.error, /Muitas requisições/);
+  } finally {
+    await relay.close();
+  }
+});
+
+test("relay enforces WebSocket upgrade rate limits and max concurrent streams per IP", async () => {
+  const relay = new RelayServer({
+    agentTokenHash: hashToken(agentToken),
+    host: "127.0.0.1",
+    port: 0,
+    siteDir: "site",
+    heartbeatTimeoutMs: 5_000,
+    wsRateLimitMax: 3,
+    maxConcurrentStreamsPerIp: 2,
+  });
+  await relay.listen();
+  const port = addressPort(relay);
+  const base = `ws://127.0.0.1:${port}`;
+  let tunnel: WebSocket | undefined;
+  const clients: WebSocket[] = [];
+  try {
+    tunnel = await open(`${base}/tunnel`, { Authorization: `Bearer ${agentToken}` });
+    tunnel.send(encodeMessage({ v: PROTOCOL_VERSION, type: "register", hostId: "ws-rate-host" }));
+    tunnel.send(encodeMessage(syncAccounts()));
+    tunnel.send(encodeMessage({ v: PROTOCOL_VERSION, type: "access.sync", devices: [syncDevice()] }));
+    await waitFor(() => relay.status(), (status) => status.ready);
+
+    // First 2 concurrent clients should connect
+    const c1 = await open(base, { Authorization: `Bearer ${deviceToken}` });
+    clients.push(c1);
+    const c2 = await open(base, { Authorization: `Bearer ${deviceToken}` });
+    clients.push(c2);
+
+    // 3rd client exceeds maxConcurrentStreamsPerIp (2) -> rejected 429
+    const rejectedStatusResult = await rejectedStatus(base, { Authorization: `Bearer ${deviceToken}` });
+    assert.equal(rejectedStatusResult, 429);
+  } finally {
+    for (const c of clients) c.terminate();
+    tunnel?.terminate();
+    await relay.close();
+  }
+});
+

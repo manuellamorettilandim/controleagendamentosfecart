@@ -94,13 +94,11 @@ test("AccessStore enforces a session quota as delta, including after account res
     });
     await store.updateAccountLimit("primary", 84.9, 10_080, 1_800_000_000);
     assert.equal((await store.list()).find((device) => device.deviceId === issued.device.deviceId)?.usage.usageLimitReachedAt, null);
-    await store.updateAccountLimit("primary", 85, 10_080, 1_800_000_000, new Date("2026-08-13T12:10:00.000Z"));
-    assert.equal((await store.list()).find((device) => device.deviceId === issued.device.deviceId)?.usage.usageLimitReachedAt, "2026-08-13T12:10:00.000Z");
-
-    await store.updateAccountLimit("primary", 4.9, 10_080, 1_800_604_800);
+    await store.updateAccountLimit("primary", 0.09, 10_080, 1_800_604_800);
     assert.equal((await store.list()).find((device) => device.deviceId === issued.device.deviceId)?.usage.usageLimitReachedAt, null);
-    await store.updateAccountLimit("primary", 5, 10_080, 1_800_604_800, new Date("2026-08-13T12:20:00.000Z"));
+    await store.updateAccountLimit("primary", 0.1, 10_080, 1_800_604_800, new Date("2026-08-13T12:20:00.000Z"));
     assert.equal((await store.list()).find((device) => device.deviceId === issued.device.deviceId)?.usage.usageLimitReachedAt, "2026-08-13T12:20:00.000Z");
+    assert.equal((await store.list()).find((device) => device.deviceId === issued.device.deviceId)?.usage.quotaConsumedPercent, 5);
   } finally {
     await fs.rm(directory, { recursive: true, force: true });
   }

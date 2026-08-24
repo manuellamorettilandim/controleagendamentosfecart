@@ -1,4 +1,4 @@
-import type { RawData } from "ws";
+﻿import type { RawData } from "ws";
 
 export const PROTOCOL_VERSION = 1 as const;
 
@@ -26,6 +26,8 @@ export interface RelayDevice {
   reservationId?: string | null;
   quotaBaseUsedPercent?: number | null;
   quotaBudgetPercent?: number | null;
+  /** Model IDs this session may use. Null/undefined preserves legacy unrestricted access. */
+  allowedModels?: string[] | null;
   usage?: DeviceUsageSnapshot | null;
 }
 
@@ -40,6 +42,8 @@ export interface DeviceUsageSnapshot {
   accountUsedPercent: number | null;
   accountWindowDurationMins: number | null;
   accountResetsAt: number | null;
+  quotaConsumedPercent?: number;
+  lastAccountUsedPercent?: number | null;
   usageLimitReachedAt: string | null;
 }
 
@@ -113,6 +117,7 @@ export type ControlCommand =
   | "session.issue"
   | "account.add"
   | "account.list"
+  | "account.models.list"
   | "account.login.start"
   | "account.refresh"
   | "account.set-default"
@@ -178,6 +183,54 @@ export interface HeartbeatMessage {
   timestamp: number;
 }
 
+export interface ProviderRequestMessage {
+  v: typeof PROTOCOL_VERSION;
+  type: "provider.request";
+  requestId: string;
+  deviceId: string;
+  accountId: string;
+  method: string;
+  path: string;
+  headers: Record<string, string>;
+  body: string;
+}
+
+export interface ProviderResponseStartMessage {
+  v: typeof PROTOCOL_VERSION;
+  type: "provider.response.start";
+  requestId: string;
+  status: number;
+  headers: Record<string, string>;
+}
+
+export interface ProviderResponseChunkMessage {
+  v: typeof PROTOCOL_VERSION;
+  type: "provider.response.chunk";
+  requestId: string;
+  data: string;
+}
+
+export interface ProviderResponseEndMessage {
+  v: typeof PROTOCOL_VERSION;
+  type: "provider.response.end";
+  requestId: string;
+}
+
+export interface ProviderResponseErrorMessage {
+  v: typeof PROTOCOL_VERSION;
+  type: "provider.response.error";
+  requestId: string;
+  status?: number;
+  error: string;
+}
+
+export interface ProviderAbortMessage {
+  v: typeof PROTOCOL_VERSION;
+  type: "provider.abort";
+  requestId: string;
+  reason: string;
+}
+
 export type WireMessage =
   | RegisterMessage
   | AccessSyncMessage
@@ -189,7 +242,13 @@ export type WireMessage =
   | StreamOpenMessage
   | StreamDataMessage
   | StreamCloseMessage
-  | HeartbeatMessage;
+  | HeartbeatMessage
+  | ProviderRequestMessage
+  | ProviderResponseStartMessage
+  | ProviderResponseChunkMessage
+  | ProviderResponseEndMessage
+  | ProviderResponseErrorMessage
+  | ProviderAbortMessage;
 
 export function encodeMessage(message: WireMessage): string {
   return JSON.stringify(message);
@@ -233,6 +292,11 @@ function isNullableString(value: unknown): value is string | null {
   return value === null || isString(value);
 }
 
+function isStringRecord(value: unknown): value is Record<string, string> {
+  if (!isRecord(value)) return false;
+  return Object.values(value).every((v) => typeof v === "string");
+}
+
 function validDevice(value: unknown): value is RelayDevice {
   if (!isRecord(value)) {
     return false;
@@ -252,6 +316,7 @@ function validDevice(value: unknown): value is RelayDevice {
     (value.reservationId === undefined || isNullableString(value.reservationId)) &&
     (value.quotaBaseUsedPercent === undefined || value.quotaBaseUsedPercent === null || typeof value.quotaBaseUsedPercent === "number") &&
     (value.quotaBudgetPercent === undefined || value.quotaBudgetPercent === null || typeof value.quotaBudgetPercent === "number") &&
+    (value.allowedModels === undefined || value.allowedModels === null || (Array.isArray(value.allowedModels) && value.allowedModels.length > 0 && value.allowedModels.every(isString))) &&
     (value.usage === undefined || value.usage === null || validDeviceUsage(value.usage))
   );
 }
@@ -272,6 +337,8 @@ function validDeviceUsage(value: unknown): value is DeviceUsageSnapshot {
     (value.accountUsedPercent === null || typeof value.accountUsedPercent === "number") &&
     (value.accountWindowDurationMins === null || typeof value.accountWindowDurationMins === "number") &&
     (value.accountResetsAt === null || typeof value.accountResetsAt === "number") &&
+    (value.quotaConsumedPercent === undefined || typeof value.quotaConsumedPercent === "number") &&
+    (value.lastAccountUsedPercent === undefined || value.lastAccountUsedPercent === null || typeof value.lastAccountUsedPercent === "number") &&
     isNullableString(value.usageLimitReachedAt)
   );
 }
@@ -288,6 +355,7 @@ function validControlCommand(value: unknown): value is ControlCommand {
     value === "session.issue" ||
     value === "account.add" ||
     value === "account.list" ||
+    value === "account.models.list" ||
     value === "account.login.start" ||
     value === "account.refresh" ||
     value === "account.set-default" ||
@@ -401,6 +469,55 @@ function validMessage(value: unknown): value is WireMessage {
       );
     case "heartbeat":
       return typeof value.timestamp === "number" && Number.isFinite(value.timestamp);
+    case "provider.request":
+      return (
+        isString(value.requestId) &&
+        value.requestId.length > 0 &&
+        value.requestId.length <= 120 &&
+        isString(value.deviceId) &&
+        isString(value.accountId) &&
+        isString(value.method) &&
+        isString(value.path) &&
+        isStringRecord(value.headers) &&
+        isString(value.body)
+      );
+    case "provider.response.start":
+      return (
+        isString(value.requestId) &&
+        value.requestId.length > 0 &&
+        value.requestId.length <= 120 &&
+        typeof value.status === "number" &&
+        Number.isInteger(value.status) &&
+        isStringRecord(value.headers)
+      );
+    case "provider.response.chunk":
+      return (
+        isString(value.requestId) &&
+        value.requestId.length > 0 &&
+        value.requestId.length <= 120 &&
+        isString(value.data)
+      );
+    case "provider.response.end":
+      return (
+        isString(value.requestId) &&
+        value.requestId.length > 0 &&
+        value.requestId.length <= 120
+      );
+    case "provider.response.error":
+      return (
+        isString(value.requestId) &&
+        value.requestId.length > 0 &&
+        value.requestId.length <= 120 &&
+        (value.status === undefined || (typeof value.status === "number" && Number.isInteger(value.status))) &&
+        isString(value.error)
+      );
+    case "provider.abort":
+      return (
+        isString(value.requestId) &&
+        value.requestId.length > 0 &&
+        value.requestId.length <= 120 &&
+        isString(value.reason)
+      );
     default:
       return false;
   }

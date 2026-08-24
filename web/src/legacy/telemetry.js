@@ -3,7 +3,7 @@
 
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
-  const state = { admins: [], accounts: [], audits: [], search: "", filter: "all", generatedAt: null, hostConnected: false, toastTimer: null };
+  const state = { admins: [], accounts: [], audits: [], report: null, search: "", filter: "all", activePanel: "audit", generatedAt: null, hostConnected: false, toastTimer: null, identity: null };
 
   const actionLabels = {
     "reservation.approve": ["Aprovou solicitação", "approved", "ph-check-circle"],
@@ -11,6 +11,7 @@
     "reservation.approve.upgrade": ["Aprovou com upgrade", "approved", "ph-arrow-up"],
     "reservation.approve.downgrade": ["Aprovou com downgrade", "warning", "ph-arrow-down"],
     "reservation.reject": ["Recusou solicitação", "rejected", "ph-x-circle"],
+    "reservation.expire": ["Expirou automaticamente", "warning", "ph-clock-countdown"],
     "group.scheduling.enable": ["Liberou agendamentos", "approved", "ph-calendar-check"],
     "group.scheduling.disable": ["Bloqueou agendamentos", "warning", "ph-calendar-x"],
     "group.token.revoke": ["Revogou token do grupo", "rejected", "ph-key"],
@@ -30,6 +31,7 @@
     "access.enable": ["Habilitou acesso", "approved", "ph-lock-open"],
     "access.revoke": ["Revogou acesso", "rejected", "ph-prohibit"],
     "session.issue": ["Iniciou sessão", "account", "ph-play-circle"],
+    "session.quota.exhausted": ["Bloqueou sessão por cota", "warning", "ph-gauge"],
   };
 
   function escapeHtml(value) {
@@ -110,6 +112,9 @@
     else if (Number.isFinite(Number(metadata.revoked))) safe.push(`${Number(metadata.revoked)} token(s) revogado(s)`);
     if (typeof metadata.enabled === "boolean") safe.push(metadata.enabled ? "Permissão liberada" : "Permissão bloqueada");
     if (Number.isFinite(Number(metadata.requestedQuota)) && Number.isFinite(Number(metadata.approvedQuota))) safe.push(`Uso: ${Number(metadata.requestedQuota)}% → ${Number(metadata.approvedQuota)}%`);
+    if (Number.isFinite(Number(metadata.quotaBudgetPercent))) safe.push(`Cota aprovada: ${Number(metadata.quotaBudgetPercent)}%`);
+    if (Number.isFinite(Number(metadata.quotaConsumedPercent))) safe.push(`Consumo detectado: ${Number(metadata.quotaConsumedPercent)}%`);
+    if (text(metadata.reason) === "quota_budget_reached") safe.push("Bloqueio automático do sistema");
     return safe.join(" · ") || "—";
   }
 
@@ -124,6 +129,11 @@
   }
 
   function renderAdmins() {
+    if (state.identity?.role !== "owner") {
+      const peopleCard = $("#telemetry-people-card");
+      if (peopleCard) peopleCard.hidden = true;
+      return;
+    }
     const query = state.search.toLocaleLowerCase("pt-BR");
     const admins = state.admins.filter((admin) => !query || `${adminLogin(admin)} ${admin.role}`.toLocaleLowerCase("pt-BR").includes(query));
     $("#telemetry-people-total").textContent = String(admins.length);
@@ -176,6 +186,14 @@
   }
 
   function renderAudits() {
+    if (state.identity?.role !== "owner") {
+      const auditCard = $("#telemetry-audit-card");
+      if (auditCard) auditCard.hidden = true;
+      const auditTab = $("#telemetry-tab-audit");
+      if (auditTab) auditTab.hidden = true;
+      selectActivityTab("ranking");
+      return;
+    }
     const audits = filteredAudits();
     $("#telemetry-audit-total").textContent = `${audits.length} ${audits.length === 1 ? "ação exibida" : "ações exibidas"}`;
     $("#telemetry-audit-body").innerHTML = audits.length ? audits.map((audit) => {
@@ -192,12 +210,69 @@
     }).join("") : '<tr><td colspan="5" class="telemetry-empty">Nenhuma ação encontrada para estes filtros.</td></tr>';
   }
 
+  function renderReport() {
+    const report = state.report;
+    if (!report) return;
+
+    $("#rep-summary-groups").textContent = `${report.summary.activeGroups} / ${report.summary.totalGroups}`;
+    $("#rep-summary-quota").textContent = `${Number(report.summary.totalWeeklyQuotaUsedPercent || 0).toLocaleString("pt-BR")}%`;
+    $("#rep-summary-capacity").textContent = `${Number(report.summary.quotaCapacityUtilizationPercent || 0).toLocaleString("pt-BR")}% de ${Number(report.summary.totalQuotaCapacityPercent || 0).toLocaleString("pt-BR")}% disponíveis`;
+    $("#rep-summary-waste").textContent = `${Number(report.summary.totalWeeklyQuotaWastedPercent || 0).toLocaleString("pt-BR")}%`;
+    $("#rep-summary-balance").textContent = `${Number(report.summary.totalWeeklyQuotaRemainingPercent || 0).toLocaleString("pt-BR")}% ainda disponível`;
+    $("#rep-summary-hours").textContent = `${Number(report.summary.totalReservedHours || 0).toLocaleString("pt-BR")}h / ${Number(report.summary.totalObservedUsageHours || 0).toLocaleString("pt-BR")}h`;
+    $("#rep-summary-sessions").textContent = `${Number(report.summary.reservationUtilizationPercent || 0).toLocaleString("pt-BR")}% de utilização · ${report.summary.totalSessionsActivated} sessões`;
+    $("#rep-summary-attributed-tokens").textContent = report.summary.totalAttributedTokens.toLocaleString("pt-BR");
+    $("#rep-summary-models").textContent = `${(report.models || []).length} modelos · ${Number(report.summary.totalReasoningTokens || 0).toLocaleString("pt-BR")} thinking`;
+    $("#rep-summary-total-tokens").textContent = report.summary.grandTotalTokens.toLocaleString("pt-BR");
+    $("#rep-summary-unattributed").textContent = `${report.summary.totalUnattributedTokens.toLocaleString("pt-BR")} não atribuídos`;
+
+    const query = state.search.toLocaleLowerCase("pt-BR");
+    const groups = (report.groups || []).filter((g) => !query || g.groupName.toLocaleLowerCase("pt-BR").includes(query) || g.username.toLocaleLowerCase("pt-BR").includes(query));
+
+    const tbody = $("#report-groups-body");
+    if (!tbody) return;
+
+    tbody.innerHTML = groups.length ? groups.map((g) => `
+      <tr>
+        <td><span class="report-rank${g.rank <= 3 ? ` is-top-${g.rank}` : ""}"><b>${g.rank}º</b></span></td>
+        <td><strong>${escapeHtml(g.groupName)}</strong><br><small style="color: var(--text-muted);">${escapeHtml(g.username)}</small></td>
+        <td><span class="badge ${g.sessionsActivated > 0 ? "badge-success" : "badge-neutral"}">${g.sessionsActivated} ativadas</span><br><small>${g.sessionsApproved} aprovadas / ${g.sessionsRequested} pedidas</small></td>
+        <td><strong>${g.approvedHours}h / ${Number(g.observedUsageHours || 0).toLocaleString("pt-BR")}h</strong><br><small>${Number(g.reservationUtilizationPercent || 0).toLocaleString("pt-BR")}% utilizada</small></td>
+        <td><strong>${g.totalTokens.toLocaleString("pt-BR")}</strong><br><small style="color: var(--text-muted);">${g.shareOfTotalPercent}% do total atribuído</small></td>
+        <td>${g.inputTokens.toLocaleString("pt-BR")}</td>
+        <td><em style="color: var(--text-muted);">${g.cachedInputTokens.toLocaleString("pt-BR")}</em></td>
+        <td>${g.outputTokens.toLocaleString("pt-BR")}</td>
+        <td><em style="color: var(--text-muted);">${g.reasoningTokens.toLocaleString("pt-BR")}</em></td>
+        <td><span class="badge ${g.cacheEfficiencyPercent >= 20 ? 'badge-success' : 'badge-neutral'}">${g.cacheEfficiencyPercent}%</span></td>
+        <td><strong>${Number(g.weeklyQuotaUsedPercent || 0).toLocaleString("pt-BR")}%</strong><br><small>${Number(g.totalQuotaConsumedPercent || 0).toLocaleString("pt-BR")}% aprovada</small></td>
+        <td><strong>${escapeHtml((g.modelsUsed || []).map((model) => model.modelId).join(", ") || "—")}</strong><br><small>${escapeHtml((g.accountLabelsUsed || g.accountsUsed || []).join(", ") || "—")}</small></td>
+        <td>${g.lastUsageAt ? escapeHtml(formatRelative(g.lastUsageAt)) : "—"}</td>
+      </tr>
+    `).join("") : '<tr><td colspan="13" class="telemetry-empty">Nenhum grupo com atividade no período.</td></tr>';
+  }
+
   function renderAll() {
     renderSummary();
     renderAdmins();
     renderAccounts();
     renderAudits();
+    renderReport();
     $("#telemetry-updated-at").textContent = state.generatedAt ? `Atualizado em ${formatDateTime(state.generatedAt)}` : "—";
+  }
+
+  function selectActivityTab(tab, focus = false) {
+    const selected = tab === "ranking" ? "ranking" : "audit";
+    state.activePanel = selected;
+    $$('[data-telemetry-tab]').forEach((button) => {
+      const active = button.dataset.telemetryTab === selected;
+      button.classList.toggle("is-active", active);
+      button.setAttribute("aria-selected", String(active));
+      button.tabIndex = active ? 0 : -1;
+      if (active && focus) button.focus();
+    });
+    $$('[data-telemetry-panel]').forEach((panel) => {
+      panel.hidden = panel.dataset.telemetryPanel !== selected;
+    });
   }
 
   function showToast(message, kind = "") {
@@ -213,7 +288,97 @@
     try { return window.RemoteCodexAuth?.getSession?.()?.access_token || ""; } catch { return ""; }
   }
 
-  async function ensureOwnerAccess() {
+  function getReportRange() {
+    const fromInput = $("#report-date-from");
+    const toInput = $("#report-date-to");
+    const fromVal = fromInput?.value || "2026-08-20";
+    const toVal = toInput?.value || "2026-08-24";
+    const fromIso = new Date(`${fromVal}T00:00:00`).toISOString();
+    const toIso = new Date(`${toVal}T23:59:59.999`).toISOString();
+    return { from: fromIso, to: toIso, timeZone: "America/Sao_Paulo" };
+  }
+
+  async function loadReportPreview() {
+    const previewBtn = $("#report-preview-btn");
+    previewBtn?.classList.add("is-loading");
+    if (previewBtn) previewBtn.disabled = true;
+    try {
+      const access = await ensureAdminAccess();
+      if (!access) throw new Error("Sessão administrativa expirada. Faça login novamente.");
+      const token = getAuthToken();
+      const payload = getReportRange();
+      const response = await fetch("/api/admin/reports/usage/preview", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || "Falha ao carregar prévia do relatório.");
+      }
+      state.report = await response.json();
+      renderReport();
+      showToast("Prévia do relatório consolidada.");
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "Erro ao carregar prévia do relatório.", "error");
+    } finally {
+      previewBtn?.classList.remove("is-loading");
+      if (previewBtn) previewBtn.disabled = false;
+    }
+  }
+
+  async function exportReportDownload(format) {
+    const btn = $(`#report-export-${format}`);
+    btn?.classList.add("is-loading");
+    if (btn) btn.disabled = true;
+    try {
+      const access = await ensureAdminAccess();
+      if (!access) throw new Error("Sessão administrativa expirada. Faça login novamente.");
+      const token = getAuthToken();
+      const payload = getReportRange();
+      const response = await fetch(`/api/admin/reports/usage/export/${format}`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || `Falha ao exportar ${format.toUpperCase()}.`);
+      }
+
+      // Extrair nome do arquivo do cabeçalho Content-Disposition
+      let filename = `relatorio-fecart.${format}`;
+      const disposition = response.headers.get("Content-Disposition");
+      if (disposition && disposition.includes("filename=")) {
+        const match = /filename="?([^"]+)"?/.exec(disposition);
+        if (match?.[1]) filename = match[1];
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+      showToast(`Download de ${filename} concluído.`);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : `Erro ao exportar ${format.toUpperCase()}.`, "error");
+    } finally {
+      btn?.classList.remove("is-loading");
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  async function ensureAdminAccess() {
     let token = getAuthToken();
     if (!token) return null;
     const check = () => fetch("/api/admin/session", { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
@@ -228,11 +393,11 @@
       }
       if (!response.ok) return null;
       const identity = await response.json().catch(() => ({}));
-      if (identity.role === "admin") {
-        window.location.replace("/admin");
+      if (identity.role !== "owner" && identity.role !== "admin") {
+        window.location.replace("/dashboard");
         return null;
       }
-      return identity.role === "owner" ? identity : null;
+      return identity;
     } catch { return null; }
   }
 
@@ -251,11 +416,6 @@
       renderAll();
       if (showSuccess) showToast("Telemetria atualizada.");
     } catch (error) {
-      const status = error instanceof Error ? error.status : undefined;
-      if (status === 403) {
-        window.location.replace("/admin");
-        return;
-      }
       showToast(error instanceof Error ? error.message : "Não foi possível carregar a telemetria.", "error");
     } finally {
       button?.classList.remove("is-loading");
@@ -272,9 +432,60 @@
   }
 
   function bindEvents() {
-    $("#telemetry-search")?.addEventListener("input", (event) => { state.search = event.currentTarget.value || ""; renderAdmins(); renderAccounts(); renderAudits(); });
+    $$('[data-telemetry-tab]').forEach((button) => {
+      button.addEventListener("click", () => selectActivityTab(button.dataset.telemetryTab));
+      button.addEventListener("keydown", (event) => {
+        if (!["ArrowLeft", "ArrowRight"].includes(event.key)) return;
+        event.preventDefault();
+        selectActivityTab(state.activePanel === "audit" ? "ranking" : "audit", true);
+      });
+    });
+    $("#telemetry-search")?.addEventListener("input", (event) => {
+      state.search = event.currentTarget.value || "";
+      renderAdmins();
+      renderAccounts();
+      renderAudits();
+      renderReport();
+    });
     $("#telemetry-action-filter")?.addEventListener("change", (event) => { state.filter = event.currentTarget.value; renderAudits(); });
-    $("#telemetry-refresh")?.addEventListener("click", () => loadTelemetry(true));
+    $("#telemetry-refresh")?.addEventListener("click", () => {
+      loadTelemetry(true);
+      loadReportPreview();
+    });
+
+    $("#report-preset-30d")?.addEventListener("click", () => {
+      const now = new Date();
+      const past = new Date(now.getTime() - 30 * 86400000);
+      const fromInput = $("#report-date-from");
+      const toInput = $("#report-date-to");
+      if (fromInput) fromInput.value = past.toISOString().slice(0, 10);
+      if (toInput) toInput.value = now.toISOString().slice(0, 10);
+      loadReportPreview();
+    });
+
+    $("#report-preset-7d")?.addEventListener("click", () => {
+      const now = new Date();
+      const past = new Date(now.getTime() - 7 * 86400000);
+      const fromInput = $("#report-date-from");
+      const toInput = $("#report-date-to");
+      if (fromInput) fromInput.value = past.toISOString().slice(0, 10);
+      if (toInput) toInput.value = now.toISOString().slice(0, 10);
+      loadReportPreview();
+    });
+
+    $("#report-preset-all")?.addEventListener("click", () => {
+      const fromInput = $("#report-date-from");
+      const toInput = $("#report-date-to");
+      if (fromInput) fromInput.value = "2026-08-01";
+      if (toInput) toInput.value = new Date().toISOString().slice(0, 10);
+      loadReportPreview();
+    });
+
+    $("#report-preview-btn")?.addEventListener("click", () => loadReportPreview());
+    $("#report-export-pdf")?.addEventListener("click", () => exportReportDownload("pdf"));
+    $("#report-export-xlsx")?.addEventListener("click", () => exportReportDownload("xlsx"));
+    $("#report-export-csv")?.addEventListener("click", () => exportReportDownload("csv"));
+
     $$('[data-section]').forEach((button) => button.addEventListener("click", () => {
       if (button.dataset.section === "overview") window.location.replace("/admin");
       if (button.dataset.section === "groups") window.location.replace("/groups");
@@ -283,16 +494,27 @@
   }
 
   document.addEventListener("DOMContentLoaded", async () => {
-    const identity = await ensureOwnerAccess();
+    const identity = await ensureAdminAccess();
     if (!identity) {
       if (!getAuthToken()) window.location.replace("/login");
       return;
     }
+    state.identity = identity;
     window.FecartAdminShell?.setIdentity?.(identity);
     document.body.classList.remove("admin-auth-pending");
     document.body.classList.add("admin-auth-ready");
+
+    // Preencher datas padrão (últimos 30 dias até hoje)
+    const fromInput = $("#report-date-from");
+    const toInput = $("#report-date-to");
+    const nowIso = new Date().toISOString().slice(0, 10);
+    const thirtyDaysAgoIso = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+    if (fromInput && !fromInput.value) fromInput.value = thirtyDaysAgoIso;
+    if (toInput && !toInput.value) toInput.value = nowIso;
+
     bindEvents();
     await loadTelemetry();
+    await loadReportPreview();
   });
 })();
 

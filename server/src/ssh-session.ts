@@ -6,6 +6,7 @@ import path from "node:path";
 import { AccessStore } from "./access-store.js";
 import { AccountStore } from "./account-store.js";
 import type { DeviceUsageCounters } from "./access-store.js";
+import { codexChildEnvironment } from "./codex-child-env.js";
 
 function safeId(value: string | undefined, label: string): string {
   if (!value || !/^[a-zA-Z0-9._-]+$/.test(value)) throw new Error(`${label} inválido.`);
@@ -69,12 +70,11 @@ async function main(): Promise<void> {
 
   const child = spawn(config.codexBin, ["app-server", "--listen", "stdio://"], {
     cwd: workspace,
-    env: {
-      ...process.env,
+    env: codexChildEnvironment({
       CODEX_HOME: account.codeHome,
       FECART_DEVICE_ID: deviceId,
       FECART_RESERVATION_ID: device.reservationId || "",
-    },
+    }),
     stdio: ["inherit", "pipe", "inherit"],
     shell: false,
   });

@@ -31,7 +31,7 @@ Em um restart do Render, sessões WebSocket são perdidas. O host deve reconecta
 
 ## Protótipo legado
 
-O conteúdo anterior está em [`legacy/fecart-prototype`](legacy/fecart-prototype). Ele não participa do relay. O protótipo contém senhas de demonstração e RLS permissiva no SQL; não reutilize esses valores. Se alguma senha ou política foi usada em um ambiente real, rotacione as credenciais e corrija as políticas antes de continuar.
+O conteúdo anterior está em [`legacy/fecart-prototype`](legacy/fecart-prototype). Ele não participa do relay e não deve ser usado para autenticação. Os seeds de credenciais foram removidos e as políticas legadas estão bloqueadas; se uma instalação antiga usou esse SQL, rotacione as credenciais e revise as tabelas antes de continuar.
 
 ## Modelo de ameaça aceito nesta versão
 

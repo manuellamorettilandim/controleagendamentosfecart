@@ -58,24 +58,6 @@ grant select, insert, update on table public.codex_reservations to authenticated
 grant select on table public.codex_account_snapshots to authenticated;
 grant select on table public.codex_busy_slots to authenticated;
 
--- Remove the known test login and duplicate spelling aliases if an earlier
--- import already created them. Deleting the Auth row also removes its profile.
-delete from auth.users
-where id in (
-  select user_id
-  from public.codex_user_profiles
-  where lower(username) in ('1ia', 'inteligencia', 'trigemeos')
-);
-
--- Some installations still have the prototype table. It is not part of the
--- current authentication flow, but weak shared admin/test rows must not remain.
-do $$
-begin
-  if to_regclass('public.users') is not null then
-    execute $cleanup$
-      delete from public.users
-      where lower(username) in ('admin', '1ia', 'inteligencia', 'trigemeos')
-    $cleanup$;
-  end if;
-end
-$$;
+-- Migrations must not delete Auth users or operational data implicitly. If a
+-- development database contains obsolete demo rows, clean it explicitly with
+-- the guarded seed/reset tooling instead of coupling that deletion to deploy.

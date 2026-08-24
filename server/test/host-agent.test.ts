@@ -122,6 +122,9 @@ test("host agent connects the relay to a local app-server without exposing the l
       HOST_SKIP_APP_SERVER: "1",
       ACCESS_SYNC_INTERVAL_MS: "50",
       RELAY_HEARTBEAT_INTERVAL_MS: "50",
+      SUPABASE_URL: "",
+      SUPABASE_SECRET_KEY: "",
+      SUPABASE_SERVICE_ROLE_KEY: "",
     });
     agent = new HostAgent(config, store, accountStore);
     await agent.start();
@@ -148,6 +151,6 @@ test("host agent connects the relay to a local app-server without exposing the l
     await agent?.stop();
     await relay.close();
     await new Promise<void>((resolve) => fakeAppServer.close(() => resolve()));
-    await fs.rm(directory, { recursive: true, force: true });
+    await fs.rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
   }
 });

@@ -22,6 +22,7 @@ import {
   type AccountRecord,
 } from "./account-store.js";
 import { AccountWorker } from "./account-worker.js";
+import { OAuthResponsesBroker } from "./oauth-responses-broker.js";
 import {
   decodeMessage,
   decodeStreamData,
@@ -35,6 +36,8 @@ import {
   type RelayDevice,
   type StreamDataMessage,
   type StreamOpenMessage,
+  type ProviderRequestMessage,
+  type ProviderAbortMessage,
   type WireMessage,
 } from "./protocol.js";
 import { SupabaseServiceClient, type SupabaseAdminKeyType } from "./supabase.js";
@@ -66,6 +69,7 @@ export interface HostConfig {
   supabaseSecretKey?: string;
   supabaseServiceRoleKey?: string;
   startAppServer: boolean;
+  codexOAuthResponsesUrl?: string;
   sshAuthorizedKeysFile?: string;
   sshSessionCommand?: string;
   sshPublicHost?: string;
@@ -287,6 +291,15 @@ function requestOptionalString(payload: Record<string, unknown>, name: string): 
   return value.trim();
 }
 
+function requestOptionalStringArray(payload: Record<string, unknown>, name: string): string[] | undefined {
+  const value = payload[name];
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) throw new Error(`Campo inválido: ${name}.`);
+  const result = [...new Set(value.filter((item): item is string => typeof item === "string").map((item) => item.trim()).filter(Boolean))];
+  if (result.length === 0) throw new Error(`Campo inválido: ${name}. Informe ao menos um valor.`);
+  return result;
+}
+
 function requestPercent(payload: Record<string, unknown>, name: string, fallback: number): number {
   const value = payload[name];
   if (value === undefined) return fallback;
@@ -342,6 +355,7 @@ export function hostConfigFromEnvironment(env: NodeJS.ProcessEnv = process.env):
     supabaseSecretKey: env.SUPABASE_SECRET_KEY?.trim() || undefined,
     supabaseServiceRoleKey: env.SUPABASE_SERVICE_ROLE_KEY?.trim() || undefined,
     startAppServer: env.HOST_SKIP_APP_SERVER !== "1",
+    codexOAuthResponsesUrl: env.CODEX_OAUTH_RESPONSES_URL?.trim() || undefined,
     sshAuthorizedKeysFile: env.CODEX_SSH_AUTHORIZED_KEYS_FILE?.trim()
       ? path.resolve(env.CODEX_SSH_AUTHORIZED_KEYS_FILE)
       : undefined,
@@ -357,6 +371,7 @@ export class HostAgent {
   private readonly config: HostConfig;
   private readonly accessStore: AccessStore;
   private readonly accountStore: AccountStore;
+  private readonly oauthBroker: OAuthResponsesBroker;
   private readonly workers = new Map<string, AccountWorker>();
   private readonly localStreams = new Map<string, LocalStream>();
   private readonly supabase: SupabaseServiceClient | null;
@@ -368,6 +383,7 @@ export class HostAgent {
   private reconnectDelayMs: number;
   private stopped = false;
   private lastSyncedDeviceIds = new Set<string>();
+  private readonly auditedQuotaLimitedDeviceIds = new Set<string>();
 
   public constructor(
     config: HostConfig,
@@ -377,6 +393,7 @@ export class HostAgent {
     this.config = config;
     this.accessStore = accessStore;
     this.accountStore = accountStore;
+    this.oauthBroker = new OAuthResponsesBroker(config.codexOAuthResponsesUrl);
     this.reconnectDelayMs = config.reconnectInitialMs;
     const adminKey = config.supabaseSecretKey || config.supabaseServiceRoleKey;
     const adminKeyType: SupabaseAdminKeyType = config.supabaseSecretKey ? "secret" : "service_role";
@@ -524,6 +541,7 @@ export class HostAgent {
       );
     }
     const devices = await this.accessStore.active();
+    await this.syncQuotaLimitAudits(devices);
     await this.syncSshAuthorizedKeys(devices);
     const deviceIds = new Set(devices.map((device) => device.deviceId));
     for (const deviceId of this.lastSyncedDeviceIds) {
@@ -532,6 +550,27 @@ export class HostAgent {
     this.send({ v: PROTOCOL_VERSION, type: "access.sync", devices: devices.map(asRelayDevice) });
     this.lastSyncedDeviceIds = deviceIds;
     await this.syncDeviceSnapshots();
+  }
+
+  private async syncQuotaLimitAudits(devices: DeviceAccess[]): Promise<void> {
+    const currentlyLimited = new Set<string>();
+    for (const device of devices) {
+      if (!device.usage?.usageLimitReachedAt) continue;
+      currentlyLimited.add(device.deviceId);
+      if (this.auditedQuotaLimitedDeviceIds.has(device.deviceId)) continue;
+      this.auditedQuotaLimitedDeviceIds.add(device.deviceId);
+      await this.audit(null, "session.quota.exhausted", "reservation", device.reservationId, {
+        deviceId: device.deviceId,
+        accountId: device.accountId,
+        quotaBudgetPercent: device.quotaBudgetPercent,
+        quotaConsumedPercent: device.usage.quotaConsumedPercent,
+        limitedAt: device.usage.usageLimitReachedAt,
+        reason: "quota_budget_reached",
+      });
+    }
+    for (const deviceId of this.auditedQuotaLimitedDeviceIds) {
+      if (!currentlyLimited.has(deviceId)) this.auditedQuotaLimitedDeviceIds.delete(deviceId);
+    }
   }
 
   private async syncSshAuthorizedKeys(devices: DeviceAccess[]): Promise<void> {
@@ -602,12 +641,249 @@ export class HostAgent {
       case "access.seen":
         void this.accessStore.touch(message.deviceId).then(() => this.syncDeviceSnapshots()).catch((error) => this.logError("access.seen", error));
         return;
+      case "provider.request":
+        void this.handleProviderRequest(message);
+        return;
+      case "provider.abort":
+        this.oauthBroker.abort(message.requestId, message.reason);
+        return;
       case "register":
       case "access.sync":
       case "access.revoke":
       case "accounts.sync":
       case "control.response":
+      case "provider.response.start":
+      case "provider.response.chunk":
+      case "provider.response.end":
+      case "provider.response.error":
         return;
+    }
+  }
+
+  private async handleProviderRequest(message: ProviderRequestMessage): Promise<void> {
+    const worker = this.workers.get(message.accountId);
+    if (!worker || !worker.ready || worker.snapshot.status !== "ready") {
+      this.send({
+        v: PROTOCOL_VERSION,
+        type: "provider.response.error",
+        requestId: message.requestId,
+        status: 503,
+        error: "A conta selecionada não está pronta ou conectada no host central.",
+      });
+      return;
+    }
+
+    const devices = await this.accessStore.list();
+    const device = devices.find((d) => d.deviceId === message.deviceId);
+    if (!device || device.revokedAt !== null || device.disabledAt !== null || Date.parse(device.expiresAt) <= Date.now()) {
+      this.send({
+        v: PROTOCOL_VERSION,
+        type: "provider.response.error",
+        requestId: message.requestId,
+        status: 401,
+        error: "Acesso inválido, expirado ou revogado.",
+      });
+      return;
+    }
+
+    if (device.usage?.usageLimitReachedAt) {
+      this.send({
+        v: PROTOCOL_VERSION,
+        type: "provider.response.error",
+        requestId: message.requestId,
+        status: 403,
+        error: "Cota aprovada da sessão esgotada.",
+      });
+      return;
+    }
+
+    let parsedBody: Record<string, unknown> | null = null;
+    try {
+      parsedBody = JSON.parse(message.body);
+    } catch {
+      parsedBody = null;
+    }
+
+    const requestedModel = typeof parsedBody?.model === "string" ? parsedBody.model.trim() : null;
+    if (device.allowedModels?.length && requestedModel && !device.allowedModels.includes(requestedModel)) {
+      await this.audit(device.userId, "provider.model.denied", "device", device.deviceId, {
+        accountId: message.accountId,
+        model: requestedModel,
+        allowedModels: device.allowedModels,
+      });
+      this.send({
+        v: PROTOCOL_VERSION,
+        type: "provider.response.error",
+        requestId: message.requestId,
+        status: 403,
+        error: `O modelo ${requestedModel} foi desativado pelo administrador.`,
+      });
+      return;
+    }
+
+    await this.audit(device.userId, "provider.request.started", "device", device.deviceId, {
+      requestId: message.requestId,
+      accountId: message.accountId,
+      model: requestedModel,
+    });
+
+    const startTime = Date.now();
+    try {
+      await this.oauthBroker.executeRequest({
+        requestId: message.requestId,
+        deviceId: message.deviceId,
+        accountId: message.accountId,
+        method: message.method,
+        path: message.path,
+        headers: message.headers,
+        body: message.body,
+        account: worker.account,
+        worker,
+        onStart: (status, headers) => {
+          this.send({
+            v: PROTOCOL_VERSION,
+            type: "provider.response.start",
+            requestId: message.requestId,
+            status,
+            headers,
+          });
+          void this.supabase?.upsertOperationalUsageEvent({
+            eventKey: crypto.randomUUID(),
+            eventType: "turn_started",
+            deviceId: device.deviceId,
+            userId: device.userId,
+            reservationId: device.reservationId,
+            accountId: message.accountId,
+            threadId: message.requestId,
+            turnId: message.requestId,
+            modelId: requestedModel || "gpt-5.6-sol",
+            status: "inProgress",
+            totalTokens: 0,
+            inputTokens: 0,
+            cachedInputTokens: 0,
+            outputTokens: 0,
+            reasoningTokens: 0,
+            accountUsedPercent: null,
+            accountWindowDurationMins: null,
+            accountResetsAt: null,
+            observedAt: new Date().toISOString(),
+          }).catch(() => undefined);
+        },
+        onChunk: (chunk) => {
+          this.send({
+            v: PROTOCOL_VERSION,
+            type: "provider.response.chunk",
+            requestId: message.requestId,
+            data: chunk,
+          });
+        },
+        onEnd: async (usage) => {
+          const durationMs = Date.now() - startTime;
+          const window = weeklyRateLimit(worker.snapshot);
+          const modelUsed = usage?.model ?? requestedModel ?? "gpt-5.6-sol";
+          if (usage) {
+            const observation: UsageObservation = {
+              threadId: usage.responseId || message.requestId,
+              total: {
+                totalTokens: usage.totalTokens,
+                inputTokens: usage.inputTokens,
+                cachedInputTokens: usage.cachedInputTokens,
+                outputTokens: usage.outputTokens,
+                reasoningOutputTokens: usage.reasoningOutputTokens,
+              },
+              last: null,
+              accountUsedPercent: window?.usedPercent ?? null,
+              accountWindowDurationMins: window?.windowDurationMins ?? null,
+              accountResetsAt: window?.resetsAt ?? null,
+            };
+            await this.accessStore.recordUsage(message.deviceId, observation).catch((err) => this.logError("usage.record", err));
+            void worker.refreshSnapshot().catch(() => undefined);
+            void this.syncAccess().catch(() => undefined);
+
+            void this.supabase?.upsertOperationalUsageEvent({
+              eventKey: crypto.randomUUID(),
+              eventType: "token_usage",
+              deviceId: device.deviceId,
+              userId: device.userId,
+              reservationId: device.reservationId,
+              accountId: message.accountId,
+              threadId: usage.responseId || message.requestId,
+              turnId: message.requestId,
+              modelId: modelUsed,
+              status: "completed",
+              totalTokens: usage.totalTokens,
+              inputTokens: usage.inputTokens,
+              cachedInputTokens: usage.cachedInputTokens,
+              outputTokens: usage.outputTokens,
+              reasoningTokens: usage.reasoningOutputTokens,
+              accountUsedPercent: window?.usedPercent ?? null,
+              accountWindowDurationMins: window?.windowDurationMins ?? null,
+              accountResetsAt: window?.resetsAt ?? null,
+              observedAt: new Date().toISOString(),
+            }).catch(() => undefined);
+          }
+          void this.supabase?.upsertOperationalUsageEvent({
+            eventKey: crypto.randomUUID(),
+            eventType: "turn_completed",
+            deviceId: device.deviceId,
+            userId: device.userId,
+            reservationId: device.reservationId,
+            accountId: message.accountId,
+            threadId: usage?.responseId || message.requestId,
+            turnId: message.requestId,
+            modelId: modelUsed,
+            status: "completed",
+            totalTokens: usage?.totalTokens ?? 0,
+            inputTokens: usage?.inputTokens ?? 0,
+            cachedInputTokens: usage?.cachedInputTokens ?? 0,
+            outputTokens: usage?.outputTokens ?? 0,
+            reasoningTokens: usage?.reasoningOutputTokens ?? 0,
+            accountUsedPercent: window?.usedPercent ?? null,
+            accountWindowDurationMins: window?.windowDurationMins ?? null,
+            accountResetsAt: window?.resetsAt ?? null,
+            observedAt: new Date().toISOString(),
+          }).catch(() => undefined);
+          await this.audit(device.userId, "provider.request.completed", "device", device.deviceId, {
+            requestId: message.requestId,
+            accountId: message.accountId,
+            model: modelUsed,
+            durationMs,
+            totalTokens: usage?.totalTokens ?? 0,
+            inputTokens: usage?.inputTokens ?? 0,
+            outputTokens: usage?.outputTokens ?? 0,
+          });
+          this.send({
+            v: PROTOCOL_VERSION,
+            type: "provider.response.end",
+            requestId: message.requestId,
+          });
+        },
+        onError: async (status, error) => {
+          await this.audit(device.userId, "provider.request.failed", "device", device.deviceId, {
+            requestId: message.requestId,
+            accountId: message.accountId,
+            model: requestedModel,
+            status,
+            error,
+          });
+          this.send({
+            v: PROTOCOL_VERSION,
+            type: "provider.response.error",
+            requestId: message.requestId,
+            status,
+            error,
+          });
+        },
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.send({
+        v: PROTOCOL_VERSION,
+        type: "provider.response.error",
+        requestId: message.requestId,
+        status: 500,
+        error: msg,
+      });
     }
   }
 
@@ -731,9 +1007,9 @@ export class HostAgent {
         const userId = requestString(payload, "userId");
         const reservationId = requestString(payload, "reservationId");
         const expiresAt = requestString(payload, "expiresAt");
-        const quotaBudgetPercent = requestPercent(payload, "quotaBudgetPercent", 5);
-        if (quotaBudgetPercent < 5 || quotaBudgetPercent > 20 || quotaBudgetPercent % 5 !== 0) {
-          throw new Error("O uso aprovado da sessão deve ser 5%, 10%, 15% ou 20%.");
+        const quotaBudgetPercent = requestPercent(payload, "quotaBudgetPercent", 1);
+        if (quotaBudgetPercent < 1 || quotaBudgetPercent > 100) {
+          throw new Error("O uso aprovado da sessão deve ser de 1% a 100%.");
         }
         const worker = await this.workerFor(accountId);
         if (!worker.ready || worker.snapshot.status !== "ready") {
@@ -752,9 +1028,31 @@ export class HostAgent {
             reservationId,
             quotaBaseUsedPercent: accountWindow?.usedPercent ?? 0,
             quotaBudgetPercent,
+            allowedModels: requestOptionalStringArray(payload, "allowedModels"),
           },
         );
         await this.syncAccess();
+        void this.supabase?.upsertOperationalUsageEvent({
+          eventKey: crypto.randomUUID(),
+          eventType: "session_opened",
+          deviceId: issued.device.deviceId,
+          userId,
+          reservationId,
+          accountId,
+          threadId: null,
+          turnId: null,
+          modelId: null,
+          status: "connected",
+          totalTokens: 0,
+          inputTokens: 0,
+          cachedInputTokens: 0,
+          outputTokens: 0,
+          reasoningTokens: 0,
+          accountUsedPercent: accountWindow?.usedPercent ?? null,
+          accountWindowDurationMins: accountWindow?.windowDurationMins ?? null,
+          accountResetsAt: accountWindow?.resetsAt ?? null,
+          observedAt: new Date().toISOString(),
+        }).catch(() => undefined);
         await this.audit(userId, command, "reservation", reservationId, {
           accountId,
           quotaBudgetPercent,
@@ -770,10 +1068,15 @@ export class HostAgent {
           accountId: payload.accountId === undefined ? undefined : requestOptionalString(payload, "accountId"),
           weeklyLimitPercent: payload.weeklyLimitPercent === undefined ? undefined : requestPercent(payload, "weeklyLimitPercent", 100),
           expiresAt: requestOptionalString(payload, "expiresAt") ?? undefined,
+          allowedModels: requestOptionalStringArray(payload, "allowedModels"),
         });
         if (!device) throw new Error("Dispositivo não encontrado ou já revogado.");
         await this.syncAccess();
-        await this.audit(actorId, command, "device", device.deviceId, { weeklyLimitPercent: device.weeklyLimitPercent, expiresAt: device.expiresAt });
+        await this.audit(actorId, command, "device", device.deviceId, {
+          weeklyLimitPercent: device.weeklyLimitPercent,
+          expiresAt: device.expiresAt,
+          allowedModels: device.allowedModels,
+        });
         return { device: publicDevice(device) };
       }
       case "access.disable": {
@@ -794,6 +1097,27 @@ export class HostAgent {
         const device = await this.accessStore.revoke(requestString(payload, "deviceId"));
         if (!device) throw new Error("Dispositivo não encontrado ou já revogado.");
         await this.syncAccess();
+        void this.supabase?.upsertOperationalUsageEvent({
+          eventKey: crypto.randomUUID(),
+          eventType: "session_closed",
+          deviceId: device.deviceId,
+          userId: device.userId,
+          reservationId: device.reservationId,
+          accountId: device.accountId ?? "unknown",
+          threadId: null,
+          turnId: null,
+          modelId: null,
+          status: "closed",
+          totalTokens: device.usage.observedTokens,
+          inputTokens: device.usage.observedInputTokens,
+          cachedInputTokens: device.usage.observedCachedInputTokens,
+          outputTokens: device.usage.observedOutputTokens,
+          reasoningTokens: device.usage.observedReasoningTokens,
+          accountUsedPercent: device.usage.lastAccountUsedPercent ?? null,
+          accountWindowDurationMins: null,
+          accountResetsAt: null,
+          observedAt: new Date().toISOString(),
+        }).catch(() => undefined);
         await this.audit(actorId, command, "device", device.deviceId);
         return { device: publicDevice(device) };
       }
@@ -806,6 +1130,13 @@ export class HostAgent {
       }
       case "account.list":
         return { defaultAccountId: await this.accountStore.defaultId(), accounts: this.accountSnapshots() };
+      case "account.models.list": {
+        const accountId = requestOptionalString(payload, "accountId") ?? await this.accountStore.defaultId();
+        const worker = accountId ? await this.workerFor(accountId) : [...this.workers.values()].find((candidate) => candidate.snapshot.status === "ready");
+        if (!worker || worker.snapshot.status !== "ready") throw new Error("Nenhuma conta autenticada está disponível para consultar os modelos.");
+        const result = await worker.listModels();
+        return { accountId: worker.account.accountId, result };
+      }
       case "account.add": {
         const account = await this.accountStore.add(requestString(payload, "label"));
         const worker = await this.ensureWorker(account);

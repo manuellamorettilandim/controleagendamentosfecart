@@ -5,51 +5,10 @@
 const CONFIGURED_SUPABASE_URL = ""; // Ex: "https://abcdefghijklmnopqrst.supabase.co"
 const CONFIGURED_SUPABASE_KEY = ""; // Ex: "eyJhbGciOiJIUzI1NiI..."
 
-/**
- * Base de credenciais Padrão Inicial
- */
-const DEFAULT_USER_DATABASE = [
-  // 1IA - A
-  { username: "fecurity", password: "joao01@", turma: "1IA - A" },
-  { username: "itech", password: "luis02@", turma: "1IA - A" },
-  { username: "olhardasmaquinas", password: "arthur03@", turma: "1IA - A" },
-  { username: "tps", password: "eduardo04@", turma: "1IA - A" },
-  { username: "flowtificial", password: "mariana05@", turma: "1IA - A" },
-  { username: "equipenishimori", password: "caroline06@", turma: "1IA - A" },
-
-  // 1IA - B
-  { username: "lgm", password: "leonardo01@", turma: "1IA - B" },
-  { username: "miladys", password: "ana02@", turma: "1IA - B" },
-  { username: "inteligência", password: "leonardo01@", turma: "1IA - B" },
-  { username: "intelectuai", password: "giancarlo04@", turma: "1IA - B" },
-  { username: "urbia", password: "vitor01@", turma: "1IA - B" },
-  { username: "smartflow", password: "thiago01@", turma: "1IA - B" },
-  { username: "blackinwhite", password: "carlos04@", turma: "1IA - B" },
-  { username: "atlas", password: "davi05@", turma: "1IA - B" },
-  { username: "elite", password: "murilo06@", turma: "1IA - B" },
-  { username: "urbanisatech", password: "angelo07@", turma: "1IA - B" },
-
-  // 2IA - A
-  { username: "condorshield", password: "davicho01@", turma: "2IA - A" },
-  { username: "ethosai", password: "leonardo03@", turma: "2IA - A" },
-  { username: "urbanscope", password: "victor03@", turma: "2IA - A" },
-  { username: "infranexus", password: "luiz04@", turma: "2IA - A" },
-  { username: "cognimove", password: "manuella04@", turma: "2IA - A" },
-  { username: "dll", password: "davi08@", turma: "2IA - A" },
-  { username: "neurocore", password: "heitor08@", turma: "2IA - A" },
-  { username: "essenza", password: "beatriz04@", turma: "2IA - A" },
-  { username: "neuralnexus", password: "isaac06@", turma: "2IA - A" },
-
-  // 2IA - B
-  { username: "pebsmart", password: "bruno06@", turma: "2IA - B" },
-  { username: "segurancasemstress", password: "bernardo04@", turma: "2IA - B" },
-  { username: "urmind", password: "nicolas08@", turma: "2IA - B" },
-  { username: "eclipse", password: "afonso01@", turma: "2IA - B" },
-  { username: "smartciv", password: "enzo05@", turma: "2IA - B" },
-  { username: "neuraltrio", password: "gabriel08@", turma: "2IA - B" },
-  { username: "trigêmeos", password: "lucas08@", turma: "2IA - B" },
-
-];
+// The prototype is retained only as historical reference. Do not ship a
+// browser bundle with shared plaintext credentials; use Supabase Auth users
+// created by the current application instead.
+const DEFAULT_USER_DATABASE = [];
 
 // Chaves do localStorage
 const USERS_STORAGE_KEY = 'fecart_user_db';

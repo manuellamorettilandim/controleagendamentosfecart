@@ -20,6 +20,7 @@ export interface DeviceAccess {
   reservationId: string | null;
   quotaBaseUsedPercent: number | null;
   quotaBudgetPercent: number | null;
+  allowedModels: string[] | null;
   /** Public half of the ephemeral SSH credential used by the desktop app. */
   sshPublicKey: string | null;
   sshKeyFingerprint: string | null;
@@ -47,6 +48,10 @@ export interface DeviceUsageState {
   accountUsedPercent: number | null;
   accountWindowDurationMins: number | null;
   accountResetsAt: number | null;
+  /** Monotonic account-quota delta observed while this session token is active. */
+  quotaConsumedPercent: number;
+  /** Last account percentage used to calculate the next monotonic delta. */
+  lastAccountUsedPercent: number | null;
   usageLimitReachedAt: string | null;
 }
 
@@ -78,12 +83,14 @@ export interface IssueDeviceOptions {
   reservationId?: string | null;
   quotaBaseUsedPercent?: number | null;
   quotaBudgetPercent?: number | null;
+  allowedModels?: string[] | null;
 }
 
 export interface UpdateDevicePolicyOptions {
   accountId?: string | null;
   weeklyLimitPercent?: number;
   expiresAt?: string;
+  allowedModels?: string[] | null;
 }
 
 const writeLocks = new Map<string, Promise<void>>();
@@ -180,6 +187,8 @@ function emptyUsage(): DeviceUsageState {
     accountUsedPercent: null,
     accountWindowDurationMins: null,
     accountResetsAt: null,
+    quotaConsumedPercent: 0,
+    lastAccountUsedPercent: null,
     usageLimitReachedAt: null,
   };
 }
@@ -219,6 +228,8 @@ function usageFromValue(value: unknown): DeviceUsageState {
     accountUsedPercent: finiteNumber(source.accountUsedPercent),
     accountWindowDurationMins: finiteNumber(source.accountWindowDurationMins),
     accountResetsAt: finiteNumber(source.accountResetsAt),
+    quotaConsumedPercent: Math.max(0, finiteNumber(source.quotaConsumedPercent) ?? 0),
+    lastAccountUsedPercent: finiteNumber(source.lastAccountUsedPercent),
     usageLimitReachedAt: isString(source.usageLimitReachedAt) ? source.usageLimitReachedAt : null,
   };
 }
@@ -242,18 +253,40 @@ function positiveDelta(current: number, previous: number): number {
 }
 
 function quotaLimitReached(device: DeviceAccess, accountUsedPercent: number | null): boolean {
-  if (accountUsedPercent === null) return false;
   if (device.quotaBaseUsedPercent !== null && device.quotaBudgetPercent !== null) {
-    // A reset during a session makes the new account window start at zero.
-    const consumed = accountUsedPercent >= device.quotaBaseUsedPercent
-      ? accountUsedPercent - device.quotaBaseUsedPercent
-      : accountUsedPercent;
-    return consumed >= device.quotaBudgetPercent;
+    return device.usage.quotaConsumedPercent >= device.quotaBudgetPercent;
   }
+  if (accountUsedPercent === null) return false;
   // A value of 100 with no per-session budget means monitoring only. It must
   // not revoke a group token when the shared account reaches a reported cap.
   if (device.weeklyLimitPercent >= 100) return false;
   return accountUsedPercent >= device.weeklyLimitPercent;
+}
+
+function updateQuotaProgress(
+  device: DeviceAccess,
+  usage: DeviceUsageState,
+  accountUsedPercent: number | null,
+  resetIso: string | null,
+): void {
+  if (accountUsedPercent === null) return;
+  const current = Math.max(0, Math.min(100, accountUsedPercent));
+  const previous = usage.lastAccountUsedPercent ?? usage.accountUsedPercent ?? device.quotaBaseUsedPercent;
+  const windowChanged = Boolean(resetIso && usage.windowResetsAt && resetIso !== usage.windowResetsAt);
+
+  let delta = 0;
+  if (windowChanged && previous !== null && current < previous) {
+    // A true window reset occurred (the reported percentage dropped and reset timestamp changed).
+    // Usage observed in the new window is added to the prior window's consumption.
+    delta = current;
+  } else if (previous !== null && current >= previous) {
+    delta = current - previous;
+  } else if (previous === null && device.quotaBaseUsedPercent !== null) {
+    delta = Math.max(0, current - device.quotaBaseUsedPercent);
+  }
+
+  usage.quotaConsumedPercent = Math.min(10_000, Math.round((usage.quotaConsumedPercent + delta) * 10_000) / 10_000);
+  usage.lastAccountUsedPercent = current;
 }
 
 function addSafe(left: number, right: number): number {
@@ -308,6 +341,17 @@ function validateDevice(value: unknown): DeviceAccess {
     throw new Error("Registro de acesso inválido: lastSeenAt deve ser string ou null.");
   }
 
+  const usage = usageFromValue(device.usage);
+  const quotaBaseUsedPercent = finiteNumber(device.quotaBaseUsedPercent);
+  const storedUsage = device.usage && typeof device.usage === "object" ? device.usage as Record<string, unknown> : null;
+  if (finiteNumber(storedUsage?.quotaConsumedPercent) === null) {
+    const current = usage.accountUsedPercent;
+    if (current !== null && quotaBaseUsedPercent !== null) {
+      usage.quotaConsumedPercent = Math.max(0, current >= quotaBaseUsedPercent ? current - quotaBaseUsedPercent : current);
+      usage.lastAccountUsedPercent = current;
+    }
+  }
+
   return {
     deviceId: device.deviceId as string,
     label: device.label as string,
@@ -321,11 +365,14 @@ function validateDevice(value: unknown): DeviceAccess {
     weeklyLimitPercent: validateWeeklyLimitPercent(device.weeklyLimitPercent),
     userId: isString(device.userId) && device.userId.trim() ? device.userId.trim() : null,
     reservationId: isString(device.reservationId) && device.reservationId.trim() ? device.reservationId.trim() : null,
-    quotaBaseUsedPercent: finiteNumber(device.quotaBaseUsedPercent),
+    quotaBaseUsedPercent,
     quotaBudgetPercent: finiteNumber(device.quotaBudgetPercent),
+    allowedModels: Array.isArray(device.allowedModels) && device.allowedModels.length > 0
+      ? [...new Set(device.allowedModels.filter(isString).map((model) => model.trim()).filter(Boolean))]
+      : null,
     sshPublicKey: isString(device.sshPublicKey) && device.sshPublicKey.startsWith("ssh-ed25519 ") ? device.sshPublicKey : null,
     sshKeyFingerprint: isString(device.sshKeyFingerprint) ? device.sshKeyFingerprint : null,
-    usage: usageFromValue(device.usage),
+    usage,
   };
 }
 
@@ -439,6 +486,9 @@ export class AccessStore {
         reservationId: typeof options.reservationId === "string" && options.reservationId.trim() ? options.reservationId.trim() : null,
         quotaBaseUsedPercent: finiteNumber(options.quotaBaseUsedPercent),
         quotaBudgetPercent: finiteNumber(options.quotaBudgetPercent),
+        allowedModels: Array.isArray(options.allowedModels) && options.allowedModels.length > 0
+          ? [...new Set(options.allowedModels.map((model) => model.trim()).filter(Boolean))]
+          : null,
         sshPublicKey: sshKey.publicKey,
         sshKeyFingerprint: sshKey.fingerprint,
         usage: emptyUsage(),
@@ -479,6 +529,13 @@ export class AccessStore {
           throw new Error("expiresAt deve ser uma data futura válida.");
         }
         device.expiresAt = expiresAt.toISOString();
+      }
+      if (options.allowedModels !== undefined) {
+        const allowedModels = options.allowedModels === null
+          ? null
+          : [...new Set(options.allowedModels.map((model) => model.trim()).filter(Boolean))];
+        if (allowedModels && allowedModels.length === 0) throw new Error("Ao menos um modelo deve permanecer ativo.");
+        device.allowedModels = allowedModels;
       }
       await this.write(registry);
       return device;
@@ -636,15 +693,7 @@ export class AccessStore {
 
       const usage = device.usage ?? emptyUsage();
       const resetIso = resetIsoFromUnixSeconds(observation.accountResetsAt);
-      const windowChanged = Boolean(resetIso && usage.windowResetsAt && resetIso !== usage.windowResetsAt);
-      if (windowChanged) {
-        usage.observedTokens = 0;
-        usage.observedInputTokens = 0;
-        usage.observedCachedInputTokens = 0;
-        usage.observedOutputTokens = 0;
-        usage.observedReasoningTokens = 0;
-        usage.usageLimitReachedAt = null;
-      }
+      updateQuotaProgress(device, usage, observation.accountUsedPercent, resetIso);
       if (resetIso) usage.windowResetsAt = resetIso;
 
       const previousTotal = usage.threadTotals[observation.threadId];
@@ -714,15 +763,7 @@ export class AccessStore {
         if (device.accountId !== accountId || device.revokedAt !== null || device.disabledAt !== null) continue;
         const usage = device.usage ?? emptyUsage();
         const before = JSON.stringify(usage);
-        const windowChanged = Boolean(resetIso && usage.windowResetsAt && resetIso !== usage.windowResetsAt);
-        if (windowChanged) {
-          usage.observedTokens = 0;
-          usage.observedInputTokens = 0;
-          usage.observedCachedInputTokens = 0;
-          usage.observedOutputTokens = 0;
-          usage.observedReasoningTokens = 0;
-          usage.usageLimitReachedAt = null;
-        }
+        updateQuotaProgress(device, usage, accountUsedPercent, resetIso);
         if (resetIso) usage.windowResetsAt = resetIso;
         usage.accountUsedPercent = accountUsedPercent;
         usage.accountWindowDurationMins = accountWindowDurationMins;
