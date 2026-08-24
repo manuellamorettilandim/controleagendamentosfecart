@@ -483,6 +483,14 @@
     document.querySelectorAll("[data-config-toml-snippet]").forEach((el) => {
       el.textContent = toml;
     });
+    ["windows", "macos", "linux"].forEach((plat) => {
+      document.querySelectorAll(`[data-auto-config-cmd="${plat}"]`).forEach((el) => {
+        el.textContent = autoConfigCommand(plat);
+      });
+      document.querySelectorAll(`[data-restore-config-cmd="${plat}"]`).forEach((el) => {
+        el.textContent = restoreConfigCommand(plat);
+      });
+    });
   }
 
   function showGuidePage(name, updateHistory = true) {
@@ -511,6 +519,7 @@
     guide.querySelectorAll("[data-platform-copy]").forEach((copy) => {
       copy.hidden = copy.dataset.platformCopy !== selected;
     });
+    updateGuideDynamicSnippets();
   }
 
   function restoreGuideFromLocation() {

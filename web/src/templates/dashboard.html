@@ -141,39 +141,206 @@
           </section>
 
           <section id="guide-cli" class="guide-page guide-detail" hidden>
-            <header class="guide-detail-header"><button class="guide-back-button" type="button" data-guide-back><i class="ph ph-arrow-left" aria-hidden="true"></i>Todos os guias</button><div class="guide-detail-heading"><span class="guide-tool-art is-cli"><i class="ph ph-terminal-window" aria-hidden="true"></i></span><div><span class="guide-availability is-ready"><i class="ph ph-check-circle" aria-hidden="true"></i>Acesso temporário disponível</span><h1>Codex CLI</h1><p>Use o ambiente compartilhado diretamente no terminal, sem entrar na conta central.</p></div></div></header>
-            <div class="guide-platform-switch" role="tablist" aria-label="Sistema operacional"><button class="is-active" type="button" role="tab" aria-selected="true" data-guide-platform="windows"><i class="ph ph-windows-logo" aria-hidden="true"></i>Windows</button><button type="button" role="tab" aria-selected="false" data-guide-platform="macos"><i class="ph ph-apple-logo" aria-hidden="true"></i>macOS</button><button type="button" role="tab" aria-selected="false" data-guide-platform="linux"><i class="ph ph-linux-logo" aria-hidden="true"></i>Linux</button></div>
-            <div class="guide-steps">
-              <article class="guide-step panel"><span class="guide-step-number">1</span><div><h2>Instale o Codex CLI</h2><div data-platform-copy="windows"><p>Instale primeiro o <a href="https://nodejs.org/en/download" target="_blank" rel="noopener noreferrer">Node.js LTS</a>. Depois abra o PowerShell ou CMD e instale o CLI:</p><pre><code>npm install -g @openai/codex</code></pre></div><div data-platform-copy="macos" hidden><p>No Terminal do macOS, use o instalador oficial ou npm:</p><pre><code>curl -fsSL https://chatgpt.com/codex/install.sh | sh</code></pre></div><div data-platform-copy="linux" hidden><p>No Terminal do Linux, instale via npm ou script oficial:</p><pre><code>npm install -g @openai/codex</code></pre></div><p class="guide-check"><i class="ph ph-check" aria-hidden="true"></i>Confira a instalação com <code>codex --version</code>.</p></div></article>
-              <article class="guide-step panel"><span class="guide-step-number">2</span><div><h2>Configure ou Remova o provedor (Apenas 1 vez)</h2><div class="guide-info-banner"><i class="ph ph-info" aria-hidden="true"></i><span><strong>Compatibilidade Total:</strong> Esta mesma configuração serve tanto para o <strong>Codex CLI</strong> (terminal) quanto para o <strong>Codex Desktop App</strong>.</span></div><div class="guide-sub-block"><h3>🚀 Método Automático (1 Clique no Terminal)</h3><p>Copie o comando do seu sistema e execute no terminal para configurar ou desinstalar automaticamente:</p><div class="guide-quick-actions"><button id="copy-auto-config" class="primary-button" type="button"><i class="ph ph-magic-wand" aria-hidden="true"></i><span>Copiar comando de configuração</span></button><button id="copy-restore-config" class="secondary-button" type="button"><i class="ph ph-arrow-counter-clockwise" aria-hidden="true"></i><span>Copiar comando para desinstalar / restaurar</span></button><button id="download-config-toml" class="secondary-button" type="button"><i class="ph ph-download-simple" aria-hidden="true"></i><span>Baixar config.toml</span></button></div></div><div class="guide-sub-block"><h3>✍️ Método Manual (Passo a Passo)</h3><div data-platform-copy="windows"><p><strong>1. Onde fica o arquivo:</strong> <code>%USERPROFILE%\.codex\config.toml</code> (ex: <code>C:\Users\SeuUsuario\.codex\config.toml</code>)</p><p><strong>2. Como Ativar:</strong> Crie ou edite o arquivo e cole:</p><pre><code data-config-toml-snippet>model = "gpt-5.6-sol"
-model_provider = "fecart"
+            <header class="guide-detail-header">
+              <button class="guide-back-button" type="button" data-guide-back>
+                <i class="ph ph-arrow-left" aria-hidden="true"></i>Todos os guias
+              </button>
+              <div class="guide-detail-heading">
+                <span class="guide-tool-art is-cli"><i class="ph ph-terminal-window" aria-hidden="true"></i></span>
+                <div>
+                  <span class="guide-availability is-ready"><i class="ph ph-check-circle" aria-hidden="true"></i>Configuração Unificada</span>
+                  <h1>Guia de Configuração: Codex CLI & Desktop App</h1>
+                  <p>Aprenda a instalar, ativar o provedor compartilhado do FECART ou desinstalar para voltar à sua conta pessoal.</p>
+                </div>
+              </div>
+            </header>
 
-[model_providers.fecart]
-name = "FECART Codex"
-base_url = "https://.../api/codex/v1"
-env_key = "FECART_CODEX_TOKEN"
-wire_api = "responses"
-supports_websockets = false</code></pre><p><strong>3. Como Desinstalar / Voltar ao padrão OpenAI:</strong> Basta apagar o arquivo <code>%USERPROFILE%\.codex\config.toml</code> ou remover o bloco <code>model_provider = "fecart"</code>.</p></div><div data-platform-copy="macos" hidden><p><strong>1. Onde fica o arquivo:</strong> <code>~/.codex/config.toml</code></p><p><strong>2. Como Ativar:</strong> Crie ou edite o arquivo e cole:</p><pre><code data-config-toml-snippet>model = "gpt-5.6-sol"
-model_provider = "fecart"
+            <div class="guide-platform-switch" role="tablist" aria-label="Sistema operacional">
+              <button class="is-active" type="button" role="tab" aria-selected="true" data-guide-platform="windows"><i class="ph ph-windows-logo" aria-hidden="true"></i>Windows</button>
+              <button type="button" role="tab" aria-selected="false" data-guide-platform="macos"><i class="ph ph-apple-logo" aria-hidden="true"></i>macOS</button>
+              <button type="button" role="tab" aria-selected="false" data-guide-platform="linux"><i class="ph ph-linux-logo" aria-hidden="true"></i>Linux</button>
+            </div>
 
-[model_providers.fecart]
-name = "FECART Codex"
-base_url = "https://.../api/codex/v1"
-env_key = "FECART_CODEX_TOKEN"
-wire_api = "responses"
-supports_websockets = false</code></pre><p><strong>3. Como Desinstalar / Voltar ao padrão OpenAI:</strong> Execute <code>rm ~/.codex/config.toml</code> no Terminal para restaurar.</p></div><div data-platform-copy="linux" hidden><p><strong>1. Onde fica o arquivo:</strong> <code>~/.codex/config.toml</code></p><p><strong>2. Como Ativar:</strong> Crie ou edite o arquivo e cole:</p><pre><code data-config-toml-snippet>model = "gpt-5.6-sol"
-model_provider = "fecart"
+            <div class="guide-notice-card panel">
+              <div class="guide-notice-icon"><i class="ph ph-info" aria-hidden="true"></i></div>
+              <div class="guide-notice-content">
+                <strong>Compatibilidade Total entre CLI e App Desktop</strong>
+                <p>O <strong>Codex CLI</strong> (terminal) e o <strong>Codex App</strong> (aplicativo desktop) utilizam o mesmo arquivo de configuração (<code>config.toml</code>). Ao ativar a configuração abaixo, ambos passam a usar o provedor compartilhado. Para voltar a usar qualquer <strong>conta pessoal</strong> ou o padrão oficial da OpenAI a qualquer momento, basta utilizar os comandos de <strong>Desinstalar / Restaurar</strong>.</p>
+              </div>
+            </div>
 
-[model_providers.fecart]
-name = "FECART Codex"
-base_url = "https://.../api/codex/v1"
-env_key = "FECART_CODEX_TOKEN"
-wire_api = "responses"
-supports_websockets = false</code></pre><p><strong>3. Como Desinstalar / Voltar ao padrão OpenAI:</strong> Execute <code>rm ~/.codex/config.toml</code> no Terminal para restaurar.</p></div></div></div></article>
-              <article class="guide-step panel"><span class="guide-step-number">3</span><div><h2>Abra a pasta do seu projeto</h2><div data-platform-copy="windows"><p>No Explorador de Arquivos, copie o caminho da pasta. No terminal, entre nela antes de iniciar:</p><pre><code>cd "C:\caminho\do\seu-projeto"</code></pre></div><div data-platform-copy="macos" hidden><p>No Finder, localize a pasta do projeto. No Terminal, entre nela antes de iniciar:</p><pre><code>cd "/Users/seu-usuario/projetos/seu-projeto"</code></pre></div><div data-platform-copy="linux" hidden><p>No Terminal, entre na pasta do seu projeto:</p><pre><code>cd "~/projetos/seu-projeto"</code></pre></div><p class="guide-note"><i class="ph ph-folder-open" aria-hidden="true"></i>O Codex executa localmente exatamente na pasta atual do seu terminal.</p></div></article>
-              <article class="guide-step panel"><span class="guide-step-number">4</span><div><h2>Agende e encontre seu acesso</h2><ol><li>Na aba <strong>Geral</strong>, faça o agendamento e aguarde a aprovação.</li><li>Quando a sessão começar, volte ao card <strong>Acesso temporário</strong>.</li><li>Deixe <strong>Codex CLI</strong> selecionado e escolha seu terminal.</li><li>Clique em <strong>Copiar</strong> ao lado do comando.</li></ol><button class="guide-inline-button" type="button" data-go-overview><i class="ph ph-arrow-square-out" aria-hidden="true"></i>Ir para Acesso temporário</button></div></article>
-              <article class="guide-step panel"><span class="guide-step-number">5</span><div><h2>Execute o comando copiado</h2><p>Cole o comando no terminal já aberto na pasta do projeto. O exemplo abaixo é propositalmente mascarado:</p><div data-platform-copy="windows"><pre><code>$env:FECART_CODEX_TOKEN = "••••••••"; codex</code></pre></div><div data-platform-copy="macos" hidden><pre><code>export FECART_CODEX_TOKEN='••••••••' && codex</code></pre></div><div data-platform-copy="linux" hidden><pre><code>export FECART_CODEX_TOKEN='••••••••' && codex</code></pre></div><p class="guide-security"><i class="ph ph-shield-check" aria-hidden="true"></i>Não envie o token por mensagem nem salve em arquivos públicos. O CLI executa localmente e consome inferência por conexão segura <strong>HTTPS</strong>.</p></div></article>
-              <article class="guide-step panel guide-step-wide"><span class="guide-step-number">6</span><div><h2>Se algo não funcionar</h2><div class="guide-troubleshooting"><p><strong>“codex” não foi encontrado</strong><span>Feche e abra novamente o terminal. Se continuar, reinstale o CLI e confira o PATH.</span></p><p><strong>Acesso recusado</strong><span>Confirme se a sessão está ativa, se não foi revogada e copie novamente o comando na aba Geral.</span></p><p><strong>Token ou cota esgotada</strong><span>Confirme se a cota aprovada para a sessão não atingiu 100%. Se necessário, solicite um novo agendamento.</span></p><p><strong>Sessão terminou</strong><span>O token expira automaticamente. Faça um novo agendamento para obter outro acesso.</span></p></div><a class="guide-doc-link" href="https://learn.chatgpt.com/docs/codex/cli" target="_blank" rel="noopener noreferrer">Documentação oficial do Codex CLI <i class="ph ph-arrow-square-out" aria-hidden="true"></i></a></div></article>
+            <div class="guide-sections-list">
+              <!-- Section 1: Installation -->
+              <article class="guide-section-card panel">
+                <div class="section-badge-header">
+                  <span class="section-number-pill">1</span>
+                  <h2>Instalação do Codex</h2>
+                </div>
+                <p class="section-sub-desc">Instale o CLI no seu terminal ou baixe o aplicativo desktop oficial da OpenAI:</p>
+                <div class="guide-install-grid">
+                  <div class="install-card">
+                    <div class="install-card-title"><i class="ph ph-terminal-window"></i><strong>Codex CLI (Terminal)</strong></div>
+                    <div data-platform-copy="windows">
+                      <p>Requer <a href="https://nodejs.org/en/download" target="_blank" rel="noopener noreferrer">Node.js LTS</a>. No PowerShell ou CMD:</p>
+                      <pre><code>npm install -g @openai/codex</code></pre>
+                    </div>
+                    <div data-platform-copy="macos" hidden>
+                      <p>No Terminal do macOS:</p>
+                      <pre><code>npm install -g @openai/codex</code></pre>
+                    </div>
+                    <div data-platform-copy="linux" hidden>
+                      <p>No Terminal do Linux:</p>
+                      <pre><code>npm install -g @openai/codex</code></pre>
+                    </div>
+                    <a class="guide-doc-link" href="https://learn.chatgpt.com/docs/codex/cli" target="_blank" rel="noopener noreferrer">Documentação oficial do Codex CLI <i class="ph ph-arrow-square-out"></i></a>
+                  </div>
+
+                  <div class="install-card">
+                    <div class="install-card-title"><i class="ph ph-app-window"></i><strong>Codex App (Desktop)</strong></div>
+                    <p>Se preferir a interface gráfica com chat e editor integrado, baixe o instalador oficial:</p>
+                    <div class="install-card-actions">
+                      <a class="primary-button" href="https://chatgpt.com/codex" target="_blank" rel="noopener noreferrer"><i class="ph ph-download-simple"></i><span>Página de Download OpenAI</span></a>
+                      <a class="guide-doc-link" href="https://learn.chatgpt.com/docs/app" target="_blank" rel="noopener noreferrer">Documentação oficial do App <i class="ph ph-arrow-square-out"></i></a>
+                    </div>
+                  </div>
+                </div>
+              </article>
+
+              <!-- Section 2: Quick Method (Side by Side: Config vs Uninstall) -->
+              <article class="guide-section-card panel">
+                <div class="section-badge-header">
+                  <span class="section-number-pill">2</span>
+                  <h2>Método Fácil: 1 Clique no Terminal (Ativar vs Desinstalar)</h2>
+                </div>
+                <p class="section-sub-desc">Copie e cole o comando no terminal do seu sistema para aplicar ou remover a configuração automaticamente:</p>
+                
+                <div class="guide-side-by-side-grid">
+                  <!-- Col 1: Install / Configure -->
+                  <div class="guide-action-box is-config">
+                    <div class="action-box-header">
+                      <div class="action-box-title">
+                        <i class="ph ph-magic-wand"></i>
+                        <div>
+                          <strong>Ativar / Configurar FECART</strong>
+                          <small>Cria o <code>config.toml</code> com as rotas do proxy</small>
+                        </div>
+                      </div>
+                      <button class="primary-button copy-cmd-btn" id="copy-auto-config" type="button"><i class="ph ph-copy"></i><span>Copiar comando</span></button>
+                    </div>
+                    <div data-platform-copy="windows">
+                      <pre><code data-auto-config-cmd="windows"></code></pre>
+                    </div>
+                    <div data-platform-copy="macos" hidden>
+                      <pre><code data-auto-config-cmd="macos"></code></pre>
+                    </div>
+                    <div data-platform-copy="linux" hidden>
+                      <pre><code data-auto-config-cmd="linux"></code></pre>
+                    </div>
+                  </div>
+
+                  <!-- Col 2: Uninstall / Restore -->
+                  <div class="guide-action-box is-restore">
+                    <div class="action-box-header">
+                      <div class="action-box-title">
+                        <i class="ph ph-arrow-counter-clockwise"></i>
+                        <div>
+                          <strong>Desinstalar / Restaurar Padrão</strong>
+                          <small>Remove a configuração para usar conta pessoal da OpenAI</small>
+                        </div>
+                      </div>
+                      <button class="secondary-button copy-cmd-btn" id="copy-restore-config" type="button"><i class="ph ph-copy"></i><span>Copiar comando</span></button>
+                    </div>
+                    <div data-platform-copy="windows">
+                      <pre><code data-restore-config-cmd="windows"></code></pre>
+                    </div>
+                    <div data-platform-copy="macos" hidden>
+                      <pre><code data-restore-config-cmd="macos"></code></pre>
+                    </div>
+                    <div data-platform-copy="linux" hidden>
+                      <pre><code data-restore-config-cmd="linux"></code></pre>
+                    </div>
+                  </div>
+                </div>
+                <div class="guide-download-row">
+                  <button id="download-config-toml" class="secondary-button" type="button"><i class="ph ph-download-simple"></i><span>Baixar arquivo config.toml pronto</span></button>
+                </div>
+              </article>
+
+              <!-- Section 3: Manual Step by Step (Configure and Uninstall) -->
+              <article class="guide-section-card panel">
+                <div class="section-badge-header">
+                  <span class="section-number-pill">3</span>
+                  <h2>Método Manual: Passo a Passo</h2>
+                </div>
+                <p class="section-sub-desc">Se preferir editar o arquivo de configuração manualmente no seu editor de texto:</p>
+
+                <div class="guide-manual-steps">
+                  <div class="manual-step-item">
+                    <strong>1. Localização do arquivo:</strong>
+                    <div data-platform-copy="windows">
+                      <p>Abra o Explorador de Arquivos e acesse: <code>%USERPROFILE%\.codex\config.toml</code> (ex: <code>C:\Users\SeuNome\.codex\config.toml</code>)</p>
+                    </div>
+                    <div data-platform-copy="macos" hidden>
+                      <p>No Finder ou Terminal: <code>~/.codex/config.toml</code> (ou <code>/Users/seu-usuario/.codex/config.toml</code>)</p>
+                    </div>
+                    <div data-platform-copy="linux" hidden>
+                      <p>No Terminal: <code>~/.codex/config.toml</code> (ou <code>/home/seu-usuario/.codex/config.toml</code>)</p>
+                    </div>
+                  </div>
+
+                  <div class="manual-step-item">
+                    <strong>2. Como Ativar Manualmente:</strong>
+                    <p>Abra ou crie o arquivo <code>config.toml</code> e cole o bloco abaixo:</p>
+                    <pre><code data-config-toml-snippet></code></pre>
+                  </div>
+
+                  <div class="manual-step-item">
+                    <strong>3. Como Desinstalar Manualmente (Voltar à conta pessoal):</strong>
+                    <div data-platform-copy="windows">
+                      <p>Basta excluir o arquivo <code>%USERPROFILE%\.codex\config.toml</code> ou remover as linhas <code>model_provider = "fecart"</code> e <code>[model_providers.fecart]</code>. Ao fazer isso, o Codex volta a usar os servidores oficiais da OpenAI com a sua conta pessoal.</p>
+                    </div>
+                    <div data-platform-copy="macos" hidden>
+                      <p>Execute <code>rm ~/.codex/config.toml</code> no Terminal ou apague o bloco <code>[model_providers.fecart]</code> do arquivo.</p>
+                    </div>
+                    <div data-platform-copy="linux" hidden>
+                      <p>Execute <code>rm ~/.codex/config.toml</code> no Terminal ou apague o bloco <code>[model_providers.fecart]</code> do arquivo.</p>
+                    </div>
+                  </div>
+                </div>
+              </article>
+
+              <!-- Section 4: Execution / How to use -->
+              <article class="guide-section-card panel">
+                <div class="section-badge-header">
+                  <span class="section-number-pill">4</span>
+                  <h2>Como Executar seu Acesso na Sessão Aprovada</h2>
+                </div>
+                <div class="guide-execution-flow">
+                  <div class="exec-step">
+                    <div class="install-card-title"><i class="ph ph-terminal-window"></i><strong>No Codex CLI (Terminal):</strong></div>
+                    <ol>
+                      <li>Abra a pasta do seu projeto no terminal (<code>cd "C:\meu-projeto"</code>).</li>
+                      <li>Na tela de <strong>Visão Geral</strong>, copie o comando da sessão aprovada:
+                        <div data-platform-copy="windows">
+                          <pre><code>$env:FECART_CODEX_TOKEN = "••••••••"; codex</code></pre>
+                        </div>
+                        <div data-platform-copy="macos" hidden>
+                          <pre><code>export FECART_CODEX_TOKEN='••••••••' && codex</code></pre>
+                        </div>
+                        <div data-platform-copy="linux" hidden>
+                          <pre><code>export FECART_CODEX_TOKEN='••••••••' && codex</code></pre>
+                        </div>
+                      </li>
+                      <li>Cole e aperte Enter. O Codex iniciará conectado com as cotas da sua equipe!</li>
+                    </ol>
+                  </div>
+                  <div class="exec-step">
+                    <div class="install-card-title"><i class="ph ph-app-window"></i><strong>No Codex App (Desktop):</strong></div>
+                    <p>Como o App lê o mesmo <code>config.toml</code>, basta definir a variável de ambiente no sistema ou executar pelo terminal do App durante a sessão ativa.</p>
+                  </div>
+                </div>
+                <button class="primary-button" type="button" data-go-overview><i class="ph ph-arrow-left"></i><span>Voltar para o Painel de Acesso</span></button>
+              </article>
             </div>
           </section>
 
