@@ -5,10 +5,8 @@ alter table public.codex_user_profiles
   alter column account_id drop not null,
   alter column account_id drop default;
 
-update public.codex_user_profiles set account_id = null where account_id is not null;
-
 comment on column public.codex_user_profiles.account_id is
-  'Legacy field kept for compatibility. Account selection belongs to each reservation.';
+  'Legacy historical assignment kept for compatibility. New account selection belongs to each reservation.';
 
 create or replace function public.codex_request_reservation(
   p_account_id text,

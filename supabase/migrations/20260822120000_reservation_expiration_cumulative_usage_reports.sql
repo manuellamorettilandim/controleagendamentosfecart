@@ -18,12 +18,9 @@ where approval_status = 'pending' and ends_at <= now();
 
 alter table public.codex_reservations enable trigger codex_reservation_integrity;
 
--- Reconcile busy slots removing any non-scheduled or expired reservations
-delete from public.codex_busy_slots
-where reservation_id in (
-  select id from public.codex_reservations
-  where status <> 'scheduled' or approval_status in ('rejected', 'expired')
-);
+-- Keep historical busy-slot rows intact during deploy. The reservation sync
+-- trigger maintains active slots during normal writes; any repair cleanup must
+-- be an explicit, separately backed-up maintenance operation.
 
 -- 2. Update integrity trigger to reject approving expired reservations
 create or replace function codex_private.enforce_reservation_integrity()
