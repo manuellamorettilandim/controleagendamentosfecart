@@ -39,6 +39,17 @@
               <div class="section-kicker"><i class="ph ph-key" aria-hidden="true"></i><span>Acesso temporário</span></div>
               <h1 id="token-title">Seu acesso</h1>
               <p>Agende uma janela, aguarde o início e escolha o terminal do seu sistema.</p>
+              <div class="access-setup-banner" data-cli-access>
+                <div class="access-setup-icon"><i class="ph ph-sliders-horizontal" aria-hidden="true"></i></div>
+                <div class="access-setup-content">
+                  <strong>Configuração necessária (apenas 1 vez)</strong>
+                  <span>Configure o terminal antes de rodar o comando pela primeira vez.</span>
+                </div>
+                <button class="access-setup-button" type="button" data-open-guide="cli">
+                  <span>Abrir Guia CLI</span>
+                  <i class="ph ph-arrow-right" aria-hidden="true"></i>
+                </button>
+              </div>
               <div class="access-product-picker" role="group" aria-label="Aplicativo do Codex">
                 <button class="access-product is-active" type="button" aria-pressed="true" data-access-product="cli"><i class="ph ph-terminal-window" aria-hidden="true"></i>Codex CLI</button>
                 <button class="access-product" type="button" aria-pressed="false" data-access-product="app"><i class="ph ph-app-window" aria-hidden="true"></i>Codex App</button>
@@ -78,7 +89,15 @@
             </div>
             <div class="token-help">
               <i class="ph ph-question-mark help-mark" aria-hidden="true"></i>
-              <div><h2>Fluxo rápido</h2><p>1. Agende um horário livre.</p><p>2. Quando começar, o token será gerado aqui.</p><p>3. Copie e execute o comando no diretório atual do seu projeto.</p><button id="open-booking-top" class="primary-button token-booking-button" type="button"><i class="ph ph-calendar-plus" aria-hidden="true"></i><span>Agendar horário</span></button></div>
+              <div>
+                <h2>Fluxo rápido</h2>
+                <div class="token-help-steps">
+                  <div class="help-step"><span class="step-badge">1</span><p><strong>Configuração única:</strong> Aplique no Guia CLI antes de começar.</p></div>
+                  <div class="help-step"><span class="step-badge">2</span><p><strong>Agendamento:</strong> Reserve um horário no calendário.</p></div>
+                  <div class="help-step"><span class="step-badge">3</span><p><strong>Execução:</strong> Copie e cole o comando no terminal do projeto.</p></div>
+                </div>
+                <button id="open-booking-top" class="primary-button token-booking-button" type="button"><i class="ph ph-calendar-plus" aria-hidden="true"></i><span>Agendar horário</span></button>
+              </div>
             </div>
           </section>
 
@@ -90,6 +109,10 @@
                 <div><dt>Horas utilizadas</dt><dd id="stat-hours">—</dd><small>últimos 30 dias</small></div>
                 <div><dt>Dias com uso</dt><dd id="stat-days">—</dd><small>últimos 30 dias</small></div>
                 <div><dt>Último acesso</dt><dd id="stat-last-access">—</dd><small id="stat-last-access-note">aguardando dados</small></div>
+                <div><dt>Tokens consumidos</dt><dd id="stat-tokens">—</dd><small>volume de inferência</small></div>
+                <div><dt>Duração média</dt><dd id="stat-avg-duration">—</dd><small>por agendamento</small></div>
+                <div><dt>Taxa de aprovação</dt><dd id="stat-approval-rate">—</dd><small>solicitações atendidas</small></div>
+                <div><dt>Eficiência de cache</dt><dd id="stat-cache-rate">—</dd><small>reuso de contexto</small></div>
               </dl>
             </article>
 

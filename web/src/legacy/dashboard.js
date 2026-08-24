@@ -601,7 +601,8 @@
 
   function renderStats() {
     const cutoff = now().getTime() - 30 * 24 * 60 * 60_000;
-    const reservations = (state.data?.reservations || []).filter((item) => item.approval_status === "approved" && Date.parse(item.starts_at) >= cutoff);
+    const allReservations = (state.data?.reservations || []).filter((item) => Date.parse(item.starts_at) >= cutoff);
+    const reservations = allReservations.filter((item) => item.approval_status === "approved");
     const hours = reservations.reduce((sum, item) => sum + Math.max(0, (Date.parse(item.ends_at) - Date.parse(item.starts_at)) / 3_600_000), 0);
     const days = new Set(reservations.map((item) => new Date(item.starts_at).toLocaleDateString("pt-BR"))).size;
     const accesses = (state.data?.devices || [])
@@ -610,11 +611,25 @@
       .sort((a, b) => Date.parse(b) - Date.parse(a));
     const lastAccess = accesses[0] ? new Date(accesses[0]) : null;
     const today = calendarTools().sameDay(lastAccess || new Date(0), now());
+
+    const devices = state.data?.devices || [];
+    const totalTokens = devices.reduce((sum, d) => sum + Number(d.observed_tokens || 0), 0);
+    const avgHours = reservations.length > 0 ? (hours / reservations.length) : 0;
+    const avgDurationFormatted = avgHours >= 1 ? `${avgHours.toFixed(1).replace(".0", "")}h` : avgHours > 0 ? `${Math.round(avgHours * 60)}min` : "—";
+    const approvalRate = allReservations.length > 0 ? Math.round((reservations.length / allReservations.length) * 100) : 100;
+    const totalInput = devices.reduce((sum, d) => sum + Number(d.observed_input_tokens || 0), 0);
+    const totalCached = devices.reduce((sum, d) => sum + Number(d.observed_cached_input_tokens || 0), 0);
+    const cachePercent = (totalInput + totalCached) > 0 ? Math.round((totalCached / (totalInput + totalCached)) * 100) : 0;
+
     $("#stat-approved").textContent = String(reservations.length);
     $("#stat-hours").textContent = formatDuration(hours);
     $("#stat-days").textContent = String(days);
     $("#stat-last-access").textContent = lastAccess ? (today ? `Hoje, ${components().formatTime(lastAccess)}` : components().formatDateTime(lastAccess)) : "—";
     $("#stat-last-access-note").textContent = lastAccess ? formatRelative(lastAccess) : "aguardando dados";
+    if ($("#stat-tokens")) $("#stat-tokens").textContent = totalTokens > 0 ? formatTokenCount(totalTokens) : "0";
+    if ($("#stat-avg-duration")) $("#stat-avg-duration").textContent = avgDurationFormatted;
+    if ($("#stat-approval-rate")) $("#stat-approval-rate").textContent = `${approvalRate}%`;
+    if ($("#stat-cache-rate")) $("#stat-cache-rate").textContent = totalTokens > 0 ? `${cachePercent}%` : "0%";
   }
 
   function renderSession() {

@@ -530,6 +530,107 @@ summary:focus-visible {
   margin-top: 11px;
 }
 
+.access-setup-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 10px 14px;
+  border: 1px solid rgba(var(--accent-rgb), 0.26);
+  border-radius: 10px;
+  background: rgba(var(--accent-rgb), 0.08);
+}
+
+.access-setup-icon {
+  display: grid;
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border-radius: 8px;
+  color: var(--accent);
+  background: rgba(var(--accent-rgb), 0.16);
+  font-size: 17px;
+}
+
+.access-setup-content {
+  min-width: 0;
+  flex: 1;
+}
+
+.access-setup-content strong {
+  display: block;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.access-setup-content span {
+  display: block;
+  color: var(--muted-strong);
+  font-size: 12px;
+  line-height: 1.3;
+  margin-top: 2px;
+}
+
+.access-setup-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  padding: 6px 12px;
+  border-radius: 7px;
+  color: #ffffff;
+  background: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+
+.access-setup-button:hover {
+  background: var(--accent-strong);
+  transform: translateY(-1px);
+}
+
+.token-help-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.help-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.step-badge {
+  display: grid;
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--accent);
+  background: rgba(var(--accent-rgb), 0.15);
+  font-size: 10px;
+  font-weight: 700;
+  margin-top: 1px;
+}
+
+.help-step p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.help-step strong {
+  color: var(--text-soft);
+}
+
 .access-product-picker {
   display: inline-flex;
   gap: 4px;
@@ -775,7 +876,8 @@ summary:focus-visible {
 .metric-list {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  margin: 12px 0 0;
+  gap: 16px 0;
+  margin: 14px 0 0;
 }
 
 .metric-list > div {
@@ -784,7 +886,7 @@ summary:focus-visible {
   border-left: 1px solid var(--line);
 }
 
-.metric-list > div:first-child {
+.metric-list > div:nth-child(4n + 1) {
   padding-left: 0;
   border-left: 0;
 }
@@ -2584,17 +2686,16 @@ summary:focus-visible {
     gap: 15px 0;
   }
 
-  .metric-list > div:nth-child(3) {
-    padding-left: 0;
-    border-left: 0;
-  }
-
   .metric-list > div:nth-child(odd) {
+    padding-left: 0;
     padding-right: 10px;
+    border-left: 0;
   }
 
   .metric-list > div:nth-child(even) {
     padding-left: 14px;
+    padding-right: 0;
+    border-left: 1px solid var(--line);
   }
 
   .metric-list dd {
