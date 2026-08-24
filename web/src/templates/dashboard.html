@@ -286,6 +286,7 @@
                     <div data-platform-copy="linux" hidden>
                       <p>No Terminal: <code>~/.codex/config.toml</code> (ou <code>/home/seu-usuario/.codex/config.toml</code>)</p>
                     </div>
+                    <p class="guide-note" style="margin-top:8px;"><i class="ph ph-shield-check"></i><span><strong>Dica de Segurança:</strong> Antes de modificar, faça uma cópia do seu arquivo original renomeando-o para <code>config.toml.bak</code> na mesma pasta.</span></p>
                   </div>
 
                   <div class="manual-step-item">
@@ -297,13 +298,13 @@
                   <div class="manual-step-item">
                     <strong>3. Como Desinstalar Manualmente (Voltar à conta pessoal):</strong>
                     <div data-platform-copy="windows">
-                      <p>Basta excluir o arquivo <code>%USERPROFILE%\.codex\config.toml</code> ou remover as linhas <code>model_provider = "fecart"</code> e <code>[model_providers.fecart]</code>. Ao fazer isso, o Codex volta a usar os servidores oficiais da OpenAI com a sua conta pessoal.</p>
+                      <p>Se você criou o backup, basta excluir o <code>config.toml</code> atual e renomear o <code>config.toml.bak</code> de volta para <code>config.toml</code>. Caso não tenha backup, apague o <code>config.toml</code> ou remova o bloco <code>[model_providers.fecart]</code>.</p>
                     </div>
                     <div data-platform-copy="macos" hidden>
-                      <p>Execute <code>rm ~/.codex/config.toml</code> no Terminal ou apague o bloco <code>[model_providers.fecart]</code> do arquivo.</p>
+                      <p>Se você tem o backup, execute <code>mv ~/.codex/config.toml.bak ~/.codex/config.toml</code> no Terminal. Caso contrário, execute <code>rm ~/.codex/config.toml</code>.</p>
                     </div>
                     <div data-platform-copy="linux" hidden>
-                      <p>Execute <code>rm ~/.codex/config.toml</code> no Terminal ou apague o bloco <code>[model_providers.fecart]</code> do arquivo.</p>
+                      <p>Se você tem o backup, execute <code>mv ~/.codex/config.toml.bak ~/.codex/config.toml</code> no Terminal. Caso contrário, execute <code>rm ~/.codex/config.toml</code>.</p>
                     </div>
                   </div>
                 </div>
@@ -331,12 +332,29 @@
                           <pre><code>export FECART_CODEX_TOKEN='••••••••' && codex</code></pre>
                         </div>
                       </li>
-                      <li>Cole e aperte Enter. O Codex iniciará conectado com as cotas da sua equipe!</li>
+                      <li>Cole e execute. O CLI conectará instantaneamente ao proxy!</li>
                     </ol>
                   </div>
                   <div class="exec-step">
                     <div class="install-card-title"><i class="ph ph-app-window"></i><strong>No Codex App (Desktop):</strong></div>
-                    <p>Como o App lê o mesmo <code>config.toml</code>, basta definir a variável de ambiente no sistema ou executar pelo terminal do App durante a sessão ativa.</p>
+                    <p>Como o App lê o mesmo <code>config.toml</code>, defina o token da sessão para o App:</p>
+                    <div data-platform-copy="windows">
+                      <p><strong>Opção A (Variável de Usuário no Windows):</strong></p>
+                      <pre><code>setx FECART_CODEX_TOKEN "••••••••"</code></pre>
+                      <p style="font-size:11px; margin-top:4px;">(Abra o Codex App pelo Menu Iniciar após definir)</p>
+                      <p style="margin-top:8px;"><strong>Opção B (Iniciar pelo PowerShell com a variável):</strong></p>
+                      <pre><code>$env:FECART_CODEX_TOKEN = "••••••••"; Start-Process "codex"</code></pre>
+                    </div>
+                    <div data-platform-copy="macos" hidden>
+                      <p><strong>Opção A (Via Terminal):</strong></p>
+                      <pre><code>FECART_CODEX_TOKEN="••••••••" open -a "Codex"</code></pre>
+                      <p style="margin-top:8px;"><strong>Opção B (Variável Global):</strong></p>
+                      <pre><code>launchctl setenv FECART_CODEX_TOKEN "••••••••"</code></pre>
+                    </div>
+                    <div data-platform-copy="linux" hidden>
+                      <p><strong>Opção A (Via Terminal):</strong></p>
+                      <pre><code>FECART_CODEX_TOKEN="••••••••" codex-desktop</code></pre>
+                    </div>
                   </div>
                 </div>
                 <button class="primary-button" type="button" data-go-overview><i class="ph ph-arrow-left"></i><span>Voltar para o Painel de Acesso</span></button>

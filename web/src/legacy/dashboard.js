@@ -226,16 +226,16 @@
   function autoConfigCommand(platform = "windows") {
     const toml = configTomlSnippet();
     if (platform === "macos" || platform === "linux") {
-      return `mkdir -p ~/.codex && cat << 'EOF' > ~/.codex/config.toml\n${toml}\nEOF\necho "Configuração do FECART Codex aplicada com sucesso!"`;
+      return `mkdir -p ~/.codex && [ -f ~/.codex/config.toml ] && cp ~/.codex/config.toml ~/.codex/config.toml.bak && echo "Backup criado em: ~/.codex/config.toml.bak"; cat << 'EOF' > ~/.codex/config.toml\n${toml}\nEOF\necho "Configuração do FECART Codex aplicada com sucesso!"`;
     }
-    return `$cfg="$HOME\\.codex\\config.toml"; New-Item -ItemType Directory -Force "$HOME\\.codex" | Out-Null; @'\n${toml}\n'@ | Set-Content -Path $cfg -Encoding UTF8; Write-Host "Configuração do FECART Codex aplicada com sucesso!" -ForegroundColor Green`;
+    return `$dir="$HOME\\.codex"; $cfg="$dir\\config.toml"; $bak="$dir\\config.toml.bak"; New-Item -ItemType Directory -Force $dir | Out-Null; if (Test-Path $cfg) { Copy-Item $cfg $bak -Force; Write-Host "Backup criado em: $bak" -ForegroundColor Cyan }; @'\n${toml}\n'@ | Set-Content -Path $cfg -Encoding UTF8; Write-Host "Configuração do FECART Codex aplicada com sucesso!" -ForegroundColor Green`;
   }
 
   function restoreConfigCommand(platform = "windows") {
     if (platform === "macos" || platform === "linux") {
-      return `rm -f ~/.codex/config.toml && echo "Configuração do FECART removida! Codex restaurado para o padrão."`;
+      return `if [ -f ~/.codex/config.toml.bak ]; then mv ~/.codex/config.toml.bak ~/.codex/config.toml && echo "Backup restaurado com sucesso de: ~/.codex/config.toml.bak"; else rm -f ~/.codex/config.toml && echo "Configuração do FECART removida! Codex restaurado para o padrão."; fi`;
     }
-    return `$cfg="$HOME\\.codex\\config.toml"; if (Test-Path $cfg) { Remove-Item $cfg -Force; Write-Host "Configuração do FECART removida! Codex restaurado para o padrão." -ForegroundColor Yellow } else { Write-Host "Nenhuma configuração personalizada encontrada." }`;
+    return `$dir="$HOME\\.codex"; $cfg="$dir\\config.toml"; $bak="$dir\\config.toml.bak"; if (Test-Path $bak) { Move-Item $bak $cfg -Force; Write-Host "Backup restaurado com sucesso de: $bak" -ForegroundColor Green } elseif (Test-Path $cfg) { Remove-Item $cfg -Force; Write-Host "Configuração do FECART removida! Codex restaurado para o padrão." -ForegroundColor Yellow } else { Write-Host "Nenhuma configuração personalizada encontrada." }`;
   }
 
   function formatTokenCount(value) {
