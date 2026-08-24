@@ -37,7 +37,7 @@
           <section class="panel access-card" aria-labelledby="access-title">
             <div class="access-card-header">
               <div class="access-card-heading">
-                <div class="section-kicker"><i class="ph ph-terminal-window" aria-hidden="true"></i><span>Codex CLI</span></div>
+                <div class="section-kicker"><i class="ph ph-terminal-window" aria-hidden="true"></i><span id="access-kicker-text">Codex CLI</span></div>
                 <h1 id="access-title">Comando de Acesso</h1>
                 <p id="access-copy-status">Copie o comando e execute no terminal do seu projeto durante a sessão ativa.</p>
               </div>
@@ -54,14 +54,29 @@
             </div>
 
             <div class="access-command-box">
-              <div class="access-platform-row">
-                <span class="access-platform-label"><i class="ph ph-desktop" aria-hidden="true"></i> Terminal:</span>
-                <div class="access-platform-tabs" role="tablist" aria-label="Terminal">
+              <div class="access-controls-bar">
+                <div class="access-mode-tabs" role="tablist" aria-label="Ferramenta">
+                  <button type="button" role="tab" class="mode-tab is-active" data-mode-select="cli">
+                    <i class="ph ph-terminal-window" aria-hidden="true"></i>
+                    <span>Codex CLI</span>
+                  </button>
+                  <button type="button" role="tab" class="mode-tab" data-mode-select="app">
+                    <i class="ph ph-app-window" aria-hidden="true"></i>
+                    <span>Codex App (Desktop)</span>
+                  </button>
+                </div>
+
+                <div class="access-platform-tabs" role="tablist" aria-label="Sistema / Terminal">
                   <button type="button" role="tab" class="platform-tab is-active" data-platform-select="powershell">Windows PowerShell</button>
                   <button type="button" role="tab" class="platform-tab" data-platform-select="cmd">Windows CMD</button>
                   <button type="button" role="tab" class="platform-tab" data-platform-select="macos">macOS</button>
                   <button type="button" role="tab" class="platform-tab" data-platform-select="linux">Linux</button>
                 </div>
+              </div>
+
+              <div id="linux-app-note" class="linux-distro-callout" hidden>
+                <i class="ph ph-info" aria-hidden="true"></i>
+                <span><strong>Linux:</strong> O Codex App está disponível oficialmente em pacotes <code>.deb</code> (Ubuntu 24.04/26.04, Debian 13), <code>.rpm</code> (Fedora 43/44) e <code>AppImage</code>.</span>
               </div>
 
               <div class="access-terminal-line">
@@ -123,6 +138,16 @@
             <div id="calendar-board" class="calendar-board" aria-label="Agenda semanal"></div>
             <footer class="calendar-footer"><div class="calendar-legend"><span><i class="legend-dot legend-free"></i> livre</span><span><i class="legend-dot legend-mine"></i> sua solicitação</span><span><i class="legend-dot legend-busy"></i> ocupado</span></div><p id="calendar-constraint" class="constraint-note"><i class="ph ph-info" aria-hidden="true"></i> Solicitações disponíveis até 3 dias à frente.</p></footer>
           </section>
+
+          <aside class="support-contact-card panel">
+            <div class="support-contact-icon">
+              <i class="ph ph-users-three" aria-hidden="true"></i>
+            </div>
+            <div class="support-contact-text">
+              <strong>Precisa de ajuda ou tem dúvidas?</strong>
+              <p>Em caso de qualquer dúvida, problema com agendamento ou configuração, entre em contato com o <strong>Comitê de Gestão de Projetos</strong> (qualquer integrante) ou com o <strong>representante da sua sala</strong>.</p>
+            </div>
+          </aside>
         </section>
 
         <section id="guides-view" class="tab-view guides-view" role="tabpanel" aria-labelledby="tab-guides" hidden>

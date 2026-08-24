@@ -212,6 +212,19 @@
     return `$env:FECART_CODEX_TOKEN = "${token}"; codex`;
   }
 
+  function appCommandFor(token, platform = state.platform) {
+    if (platform === "cmd") {
+      return `set "FECART_CODEX_TOKEN=${token}" && start codex`;
+    }
+    if (platform === "macos") {
+      return `FECART_CODEX_TOKEN='${token}' open -a "Codex"`;
+    }
+    if (platform === "linux") {
+      return `FECART_CODEX_TOKEN='${token}' chatgpt-desktop`;
+    }
+    return `$env:FECART_CODEX_TOKEN = "${token}"; Start-Process "codex"`;
+  }
+
   function legacyCliCommandFor(token, platform = state.platform) {
     const remoteUrl = remoteCliUrl();
     if (platform === "cmd") {
@@ -569,22 +582,39 @@
       toggle.innerHTML = `<i class="ph ${visible ? "ph-eye-slash" : "ph-eye"}" aria-hidden="true"></i>`;
     }
 
+    const isApp = state.accessProduct === "app";
     const commandNode = $("#cli-command");
     const maskedToken = "••••••••••••••••";
     const displayToken = visible && token ? token : maskedToken;
     if (commandNode) {
-      commandNode.textContent = cliCommandFor(displayToken, state.platform);
+      commandNode.textContent = isApp ? appCommandFor(displayToken, state.platform) : cliCommandFor(displayToken, state.platform);
     }
     const copyCommand = $("#copy-cli-command");
     if (copyCommand) {
       copyCommand.disabled = !token;
     }
 
+    document.querySelectorAll("[data-mode-select]").forEach((button) => {
+      const active = button.dataset.modeSelect === state.accessProduct;
+      button.classList.toggle("is-active", active);
+      button.setAttribute("aria-selected", String(active));
+    });
+
     document.querySelectorAll("[data-platform-select]").forEach((button) => {
       const active = button.dataset.platformSelect === state.platform;
       button.classList.toggle("is-active", active);
       button.setAttribute("aria-selected", String(active));
     });
+
+    const linuxNote = $("#linux-app-note");
+    if (linuxNote) {
+      linuxNote.hidden = !(isApp && state.platform === "linux");
+    }
+
+    const kicker = $("#access-kicker-text");
+    if (kicker) {
+      kicker.textContent = isApp ? "Codex App (Desktop)" : "Codex CLI";
+    }
 
     const statusEl = $("#access-copy-status");
     if (statusEl) {
@@ -595,8 +625,8 @@
           : sessionLimitReached(reservation)
             ? "A cota desta sessão foi atingida; o token foi bloqueado."
             : token
-              ? (visible ? "Comando pronto com token visível. Oculte-o quando terminar." : "Comando pronto para o terminal selecionado.")
-              : "Copie o comando e execute no terminal do seu projeto durante a sessão ativa.";
+              ? (visible ? "Comando pronto com token visível. Oculte-o quando terminar." : (isApp ? "Comando de inicialização do App pronto para o sistema selecionado." : "Comando pronto para o terminal selecionado."))
+              : (isApp ? "Inicie o aplicativo Codex Desktop com o token injetado para esta sessão ativa." : "Copie o comando e execute no terminal do seu projeto durante a sessão ativa.");
     }
   }
 
@@ -1235,6 +1265,13 @@
       state.tokenVisible = !state.tokenVisible;
       renderToken();
     });
+    document.querySelectorAll("[data-mode-select]").forEach((button) => {
+      button.addEventListener("click", () => {
+        state.accessProduct = button.dataset.modeSelect === "app" ? "app" : "cli";
+        renderToken();
+      });
+    });
+
     document.querySelectorAll("[data-platform-select]").forEach((button) => {
       button.addEventListener("click", () => {
         state.platform = ["powershell", "cmd", "macos", "linux"].includes(button.dataset.platformSelect) ? button.dataset.platformSelect : "powershell";
@@ -1249,10 +1286,12 @@
         components().showToast("O comando só fica disponível durante uma sessão ativa.", "warning");
         return;
       }
+      const isApp = state.accessProduct === "app";
+      const cmd = isApp ? appCommandFor(token, state.platform) : cliCommandFor(token, state.platform);
       try {
-        await navigator.clipboard.writeText(cliCommandFor(token, state.platform));
+        await navigator.clipboard.writeText(cmd);
         $("#access-copy-status").textContent = "Comando copiado para a área de transferência.";
-        components().showToast("Comando do Codex CLI copiado.", "success");
+        components().showToast(isApp ? "Comando do Codex App copiado." : "Comando do Codex CLI copiado.", "success");
       } catch {
         components().showToast("Não foi possível copiar o comando neste navegador.", "error");
       }
