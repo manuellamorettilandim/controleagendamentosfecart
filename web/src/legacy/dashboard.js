@@ -214,15 +214,15 @@
 
   function appCommandFor(token, platform = state.platform) {
     if (platform === "cmd") {
-      return `set "FECART_CODEX_TOKEN=${token}" && start codex`;
+      return `set "FECART_CODEX_TOKEN=${token}" && start ChatGPT`;
     }
     if (platform === "macos") {
-      return `FECART_CODEX_TOKEN='${token}' open -a "Codex"`;
+      return `FECART_CODEX_TOKEN='${token}' open -a "ChatGPT"`;
     }
     if (platform === "linux") {
-      return `FECART_CODEX_TOKEN='${token}' chatgpt-desktop`;
+      return `FECART_CODEX_TOKEN='${token}' chatgpt`;
     }
-    return `$env:FECART_CODEX_TOKEN = "${token}"; Start-Process "codex"`;
+    return `$env:FECART_CODEX_TOKEN = "${token}"; Start-Process "ChatGPT"`;
   }
 
   function legacyCliCommandFor(token, platform = state.platform) {
@@ -613,7 +613,7 @@
 
     const kicker = $("#access-kicker-text");
     if (kicker) {
-      kicker.textContent = isApp ? "Codex App (Desktop)" : "Codex CLI";
+      kicker.textContent = isApp ? "ChatGPT Desktop (Codex)" : "Codex CLI";
     }
 
     const statusEl = $("#access-copy-status");
@@ -625,8 +625,8 @@
           : sessionLimitReached(reservation)
             ? "A cota desta sessão foi atingida; o token foi bloqueado."
             : token
-              ? (visible ? "Comando pronto com token visível. Oculte-o quando terminar." : (isApp ? "Comando de inicialização do App pronto para o sistema selecionado." : "Comando pronto para o terminal selecionado."))
-              : (isApp ? "Inicie o aplicativo Codex Desktop com o token injetado para esta sessão ativa." : "Copie o comando e execute no terminal do seu projeto durante a sessão ativa.");
+              ? (visible ? "Comando pronto com token visível. Oculte-o quando terminar." : (isApp ? "Comando de inicialização do ChatGPT pronto para o sistema selecionado." : "Comando pronto para o terminal selecionado."))
+              : (isApp ? "Inicie o aplicativo ChatGPT Desktop com o token injetado para esta sessão ativa." : "Copie o comando e execute no terminal do seu projeto durante a sessão ativa.");
     }
   }
 
@@ -1291,7 +1291,7 @@
       try {
         await navigator.clipboard.writeText(cmd);
         $("#access-copy-status").textContent = "Comando copiado para a área de transferência.";
-        components().showToast(isApp ? "Comando do Codex App copiado." : "Comando do Codex CLI copiado.", "success");
+        components().showToast(isApp ? "Comando do ChatGPT Desktop copiado." : "Comando do Codex CLI copiado.", "success");
       } catch {
         components().showToast("Não foi possível copiar o comando neste navegador.", "error");
       }

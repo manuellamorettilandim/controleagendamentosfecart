@@ -62,7 +62,7 @@
                   </button>
                   <button type="button" role="tab" class="mode-tab" data-mode-select="app">
                     <i class="ph ph-app-window" aria-hidden="true"></i>
-                    <span>Codex App (Desktop)</span>
+                    <span>ChatGPT Desktop (Codex)</span>
                   </button>
                 </div>
 
@@ -221,11 +221,11 @@
                   </div>
 
                   <div class="install-card">
-                    <div class="install-card-title"><i class="ph ph-app-window"></i><strong>Codex App (Desktop)</strong></div>
-                    <p>Se preferir a interface gráfica com chat e editor integrado, baixe o instalador oficial:</p>
+                    <div class="install-card-title"><i class="ph ph-app-window"></i><strong>ChatGPT Desktop (com Codex integrado)</strong></div>
+                    <p>O aplicativo oficial do ChatGPT para Desktop possui o ambiente Codex integrado para desenvolvimento:</p>
                     <div class="install-card-actions">
-                      <a class="primary-button" href="https://chatgpt.com/codex" target="_blank" rel="noopener noreferrer"><i class="ph ph-download-simple"></i><span>Página de Download OpenAI</span></a>
-                      <a class="guide-doc-link" href="https://learn.chatgpt.com/docs/app" target="_blank" rel="noopener noreferrer">Documentação oficial do App <i class="ph ph-arrow-square-out"></i></a>
+                      <a class="primary-button" href="https://chatgpt.com/download" target="_blank" rel="noopener noreferrer"><i class="ph ph-download-simple"></i><span>Página Oficial de Download</span></a>
+                      <a class="guide-doc-link" href="https://learn.chatgpt.com/docs/app" target="_blank" rel="noopener noreferrer">Guia oficial do App <i class="ph ph-arrow-square-out"></i></a>
                     </div>
                   </div>
                 </div>
@@ -361,24 +361,24 @@
                     </ol>
                   </div>
                   <div class="exec-step">
-                    <div class="install-card-title"><i class="ph ph-app-window"></i><strong>No Codex App (Desktop):</strong></div>
-                    <p>Como o App lê o mesmo <code>config.toml</code>, defina o token da sessão para o App:</p>
+                    <div class="install-card-title"><i class="ph ph-app-window"></i><strong>No ChatGPT Desktop (Modo Codex):</strong></div>
+                    <p>Como o app lê o mesmo <code>config.toml</code>, abra o aplicativo carregando a variável de ambiente:</p>
                     <div data-platform-copy="windows">
                       <p><strong>Opção A (Variável de Usuário no Windows):</strong></p>
                       <pre><code>setx FECART_CODEX_TOKEN "••••••••"</code></pre>
-                      <p style="font-size:11px; margin-top:4px;">(Abra o Codex App pelo Menu Iniciar após definir)</p>
+                      <p style="font-size:11px; margin-top:4px;">(Abra o ChatGPT pelo Menu Iniciar após definir)</p>
                       <p style="margin-top:8px;"><strong>Opção B (Iniciar pelo PowerShell com a variável):</strong></p>
-                      <pre><code>$env:FECART_CODEX_TOKEN = "••••••••"; Start-Process "codex"</code></pre>
+                      <pre><code>$env:FECART_CODEX_TOKEN = "••••••••"; Start-Process "ChatGPT"</code></pre>
                     </div>
                     <div data-platform-copy="macos" hidden>
                       <p><strong>Opção A (Via Terminal):</strong></p>
-                      <pre><code>FECART_CODEX_TOKEN="••••••••" open -a "Codex"</code></pre>
+                      <pre><code>FECART_CODEX_TOKEN="••••••••" open -a "ChatGPT"</code></pre>
                       <p style="margin-top:8px;"><strong>Opção B (Variável Global):</strong></p>
                       <pre><code>launchctl setenv FECART_CODEX_TOKEN "••••••••"</code></pre>
                     </div>
                     <div data-platform-copy="linux" hidden>
                       <p><strong>Opção A (Via Terminal):</strong></p>
-                      <pre><code>FECART_CODEX_TOKEN="••••••••" codex-desktop</code></pre>
+                      <pre><code>FECART_CODEX_TOKEN="••••••••" chatgpt</code></pre>
                     </div>
                   </div>
                 </div>
