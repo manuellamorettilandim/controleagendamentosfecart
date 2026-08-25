@@ -301,6 +301,34 @@ test("relay fails closed when the central tunnel disappears and enforces expiry"
   }
 });
 
+test("relay allows the host time to finish its initial synchronization", async () => {
+  const relay = new RelayServer({
+    agentTokenHash: hashToken(agentToken),
+    host: "127.0.0.1",
+    port: 0,
+    siteDir: "site",
+    heartbeatTimeoutMs: 1_500,
+  });
+  await relay.listen();
+  const port = addressPort(relay);
+  let tunnel: WebSocket | undefined;
+  try {
+    tunnel = await open(`ws://127.0.0.1:${port}/tunnel`, { Authorization: `Bearer ${agentToken}` });
+    tunnel.send(encodeMessage({ v: PROTOCOL_VERSION, type: "register", hostId: "slow-sync-host" }));
+
+    await new Promise((resolve) => setTimeout(resolve, 1_100));
+    assert.equal(relay.status().hostConnected, true);
+    assert.equal(relay.status().ready, false);
+
+    tunnel.send(encodeMessage(syncAccounts()));
+    tunnel.send(encodeMessage({ v: PROTOCOL_VERSION, type: "access.sync", devices: [syncDevice()] }));
+    await waitFor(() => relay.status(), (status) => status.ready);
+  } finally {
+    tunnel?.terminate();
+    await relay.close();
+  }
+});
+
 test("relay routes a device to its bound account and enforces its observed weekly ceiling", async () => {
   const relay = new RelayServer({
     agentTokenHash: hashToken(agentToken),

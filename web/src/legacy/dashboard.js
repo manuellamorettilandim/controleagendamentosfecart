@@ -1023,7 +1023,7 @@
         const noteCopy = item.review_note ? ` Justificativa: ${item.review_note}` : " Sem justificativa informada.";
         items.push({
           type: rejected ? "danger" : "success",
-          icon: rejected ? "ph-x-circle" : approved === requested ? "ph-check-circle" : approved > requested ? "ph-arrow-up" : "ph-arrow-down",
+          icon: rejected ? "ph-x-circle" : "ph-check-circle",
           title: decision,
           message: `${components().formatDateTime(item.starts_at)} · ${item.account_id}.${quotaCopy}${noteCopy}`,
           time: formatRelative(item.reviewed_at),

@@ -415,6 +415,7 @@ export class RelayServer {
   private hostId: string | null = null;
   private registered = false;
   private accessSynced = false;
+  private tunnelConnectedAt = 0;
   private lastHeartbeatAt = 0;
   private lastSyncAt = 0;
   private defaultAccountId: string | null = null;
@@ -1859,7 +1860,8 @@ export class RelayServer {
     this.registered = false;
     this.accessSynced = false;
     this.accountsSynced = false;
-    this.lastHeartbeatAt = Date.now();
+    this.tunnelConnectedAt = Date.now();
+    this.lastHeartbeatAt = this.tunnelConnectedAt;
     this.lastSyncAt = 0;
     this.devices.clear();
     this.accounts.clear();
@@ -2208,9 +2210,13 @@ export class RelayServer {
 
   private pruneState(): void {
     const now = Date.now();
-    if (this.tunnel && (!this.isFresh(now) || !this.registered || !this.accessSynced || !this.accountsSynced)) {
-      this.failClosed("Túnel central sem sincronização");
-      return;
+    if (this.tunnel) {
+      const initialSyncComplete = this.registered && this.accessSynced && this.accountsSynced;
+      const initialSyncExpired = this.tunnelConnectedAt <= 0 || now - this.tunnelConnectedAt > this.options.heartbeatTimeoutMs;
+      if ((!initialSyncComplete && initialSyncExpired) || (initialSyncComplete && !this.isFresh(now))) {
+        this.failClosed("Túnel central sem sincronização");
+        return;
+      }
     }
 
     for (const device of [...this.devices.values()]) {
@@ -2227,6 +2233,7 @@ export class RelayServer {
     this.registered = false;
     this.accessSynced = false;
     this.accountsSynced = false;
+    this.tunnelConnectedAt = 0;
     this.lastHeartbeatAt = 0;
     this.lastSyncAt = 0;
     this.devices.clear();
