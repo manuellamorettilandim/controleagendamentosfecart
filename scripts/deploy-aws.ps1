@@ -10,6 +10,7 @@ param(
   [string]$RemoteUser = 'ubuntu',
   [string]$PublicHost,
   [string]$EnvironmentFile = '.env',
+  [string]$ExpectedSupabaseProjectRef = 'rjvgcqijrffoflensyau',
   [switch]$Bootstrap,
   [switch]$SkipLocalTests
 )
@@ -77,6 +78,16 @@ $required = @('SUPABASE_URL', 'SUPABASE_PUBLISHABLE_KEY', 'SUPABASE_SECRET_KEY',
 foreach ($name in $required) {
   if (-not $environment[$name]) { throw "Variavel ausente no .env: $name" }
 }
+
+$supabaseUri = $null
+if (-not [Uri]::TryCreate($environment['SUPABASE_URL'], [UriKind]::Absolute, [ref]$supabaseUri)) {
+  throw 'SUPABASE_URL invalida no arquivo de ambiente.'
+}
+$actualSupabaseProjectRef = $supabaseUri.Host.Split('.')[0]
+if ($ExpectedSupabaseProjectRef -and $actualSupabaseProjectRef -ne $ExpectedSupabaseProjectRef) {
+  throw "Deploy abortado: o arquivo '$resolvedEnvironmentPath' aponta para o Supabase '$actualSupabaseProjectRef', mas este ambiente exige '$ExpectedSupabaseProjectRef'."
+}
+Write-Host "==> Supabase confirmado: $actualSupabaseProjectRef ($resolvedEnvironmentPath)"
 
 $sha256 = [Security.Cryptography.SHA256]::Create()
 try {
