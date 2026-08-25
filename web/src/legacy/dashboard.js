@@ -1003,6 +1003,7 @@
       select.innerHTML = accounts.map((account) => `<option value="${components().escapeHTML(account.account_id)}">${components().escapeHTML(account.label || account.account_id)}</option>`).join("");
     }
     if (selectedAccount()) select.value = selectedAccount().account_id;
+    $("#booking-account-field").hidden = accounts.length <= 1;
     const today = calendarTools().startOfDay(now());
     $("#booking-date").min = dateInputValue(today);
     $("#booking-date").max = dateInputValue(state.bookingMax);
@@ -1067,13 +1068,20 @@
   function updateBookingEnd() {
     const requested = inputDateTime($("#booking-date").value, $("#booking-time").value);
     const start = requested ? alignedResetStart(requested) : null;
+    const adjustedByMinutes = start && requested ? Math.abs(start.getTime() - requested.getTime()) >= 60_000 : false;
     if (start && requested && start.getTime() !== requested.getTime()) {
       $("#booking-date").value = dateInputValue(start);
       $("#booking-time").value = timeInputValue(start);
     }
     const end = start ? new Date(start.getTime() + 5 * 3_600_000) : null;
-    $("#booking-end").value = end ? `${components().formatDate(end)} · ${components().formatTime(end)}` : "";
-    if ($("#booking-reset")) $("#booking-reset").value = start ? components().formatDateTime(start) : "Reset indisponível";
+    $("#booking-summary-window").textContent = start && end
+      ? `${components().formatDateTime(start)} até ${components().formatTime(end)}`
+      : "Escolha a data e o horário";
+    const adjustment = $("#booking-adjustment");
+    adjustment.hidden = !adjustedByMinutes;
+    adjustment.textContent = adjustedByMinutes && start
+      ? `Ajustamos para ${components().formatTime(start)}, o próximo horário com 5 horas completas.`
+      : "";
   }
 
   function openBooking(start = null) {
@@ -1091,9 +1099,6 @@
     $("#booking-account").value = selectedAccount().account_id;
     $("#booking-date").value = dateInputValue(value);
     $("#booking-time").value = timeInputValue(value);
-    $("#booking-duration").value = "5";
-    $("#booking-quota").value = "100";
-    $("#booking-note").value = "";
     setBookingMessage();
     updateBookingEnd();
     const modal = $("#booking-modal");

@@ -2785,6 +2785,7 @@ summary:focus-visible {
 }
 
 .dialog-field--full,
+.booking-summary,
 .approval-callout,
 .dialog-message {
   grid-column: 1 / -1;
@@ -2832,6 +2833,42 @@ summary:focus-visible {
 
 .dialog-field input[readonly] {
   color: var(--muted-strong);
+}
+
+.booking-summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 15px;
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  background: var(--field);
+}
+
+.booking-summary > .ph {
+  flex: 0 0 auto;
+  color: var(--accent);
+  font-size: 24px;
+}
+
+.booking-summary div {
+  display: grid;
+  gap: 3px;
+}
+
+.booking-summary strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.booking-summary span,
+.booking-summary small {
+  color: var(--muted-strong);
+  font-size: 11px;
+}
+
+.booking-summary small {
+  color: var(--accent);
 }
 
 .approval-callout {
@@ -3306,6 +3343,7 @@ summary:focus-visible {
   }
 
   .dialog-field--full,
+  .booking-summary,
   .approval-callout,
   .dialog-message {
     grid-column: auto;
@@ -3323,10 +3361,6 @@ summary:focus-visible {
     bottom: 12px;
     max-width: calc(100vw - 24px);
   }
-}
-
-.dashboard-page .dialog-field:has(#booking-note) {
-  display: none !important;
 }
 
 .dashboard-page .access-card {
