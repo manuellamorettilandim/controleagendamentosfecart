@@ -268,6 +268,27 @@ export class AccountStore {
     });
   }
 
+  public async removePlaceholder(accountId: string): Promise<{ removed: boolean; defaultAccountId: string | null }> {
+    return withWriteLock(this.filePath, async () => {
+      const registry = await this.read();
+      if (!registry.accounts.some((account) => account.accountId === accountId)) {
+        return { removed: false, defaultAccountId: registry.defaultAccountId };
+      }
+
+      const replacement = registry.accounts.find((account) => account.accountId !== accountId && account.enabled);
+      if (!replacement) {
+        throw new Error("Não é possível remover a conta placeholder sem outra conta habilitada.");
+      }
+
+      registry.accounts = registry.accounts.filter((account) => account.accountId !== accountId);
+      if (registry.defaultAccountId === accountId || !registry.accounts.some((account) => account.accountId === registry.defaultAccountId && account.enabled)) {
+        registry.defaultAccountId = replacement.accountId;
+      }
+      await this.write(registry);
+      return { removed: true, defaultAccountId: registry.defaultAccountId };
+    });
+  }
+
   public async setDefault(accountId: string, now = new Date()): Promise<AccountRecord> {
     return withWriteLock(this.filePath, async () => {
       const registry = await this.read();

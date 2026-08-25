@@ -37,3 +37,22 @@ test("AccountStore keeps separate CODEX_HOME paths and switches only the default
     await fs.rm(directory, { recursive: true, force: true });
   }
 });
+
+test("AccountStore removes only the placeholder and promotes a real enabled account", async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "remote-codex-placeholder-"));
+  try {
+    const store = new AccountStore(path.join(directory, "accounts.json"), path.join(directory, "accounts"));
+    await store.ensurePrimary({ accountId: "primary", label: "Primary", codeHome: path.join(directory, "primary-home"), appServerPort: 4500 });
+    const real = await store.add("Real account");
+
+    const result = await store.removePlaceholder("primary");
+
+    assert.deepEqual(result, { removed: true, defaultAccountId: real.accountId });
+    assert.equal(await store.get("primary"), null);
+    assert.equal((await store.getDefault())?.accountId, real.accountId);
+    assert.equal((await store.list()).length, 1);
+    await fs.access(real.codeHome);
+  } finally {
+    await fs.rm(directory, { recursive: true, force: true });
+  }
+});

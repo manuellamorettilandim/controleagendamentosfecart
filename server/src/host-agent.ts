@@ -65,6 +65,7 @@ export interface HostConfig {
   accountsDirectory: string;
   primaryAccountId: string;
   primaryAccountLabel: string;
+  skipPrimaryAccount: boolean;
   supabaseUrl?: string;
   supabaseSecretKey?: string;
   supabaseServiceRoleKey?: string;
@@ -351,6 +352,7 @@ export function hostConfigFromEnvironment(env: NodeJS.ProcessEnv = process.env):
     accountsDirectory: env.CODEX_ACCOUNTS_DIR?.trim() ? path.resolve(env.CODEX_ACCOUNTS_DIR) : defaultAccountsDirectory(env),
     primaryAccountId: primary.accountId || "primary",
     primaryAccountLabel: primary.label || "Conta principal",
+    skipPrimaryAccount: env.HOST_SKIP_PRIMARY_ACCOUNT === "1",
     supabaseUrl: env.SUPABASE_URL?.trim() || undefined,
     supabaseSecretKey: env.SUPABASE_SECRET_KEY?.trim() || undefined,
     supabaseServiceRoleKey: env.SUPABASE_SERVICE_ROLE_KEY?.trim() || undefined,
@@ -403,12 +405,16 @@ export class HostAgent {
   }
 
   public async start(): Promise<void> {
-    await this.accountStore.ensurePrimary({
-      accountId: this.config.primaryAccountId,
-      label: this.config.primaryAccountLabel,
-      codeHome: this.config.codexHome,
-      appServerPort: this.config.appServerPort,
-    });
+    if (this.config.skipPrimaryAccount) {
+      await this.accountStore.removePlaceholder(this.config.primaryAccountId);
+    } else {
+      await this.accountStore.ensurePrimary({
+        accountId: this.config.primaryAccountId,
+        label: this.config.primaryAccountLabel,
+        codeHome: this.config.codexHome,
+        appServerPort: this.config.appServerPort,
+      });
+    }
     await this.startWorkers();
 
     this.accessTimer = setInterval(() => {
@@ -1181,7 +1187,7 @@ export class HostAgent {
       }
       case "account.remove": {
         const accountId = requestString(payload, "accountId");
-        if (accountId === this.config.primaryAccountId) {
+        if (!this.config.skipPrimaryAccount && accountId === this.config.primaryAccountId) {
           throw new Error("A conta principal é gerenciada pela configuração do host e não pode ser excluída.");
         }
         const account = await this.accountStore.get(accountId);

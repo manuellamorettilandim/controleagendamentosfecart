@@ -121,6 +121,7 @@ $hostValues = [ordered]@{
   CODEX_ACCOUNT_REGISTRY = '/var/lib/fecart-host/accounts.json'
   CODEX_ACCOUNTS_DIR = '/var/lib/fecart-host/accounts'
   CODEX_APP_SERVER_TOKEN_FILE = '/var/lib/fecart-host/app-server-tokens/primary.token'
+  HOST_SKIP_PRIMARY_ACCOUNT = '1'
   CODEX_SSH_AUTHORIZED_KEYS_FILE = '/var/lib/fecart-host/.ssh/authorized_keys'
   CODEX_SSH_SESSION_COMMAND = '/usr/bin/node /opt/fecart/current/dist/src/ssh-session.js'
   CODEX_SSH_PUBLIC_HOST = $PublicHost
