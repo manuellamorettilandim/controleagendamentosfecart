@@ -29,8 +29,6 @@ import {
   encodeMessage,
   PROTOCOL_VERSION,
   type AccountSnapshot,
-  type AccountRateLimit,
-  type RateLimitWindow,
   type ControlRequestMessage,
   type DeviceUsageSnapshot,
   type RelayDevice,
@@ -41,6 +39,7 @@ import {
   type WireMessage,
 } from "./protocol.js";
 import { SupabaseServiceClient, type SupabaseAdminKeyType } from "./supabase.js";
+import { fiveHourRateLimit, weeklyRateLimit } from "./quota-window.js";
 
 const DEFAULT_RELAY_HEARTBEAT_INTERVAL_MS = 5_000;
 const DEFAULT_ACCESS_SYNC_INTERVAL_MS = 1_000;
@@ -88,6 +87,7 @@ interface LocalStream {
   streamId: string;
   deviceId: string;
   accountId: string;
+  reservationId: string | null;
   socket: WebSocket;
   pending: PendingFrame[];
   closed: boolean;
@@ -202,16 +202,6 @@ function usageObservationFromFrame(raw: RawData, isBinary: boolean): Omit<UsageO
     total,
     last: usageCounters(tokenUsage?.last),
   };
-}
-
-function weeklyRateLimit(snapshot: AccountSnapshot | null | undefined): RateLimitWindow | null {
-  if (!snapshot) return null;
-  const windows: RateLimitWindow[] = [];
-  for (const limit of Object.values(snapshot.rateLimits) as AccountRateLimit[]) {
-    if (limit.primary) windows.push(limit.primary);
-    if (limit.secondary) windows.push(limit.secondary);
-  }
-  return windows.sort((left, right) => (right.windowDurationMins ?? 0) - (left.windowDurationMins ?? 0))[0] ?? null;
 }
 
 function asRelayDevice(device: DeviceAccess): RelayDevice {
@@ -538,12 +528,23 @@ export class HostAgent {
   private async syncAccess(): Promise<void> {
     if (!this.tunnel || this.tunnel.readyState !== WebSocket.OPEN) return;
     for (const worker of this.workers.values()) {
-      const window = weeklyRateLimit(worker.snapshot);
+      const sessionWindow = fiveHourRateLimit(worker.snapshot);
       await this.accessStore.updateAccountLimit(
         worker.account.accountId,
-        window?.usedPercent ?? null,
-        window?.windowDurationMins ?? null,
-        window?.resetsAt ?? null,
+        sessionWindow?.usedPercent ?? null,
+        sessionWindow?.windowDurationMins ?? null,
+        sessionWindow?.resetsAt ?? null,
+        new Date(),
+        "reservations",
+      );
+      const adminWindow = weeklyRateLimit(worker.snapshot);
+      await this.accessStore.updateAccountLimit(
+        worker.account.accountId,
+        adminWindow?.usedPercent ?? null,
+        adminWindow?.windowDurationMins ?? null,
+        adminWindow?.resetsAt ?? null,
+        new Date(),
+        "manual",
       );
     }
     const devices = await this.accessStore.active();
@@ -785,7 +786,7 @@ export class HostAgent {
         },
         onEnd: async (usage) => {
           const durationMs = Date.now() - startTime;
-          const window = weeklyRateLimit(worker.snapshot);
+          const window = device.reservationId ? fiveHourRateLimit(worker.snapshot) : weeklyRateLimit(worker.snapshot);
           const modelUsed = usage?.model ?? requestedModel ?? "gpt-5.6-sol";
           if (usage) {
             const observation: UsageObservation = {
@@ -909,7 +910,7 @@ export class HostAgent {
       this.send(streamClose(message.streamId, 1013, "App-server da conta indisponível."));
       return;
     }
-    const stream: LocalStream = { streamId: message.streamId, deviceId: message.deviceId, accountId: message.accountId, socket, pending: [], closed: false };
+    const stream: LocalStream = { streamId: message.streamId, deviceId: message.deviceId, accountId: message.accountId, reservationId: message.reservationId, socket, pending: [], closed: false };
     this.localStreams.set(message.streamId, stream);
 
     socket.on("open", () => {
@@ -933,7 +934,8 @@ export class HostAgent {
   private recordUsage(stream: LocalStream, raw: RawData, isBinary: boolean): void {
     const observed = usageObservationFromFrame(raw, isBinary);
     if (!observed) return;
-    const window = weeklyRateLimit(this.workers.get(stream.accountId)?.snapshot);
+    const snapshot = this.workers.get(stream.accountId)?.snapshot;
+    const window = stream.reservationId ? fiveHourRateLimit(snapshot) : weeklyRateLimit(snapshot);
     const observation: UsageObservation = {
       ...observed,
       accountUsedPercent: window?.usedPercent ?? null,
@@ -1013,15 +1015,15 @@ export class HostAgent {
         const userId = requestString(payload, "userId");
         const reservationId = requestString(payload, "reservationId");
         const expiresAt = requestString(payload, "expiresAt");
-        const quotaBudgetPercent = requestPercent(payload, "quotaBudgetPercent", 1);
-        if (quotaBudgetPercent < 1 || quotaBudgetPercent > 100) {
-          throw new Error("O uso aprovado da sessão deve ser de 1% a 100%.");
-        }
+        const quotaBudgetPercent = 100;
         const worker = await this.workerFor(accountId);
         if (!worker.ready || worker.snapshot.status !== "ready") {
           throw new Error("A conta escolhida para a reserva não está disponível.");
         }
-        const accountWindow = weeklyRateLimit(worker.snapshot);
+        const accountWindow = fiveHourRateLimit(worker.snapshot);
+        if (!accountWindow?.resetsAt) {
+          throw new Error("A janela de quota de 5 horas ainda não está disponível para esta conta.");
+        }
         const issued = await this.accessStore.issue(
           `Sessão ${reservationId.slice(0, 8)}`,
           Math.max(1_000, Date.parse(expiresAt) - Date.now()),

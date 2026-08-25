@@ -211,8 +211,9 @@
     const active = state.accounts.filter((account) => account.status === "ready").length;
     const total = state.accounts.length;
     const pending = state.approvals.filter((approval) => approval.status === "pending").length;
-    const remaining = state.accounts.length
-      ? Math.round(state.accounts.reduce((sum, account) => sum + Number(account.quota || 0), 0) / state.accounts.length)
+    const measuredQuotas = state.accounts.map((account) => Number(account.quota)).filter(Number.isFinite);
+    const remaining = measuredQuotas.length
+      ? Math.round(measuredQuotas.reduce((sum, quota) => sum + quota, 0) / measuredQuotas.length)
       : null;
     const today = dateKey(new Date());
     const todaySchedules = state.schedules.filter((schedule) => schedule.dateKey === today && schedule.status !== "cancelled");
@@ -249,7 +250,7 @@
             </div>
           </span>
         </span>
-        <span class="account-card-body"><span class="quota-ring" style="--quota: ${Math.max(0, Math.min(100, Number(account.quota || 0)))}%"><span>${formatQuota(account.quota)}</span></span><span class="account-quota-copy"><strong>${formatQuota(account.quota)} disponível</strong><span>Reset semanal</span><small>${escapeHtml(account.reset || "seg 00:00")}</small></span></span>
+        <span class="account-card-body"><span class="quota-ring" style="--quota: ${Math.max(0, Math.min(100, Number(account.quota || 0)))}%"><span>${formatQuota(account.quota)}</span></span><span class="account-quota-copy"><strong>${formatQuota(account.quota)} disponível em 5h</strong><span>Reset ${escapeHtml(account.reset || "indisponível")}</span><small>Semanal: ${formatQuota(account.weeklyQuota)} · reset ${escapeHtml(account.weeklyReset || "indisponível")}</small></span></span>
       </div>
     `).join("") + `
       <button class="add-account-card" type="button" data-add-account aria-label="Adicionar conta"><i class="ph ph-plus" aria-hidden="true"></i><span>+ Adicionar conta</span></button>
@@ -289,7 +290,7 @@
             <span class="status-badge ${approval.status === "pending" ? "pending" : "approved"}">${approval.status === "pending" ? "Pendente" : "Revisado"}</span>
           </div>
           <div class="approval-item-meta"><span><i class="ph ph-wallet" aria-hidden="true"></i>${escapeHtml(approval.account)}</span><span><i class="ph ph-calendar-blank" aria-hidden="true"></i>${escapeHtml(approval.requestedAt)}</span></div>
-          <div class="approval-item-facts"><span><i class="ph ph-clock" aria-hidden="true"></i>${escapeHtml(approval.duration)}</span><span><i class="ph ph-gauge" aria-hidden="true"></i>${formatQuota(approval.quota)} solicitados</span></div>
+          <div class="approval-item-facts"><span><i class="ph ph-clock" aria-hidden="true"></i>${escapeHtml(approval.duration)}</span><span><i class="ph ph-gauge" aria-hidden="true"></i>100% da janela de 5h</span></div>
         </div>
         <button class="action-link" type="button" data-approval-action="${escapeHtml(approval.id)}">Decidir</button>
       </article>
@@ -561,16 +562,6 @@
     const endInput = $("#review-end");
     if (startInput) startInput.value = dateTimeInputValue(time.startDate);
     if (endInput) endInput.value = dateTimeInputValue(time.endDate);
-    const quotaInput = $("#review-quota");
-    if (quotaInput) {
-      const maxAvailable = account?.quota !== undefined && account?.quota !== null ? Number(account.quota) : 100;
-      quotaInput.min = "1";
-      quotaInput.step = "1";
-      quotaInput.max = String(Math.max(1, Math.min(100, maxAvailable)));
-      quotaInput.value = String(schedule.adjustedQuota || schedule.quota || 1);
-    }
-    setText("#review-requested-quota", `solicitado: ${formatQuota(schedule.quota)}`);
-    renderReviewAdjustment();
     const reviewNote = $("#review-note");
     if (reviewNote) reviewNote.value = schedule.note || "";
     updateCounter(reviewNote, $("#review-note-count"), 200);
@@ -617,18 +608,6 @@
 
   function updateCounter(input, output, max) {
     if (output) output.textContent = String(Math.min(max, input?.value?.length || 0));
-  }
-
-  function renderReviewAdjustment() {
-    const schedule = selectedSchedule();
-    const approved = Number($("#review-quota")?.value || schedule?.quota || 1);
-    const requested = Number(schedule?.quota || 1);
-    setText("#review-quota-output", `${approved}%`);
-    setText("#review-adjustment-label", approved === requested
-      ? "Sem ajuste de uso"
-      : approved > requested
-        ? `Upgrade de ${requested}% para ${approved}%`
-        : `Downgrade de ${requested}% para ${approved}%`);
   }
 
   function updateSchedule(status, message, extra = {}) {
@@ -721,10 +700,7 @@
   }
 
   function renderSettings(settings) {
-    const maxQuota = Math.max(1, Math.min(100, Number(settings?.max_request_quota_percent) || 20));
-    const autoQuota = Math.max(0, Math.min(maxQuota, Number(settings?.auto_approve_quota_percent) || 0));
-    fillPercentSelect($("#settings-max-quota"), 100, maxQuota);
-    fillPercentSelect($("#settings-auto-approve"), maxQuota, autoQuota || Math.min(20, maxQuota));
+    const autoQuota = Math.max(0, Number(settings?.auto_approve_quota_percent) || 0);
     const autoToggle = $("#settings-auto-approve-enabled");
     if (autoToggle) autoToggle.checked = autoQuota > 0;
     renderModelCatalog(settings);
@@ -744,14 +720,12 @@
   }
 
   async function saveSettings() {
-    const maxRequestQuotaPercent = Number($("#settings-max-quota")?.value);
     const autoApproveEnabled = Boolean($("#settings-auto-approve-enabled")?.checked);
-    const autoApproveQuotaPercent = Number($("#settings-auto-approve")?.value);
     const enabledModels = $$('[data-model-toggle]:checked').map((input) => input.value);
     if (enabledModels.length === 0) throw new Error("Mantenha ao menos um modelo disponível.");
     const result = await adminRequest("/api/admin/settings", {
       method: "POST",
-      body: JSON.stringify({ maxRequestQuotaPercent, autoApproveEnabled, autoApproveQuotaPercent, enabledModels }),
+      body: JSON.stringify({ autoApproveEnabled, enabledModels }),
     });
     renderSettings(result?.settings || {});
   }
@@ -780,8 +754,10 @@
       state.accounts = accounts.map((account, index) => ({
           id: account.accountId || account.account_id || `account-live-${index}`,
           label: account.label || `Conta ${index + 1}`,
-          quota: accountQuota(account),
-          reset: resetLabel(account),
+          quota: accountQuota(account, 300),
+          reset: resetLabel(account, 300),
+          weeklyQuota: accountQuota(account, 10_080),
+          weeklyReset: resetLabel(account, 10_080),
           status: account.status || "ready",
         }));
       if (!state.accounts.some((account) => account.id === state.activeAccountId)) {
@@ -812,20 +788,24 @@
     }
   }
 
-  function accountQuota(account) {
+  function quotaWindow(account, durationMinutes) {
     const limits = Object.values(account.rateLimits || {});
     const windows = limits.flatMap((limit) => [limit?.primary, limit?.secondary]).filter(Boolean);
-    const used = windows.sort((left, right) => Number(right.windowDurationMins || 0) - Number(left.windowDurationMins || 0))[0]?.usedPercent;
+    return windows.find((window) => Number(window.windowDurationMins) === durationMinutes)
+      || (durationMinutes > 300 ? windows.sort((left, right) => Number(right.windowDurationMins || 0) - Number(left.windowDurationMins || 0))[0] : null);
+  }
+
+  function accountQuota(account, durationMinutes) {
+    const used = quotaWindow(account, durationMinutes)?.usedPercent;
+    if (!Number.isFinite(Number(used))) return null;
     return Math.max(0, Math.min(100, Math.round(100 - Number(used || 0))));
   }
 
-  function resetLabel(account) {
-    const limits = Object.values(account.rateLimits || {});
-    const windows = limits.flatMap((limit) => [limit?.primary, limit?.secondary]).filter(Boolean);
-    const reset = windows[0]?.resetsAt;
-    if (!reset) return "seg 00:00";
-    const date = new Date(reset);
-    return Number.isNaN(date.getTime()) ? "seg 00:00" : date.toLocaleDateString("pt-BR", { weekday: "short", hour: "2-digit", minute: "2-digit" }).replace(".", "");
+  function resetLabel(account, durationMinutes) {
+    const reset = Number(quotaWindow(account, durationMinutes)?.resetsAt);
+    if (!Number.isFinite(reset) || reset <= 0) return "indisponível";
+    const date = new Date(reset < 10_000_000_000 ? reset * 1_000 : reset);
+    return Number.isNaN(date.getTime()) ? "indisponível" : date.toLocaleDateString("pt-BR", { weekday: "short", hour: "2-digit", minute: "2-digit" }).replace(".", "");
   }
 
   function normalizeReservation(reservation, userMap, deviceMap, index) {
@@ -865,8 +845,8 @@
       endsAt: Number.isNaN(endDate.getTime()) ? "" : endDate.toISOString(),
       status,
       statusLabel: statusText(status),
-      quota: Number(reservation.requested_quota_percent || 5),
-      adjustedQuota: Number(reservation.quota_budget_percent || reservation.requested_quota_percent || 5),
+      quota: 100,
+      adjustedQuota: 100,
       deviceId: reservation.device_id || null,
       deviceStatus,
       requestedAt: Number.isNaN(requestedDate.getTime()) ? "" : formatDateTime(requestedDate),
@@ -1051,7 +1031,6 @@
     }));
 
     $("#review-note")?.addEventListener("input", (event) => updateCounter(event.currentTarget, $("#review-note-count"), 200));
-    $("#review-quota")?.addEventListener("input", renderReviewAdjustment);
     $("#disable-note")?.addEventListener("input", (event) => updateCounter(event.currentTarget, $("#disable-note-count"), 180));
     $("#cancel-note")?.addEventListener("input", (event) => updateCounter(event.currentTarget, $("#cancel-note-count"), 180));
 
@@ -1061,7 +1040,6 @@
       const note = $("#review-note")?.value.trim() || "";
       const startsAt = new Date($("#review-start")?.value || "");
       const endsAt = new Date($("#review-end")?.value || "");
-      const quotaBudgetPercent = Number($("#review-quota")?.value || schedule.quota || 1);
       const button = $("#review-approve");
       if (Number.isNaN(startsAt.getTime()) || Number.isNaN(endsAt.getTime()) || endsAt <= startsAt) {
         showToast("Confira o início e o fim aprovados.", "error");
@@ -1072,12 +1050,11 @@
         await sendReservationDecision("approve", schedule, note, {
           startsAt: startsAt.toISOString(),
           endsAt: endsAt.toISOString(),
-          quotaBudgetPercent,
+          quotaBudgetPercent: 100,
         });
         closeAllDialogs();
         await loadLiveData();
-        const adjustment = quotaBudgetPercent === schedule.quota ? "" : quotaBudgetPercent > schedule.quota ? " com upgrade." : " com downgrade.";
-        showToast(`Solicitação aprovada${adjustment}`);
+        showToast("Solicitação aprovada para a janela completa de 5 horas.");
       } catch (error) {
         showToast(error instanceof Error ? error.message : "Não foi possível aprovar a solicitação.", "error");
       } finally {

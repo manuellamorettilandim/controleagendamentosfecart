@@ -142,7 +142,7 @@
     const device = deviceFor(reservation);
     if (!reservation || !device) return false;
     if (device.status === "limited" || device.usage_limit_reached_at) return true;
-    const budget = Number(device.quota_budget_percent ?? reservation.quota_budget_percent ?? reservation.requested_quota_percent);
+    const budget = 100;
     const accumulated = Number(device.quota_consumed_percent);
     if (Number.isFinite(budget) && Number.isFinite(accumulated)) return accumulated >= budget;
     const base = Number(device.quota_base_used_percent ?? reservation.quota_base_used_percent ?? 0);
@@ -153,13 +153,11 @@
   }
 
   function sessionUsage(reservation, device = deviceFor(reservation)) {
-    const budget = Number(device?.quota_budget_percent ?? reservation?.quota_budget_percent ?? reservation?.requested_quota_percent ?? 0);
-    const accumulated = Number(device?.quota_consumed_percent);
-    const base = Number(device?.quota_base_used_percent ?? reservation?.quota_base_used_percent ?? 0);
-    const current = Number(device?.account_used_percent);
-    const consumed = Number.isFinite(accumulated)
-      ? Math.max(0, accumulated)
-      : Number.isFinite(current) ? Math.max(0, current >= base ? current - base : current) : 0;
+    const account = readyAccounts().find((item) => item.account_id === reservation?.account_id);
+    const window = fiveHourWindow(account);
+    const current = Number(device?.account_used_percent ?? window?.usedPercent);
+    const consumed = Number.isFinite(current) ? Math.max(0, Math.min(100, current)) : 0;
+    const budget = 100;
     const exhausted = device?.status === "limited" || Boolean(device?.usage_limit_reached_at);
     if (exhausted) {
       return { budget, consumed: Math.max(consumed, budget), remaining: 0, remainingPercent: 0 };
@@ -343,6 +341,34 @@
     return (state.data?.accounts || []).filter((account) => account.status === "ready");
   }
 
+  function rateLimitWindows(account) {
+    const limits = Object.values(account?.rate_limits || account?.rateLimits || {});
+    return limits.flatMap((limit) => [limit?.primary, limit?.secondary]).filter(Boolean);
+  }
+
+  function fiveHourWindow(account) {
+    return rateLimitWindows(account).find((window) => Number(window.windowDurationMins) === 300) || null;
+  }
+
+  function resetMilliseconds(window) {
+    const value = Number(window?.resetsAt);
+    if (!Number.isFinite(value) || value <= 0) return null;
+    return value < 10_000_000_000 ? value * 1_000 : value;
+  }
+
+  function alignedResetStart(requested, account = selectedAccount()) {
+    const anchor = resetMilliseconds(fiveHourWindow(account));
+    const requestedMs = new Date(requested).getTime();
+    if (anchor === null || !Number.isFinite(requestedMs)) return null;
+    if (requestedMs <= anchor) return new Date(anchor);
+    return new Date(anchor + Math.ceil((requestedMs - anchor) / (5 * 3_600_000)) * 5 * 3_600_000);
+  }
+
+  function isResetBoundary(start, account = selectedAccount()) {
+    const aligned = alignedResetStart(new Date(start).getTime() - 60_000, account);
+    return Boolean(aligned && Math.abs(aligned.getTime() - new Date(start).getTime()) <= 60_000);
+  }
+
   function selectedAccount() {
     const accounts = readyAccounts();
     return accounts.find((account) => account.account_id === state.selectedAccountId) || accounts[0] || null;
@@ -372,8 +398,8 @@
       relay: { ready: true, hostConnected: true, registered: true, activeDevices: 1 },
       profile: { user_id: "preview-user", username: "renan", group_name: "Equipe de desenvolvimento", enabled: true, weekly_quota_percent: 20 },
       accounts: [
-        { account_id: "account-1", label: "Account 1", status: "ready", is_default: true, usage: { used_percent: 12 }, observed_at: new Date().toISOString() },
-        { account_id: "account-2", label: "Account 2", status: "ready", is_default: false, usage: { used_percent: 7 }, observed_at: new Date().toISOString() },
+        { account_id: "account-1", label: "Account 1", status: "ready", is_default: true, rate_limits: { codex: { primary: { usedPercent: 12, windowDurationMins: 300, resetsAt: Math.floor(Date.now() / 1000) + 1800 }, secondary: { usedPercent: 28, windowDurationMins: 10080, resetsAt: Math.floor(Date.now() / 1000) + 432000 } } }, observed_at: new Date().toISOString() },
+        { account_id: "account-2", label: "Account 2", status: "ready", is_default: false, rate_limits: { codex: { primary: { usedPercent: 7, windowDurationMins: 300, resetsAt: Math.floor(Date.now() / 1000) + 3600 }, secondary: { usedPercent: 19, windowDurationMins: 10080, resetsAt: Math.floor(Date.now() / 1000) + 518400 } } }, observed_at: new Date().toISOString() },
       ],
       reservations: [
         { id: "preview-active", account_id: "account-1", starts_at: activeStart.toISOString(), ends_at: activeEnd.toISOString(), status: "scheduled", approval_status: "approved", requested_quota_percent: 20, activated_at: activeStart.toISOString(), created_at: pastStart.toISOString(), quota_base_used_percent: 0, quota_budget_percent: 20 },
@@ -702,6 +728,8 @@
       const remainingTime = Math.max(0, end.getTime() - now().getTime());
       const timePercentage = Math.round((remainingTime / total) * 100);
       const usage = sessionUsage(reservation, device);
+      const account = readyAccounts().find((item) => item.account_id === reservation.account_id);
+      const quotaReset = resetMilliseconds(fiveHourWindow(account));
       const limited = sessionLimitReached(reservation);
       components().setProgress($("#session-progress"), timePercentage, `${formatCountdown(remainingTime)} restantes na sessão`);
       $("#session-percent").textContent = `${timePercentage}%`;
@@ -719,7 +747,7 @@
       components().setProgress($("#quota-progress"), usage.remainingPercent, `${usage.remaining.toFixed(1)}% de uso restante`);
       $("#quota-percent").textContent = `${usage.remainingPercent}%`;
       $("#quota-used").textContent = `${usage.remaining.toFixed(1).replace(".0", "")}% restante`;
-      $("#quota-total").textContent = `de ${usage.budget}% aprovados`;
+      $("#quota-total").textContent = quotaReset ? `reset ${components().formatDateTime(new Date(quotaReset))}` : "da janela de 5 horas";
       $("#session-activity").textContent = state.activationInFlight
           ? "Aguardando o host central emitir o token."
           : limited
@@ -736,15 +764,21 @@
         .filter((item) => item.status === "scheduled" && item.approval_status === "approved" && Date.parse(item.starts_at) > now().getTime())
         .sort((a, b) => Date.parse(a.starts_at) - Date.parse(b.starts_at))[0];
       const untilStart = upcoming ? Math.max(0, Date.parse(upcoming.starts_at) - now().getTime()) : 0;
-      const usage = upcoming ? sessionUsage(upcoming, null) : { budget: 0, remaining: 0, remainingPercent: 0 };
+      const monitoredAccount = upcoming
+        ? readyAccounts().find((item) => item.account_id === upcoming.account_id)
+        : selectedAccount();
+      const monitoredWindow = fiveHourWindow(monitoredAccount);
+      const monitoredUsed = Number(monitoredWindow?.usedPercent);
+      const monitoredRemaining = Number.isFinite(monitoredUsed) ? Math.max(0, Math.min(100, 100 - monitoredUsed)) : null;
+      const monitoredReset = resetMilliseconds(monitoredWindow);
       components().setProgress($("#session-progress"), upcoming ? 100 : 0, upcoming ? `${formatCountdown(untilStart)} até a próxima sessão` : "Nenhuma sessão aprovada");
-      components().setProgress($("#quota-progress"), upcoming ? 100 : 0, upcoming ? `${usage.budget}% aprovados para a próxima sessão` : "Sem uso aprovado");
+      components().setProgress($("#quota-progress"), monitoredRemaining ?? 0, monitoredRemaining === null ? "Telemetria de 5 horas indisponível" : `${monitoredRemaining}% disponíveis na conta`);
       $("#session-percent").textContent = upcoming ? "100%" : "—";
       $("#session-time").textContent = upcoming ? formatCountdown(untilStart) : "—";
       $("#session-time-total").textContent = upcoming ? `começa ${components().formatDateTime(upcoming.starts_at)}` : "sem sessão aprovada";
-      $("#quota-percent").textContent = upcoming ? "100%" : "—";
-      $("#quota-used").textContent = upcoming ? `${usage.budget}% disponível` : "—";
-      $("#quota-total").textContent = upcoming ? "na próxima sessão" : "sem uso aprovado";
+      $("#quota-percent").textContent = monitoredRemaining === null ? "—" : `${Math.round(monitoredRemaining)}%`;
+      $("#quota-used").textContent = monitoredRemaining === null ? "—" : `${Math.round(monitoredRemaining)}% disponível`;
+      $("#quota-total").textContent = monitoredReset ? `reset ${components().formatDateTime(new Date(monitoredReset))}` : "janela de 5 horas indisponível";
       status.textContent = "Sessão desligada";
       dot.classList.remove("is-active", "is-limited");
       $("#session-started").textContent = upcoming ? `Próxima janela ${components().formatDateTime(upcoming.starts_at)}` : "Ative um horário aprovado para começar.";
@@ -764,14 +798,11 @@
     return [...reservations, ...busy].some((item) => Date.parse(item.starts_at) < end && Date.parse(item.ends_at) > start.getTime());
   }
 
-  function isBookable(start, durationHours = 1) {
+  function isBookable(start, durationHours = 5) {
     const candidate = new Date(start);
-    const value = calendarTools().startOfHour(candidate);
-    const current = now();
-    const currentHour = calendarTools().startOfHour(current);
-    if (!selectedAccount() || candidate.getMinutes() !== 0 || candidate.getSeconds() !== 0 || value.getTime() < currentHour.getTime()) return false;
-    if (value.getTime() > state.bookingMax.getTime() || value.getHours() + Number(durationHours) > 24) return false;
-    return !slotConflict(value, Number(durationHours));
+    if (!selectedAccount() || Number(durationHours) !== 5 || !isResetBoundary(candidate) || candidate.getTime() < now().getTime() - 60_000) return false;
+    if (candidate.getTime() > state.bookingMax.getTime()) return false;
+    return !slotConflict(candidate, 5);
   }
 
   function calendarEvents() {
@@ -852,8 +883,8 @@
       return;
     }
 
-    const start = calendarTools().startOfHour(new Date(`${dayCell.dataset.date}T${slot.dataset.time}`));
-    if (Number.isNaN(start.getTime()) || !isBookable(start, 1)) {
+    const start = alignedResetStart(new Date(`${dayCell.dataset.date}T${slot.dataset.time}`));
+    if (!start || Number.isNaN(start.getTime()) || !isBookable(start, 5)) {
       hideCalendarHover();
       return;
     }
@@ -883,11 +914,11 @@
       button.addEventListener("click", () => {
         const start = state.hoverStart ? new Date(state.hoverStart) : null;
         hideCalendarHover();
-        if (!start || !isBookable(start, 1)) {
+        if (!start || !isBookable(start, 5)) {
           components().showToast("Esse horário não está mais livre para solicitação.", "warning");
           return;
         }
-        openBooking(start, 1);
+        openBooking(start);
       });
       board.append(button);
       state.hoverButton = button;
@@ -911,26 +942,26 @@
         selectOverlap: false,
         validRange: { start: calendarRangeStart(), end: calendarRangeEnd() },
         selectAllow: (info) => {
-          const duration = (info.end.getTime() - info.start.getTime()) / 3_600_000;
-          return duration >= 1 && duration <= 3 && isBookable(info.start, duration);
+          const aligned = alignedResetStart(info.start);
+          return Boolean(aligned && isBookable(aligned, 5));
         },
         dateClick: (info) => {
-          const start = calendarTools().startOfHour(info.date);
-          if (!isBookable(start, 1)) {
+          const start = alignedResetStart(info.date);
+          if (!start || !isBookable(start, 5)) {
             const limit = components().formatDate(state.bookingMax);
             components().showToast(start.getTime() > state.bookingMax.getTime() ? `Solicitações disponíveis até ${limit}.` : "Esse horário não está livre para solicitação.", "warning");
             return;
           }
-          openBooking(start, 1);
+          openBooking(start);
         },
         select: (info) => {
-          const duration = (info.end.getTime() - info.start.getTime()) / 3_600_000;
           state.calendar.unselect();
-          if (!isBookable(info.start, duration)) {
-            components().showToast("Selecione um horário livre, futuro e de até 3 horas.", "warning");
+          const start = alignedResetStart(info.start);
+          if (!start || !isBookable(start, 5)) {
+            components().showToast("Não há um ciclo completo de 5 horas livre após esse horário.", "warning");
             return;
           }
-          openBooking(info.start, duration);
+          openBooking(start);
         },
         eventClick: (info) => {
           if (info.event.extendedProps.kind === "busy") {
@@ -985,12 +1016,9 @@
       .sort((a, b) => Date.parse(b.reviewed_at) - Date.parse(a.reviewed_at))
       .slice(0, 6)
       .forEach((item) => {
-        const requested = Number(item.requested_quota_percent || 5);
-        const approved = Number(item.quota_budget_percent || requested);
         const rejected = item.approval_status === "rejected";
-        const adjustment = approved === requested ? "" : approved > requested ? " com upgrade" : " com downgrade";
-        const decision = rejected ? "Solicitação recusada" : `Solicitação aprovada${adjustment}`;
-        const quotaCopy = rejected ? "" : ` Uso: ${requested}% → ${approved}%.`;
+        const decision = rejected ? "Solicitação recusada" : "Solicitação aprovada";
+        const quotaCopy = rejected ? "" : " Janela completa de 5 horas (100%).";
         const noteCopy = item.review_note ? ` Justificativa: ${item.review_note}` : " Sem justificativa informada.";
         items.push({
           type: rejected ? "danger" : "success",
@@ -1005,7 +1033,7 @@
       .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
       .slice(0, 3)
       .forEach((item) => {
-        items.push({ type: "warning", icon: "ph-clock", title: "Solicitação em análise", message: `${components().formatDateTime(item.starts_at)} · ${item.requested_quota_percent || 5}% solicitados para ${item.account_id}.`, time: formatRelative(item.created_at) });
+        items.push({ type: "warning", icon: "ph-clock", title: "Solicitação em análise", message: `${components().formatDateTime(item.starts_at)} · ciclo completo de 5 horas em ${item.account_id}.`, time: formatRelative(item.created_at) });
       });
     if (state.data?.relay && !state.data.relay.ready) items.unshift({ type: "warning", icon: "ph-warning", title: "Host temporariamente offline", message: "As solicitações continuam salvas, mas a ativação será retomada quando o host voltar.", time: "agora" });
     if (!items.length) items.push({ type: "info", icon: "ph-check-circle", title: "Tudo em dia", message: "Nenhuma notificação nova por enquanto.", time: "agora" });
@@ -1022,16 +1050,12 @@
   }
 
   function nextBookableStart() {
-    const current = calendarTools().startOfHour(now());
-    if (isBookable(current, 1)) return current;
-    const candidate = calendarTools().startOfHour(now());
-    candidate.setHours(candidate.getHours() + 1);
-    if (candidate.getTime() > state.bookingMax.getTime()) {
-      const tomorrow = calendarTools().addDays(calendarTools().startOfDay(now()), 1);
-      tomorrow.setHours(9, 0, 0, 0);
-      return tomorrow.getTime() <= state.bookingMax.getTime() ? tomorrow : state.bookingMax;
+    let candidate = alignedResetStart(now());
+    while (candidate && candidate.getTime() <= state.bookingMax.getTime()) {
+      if (isBookable(candidate, 5)) return candidate;
+      candidate = new Date(candidate.getTime() + 5 * 3_600_000);
     }
-    return candidate;
+    return null;
   }
 
   function setBookingMessage(message = "") {
@@ -1041,26 +1065,34 @@
   }
 
   function updateBookingEnd() {
-    const start = inputDateTime($("#booking-date").value, $("#booking-time").value);
-    const duration = Number($("#booking-duration").value || 1);
-    const end = start ? new Date(start.getTime() + duration * 3_600_000) : null;
+    const requested = inputDateTime($("#booking-date").value, $("#booking-time").value);
+    const start = requested ? alignedResetStart(requested) : null;
+    if (start && requested && start.getTime() !== requested.getTime()) {
+      $("#booking-date").value = dateInputValue(start);
+      $("#booking-time").value = timeInputValue(start);
+    }
+    const end = start ? new Date(start.getTime() + 5 * 3_600_000) : null;
     $("#booking-end").value = end ? `${components().formatDate(end)} · ${components().formatTime(end)}` : "";
+    if ($("#booking-reset")) $("#booking-reset").value = start ? components().formatDateTime(start) : "Reset indisponível";
   }
 
-  function openBooking(start = null, duration = 1) {
+  function openBooking(start = null) {
     hideCalendarHover();
     if (!readyAccounts().length) {
       components().showToast("Nenhuma conta está pronta para receber agendamentos.", "warning");
       return;
     }
-    let value = start ? calendarTools().startOfHour(start) : nextBookableStart();
-    const currentHour = calendarTools().startOfHour(now());
-    if (value.getTime() < currentHour.getTime() || value.getTime() > state.bookingMax.getTime()) value = nextBookableStart();
+    let value = start ? alignedResetStart(start) : nextBookableStart();
+    if (!value || value.getTime() < now().getTime() - 60_000 || value.getTime() > state.bookingMax.getTime()) value = nextBookableStart();
+    if (!value) {
+      components().showToast("Nenhum ciclo completo de 5 horas está livre no período disponível.", "warning");
+      return;
+    }
     $("#booking-account").value = selectedAccount().account_id;
     $("#booking-date").value = dateInputValue(value);
     $("#booking-time").value = timeInputValue(value);
-    $("#booking-duration").value = String(Math.min(3, Math.max(1, Math.round(duration))));
-    $("#booking-quota").value = "5";
+    $("#booking-duration").value = "5";
+    $("#booking-quota").value = "100";
     $("#booking-note").value = "";
     setBookingMessage();
     updateBookingEnd();
@@ -1186,8 +1218,8 @@
     }
   }
 
-  function addPreviewReservation(start, duration, accountId, quota) {
-    const end = new Date(start.getTime() + duration * 3_600_000);
+  function addPreviewReservation(start, accountId) {
+    const end = new Date(start.getTime() + 5 * 3_600_000);
     state.data.reservations.push({
       id: `preview-${Date.now()}`,
       account_id: accountId,
@@ -1195,7 +1227,8 @@
       ends_at: end.toISOString(),
       status: "scheduled",
       approval_status: "approved",
-      requested_quota_percent: quota,
+      requested_quota_percent: 100,
+      quota_budget_percent: 100,
       created_at: new Date().toISOString(),
     });
   }
@@ -1203,15 +1236,13 @@
   async function submitBooking(event) {
     event.preventDefault();
     const start = inputDateTime($("#booking-date").value, $("#booking-time").value);
-    const duration = Number($("#booking-duration").value);
     const accountId = $("#booking-account").value;
-    const requestedQuotaPercent = Number($("#booking-quota").value);
-    if (!start || ![1, 2, 3].includes(duration) || requestedQuotaPercent < 1 || requestedQuotaPercent > 100 || !accountId) {
+    if (!start || !accountId) {
       setBookingMessage("Confira os dados do agendamento.");
       return;
     }
-    if (!isBookable(start, duration)) {
-      setBookingMessage(start.getTime() > state.bookingMax.getTime() ? `Solicitações disponíveis até ${components().formatDate(state.bookingMax)}.` : "Esse horário não está livre, é passado ou não começa em uma hora cheia.");
+    if (!isBookable(start, 5)) {
+      setBookingMessage(start.getTime() > state.bookingMax.getTime() ? `Solicitações disponíveis até ${components().formatDate(state.bookingMax)}.` : "Esse ciclo de 5 horas não está livre ou não coincide com o reset da conta.");
       return;
     }
     const button = $("#booking-submit");
@@ -1219,12 +1250,12 @@
     setBookingMessage("Enviando solicitação…");
     try {
       if (preview) {
-        addPreviewReservation(start, duration, accountId, requestedQuotaPercent);
+        addPreviewReservation(start, accountId);
         closeBooking();
         loadDashboardData({ ...state.data, serverTime: new Date().toISOString(), reservations: state.data.reservations });
         components().showToast("Pedido enviado para aprovação.", "success");
       } else {
-        await api("/api/user/reservations", { method: "POST", body: JSON.stringify({ startsAt: start.toISOString(), durationHours: duration, accountId, requestedQuotaPercent }) });
+        await api("/api/user/reservations", { method: "POST", body: JSON.stringify({ startsAt: start.toISOString(), durationHours: 5, accountId, requestedQuotaPercent: 100 }) });
         closeBooking();
         await loadDashboard(true);
         components().showToast("Pedido enviado para aprovação.", "success");
@@ -1376,7 +1407,16 @@
     $("#booking-close").addEventListener("click", closeBooking);
     $("#booking-cancel").addEventListener("click", closeBooking);
     $("#booking-form").addEventListener("submit", submitBooking);
-    ["#booking-date", "#booking-time", "#booking-duration"].forEach((selector) => $(selector).addEventListener("input", updateBookingEnd));
+    ["#booking-date", "#booking-time"].forEach((selector) => $(selector).addEventListener("change", updateBookingEnd));
+    $("#booking-account").addEventListener("change", (event) => {
+      state.selectedAccountId = event.currentTarget.value;
+      const next = nextBookableStart();
+      if (next) {
+        $("#booking-date").value = dateInputValue(next);
+        $("#booking-time").value = timeInputValue(next);
+      }
+      updateBookingEnd();
+    });
     $("#booking-modal").addEventListener("click", (event) => {
       if (event.target === $("#booking-modal")) closeBooking();
     });

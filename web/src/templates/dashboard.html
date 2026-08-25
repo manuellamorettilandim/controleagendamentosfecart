@@ -129,7 +129,7 @@
               <div class="session-overview">
                 <div class="session-state-block"><span id="session-dot" class="session-dot"></span><strong id="session-status">Sessão desligada</strong><small id="session-started">Ative um horário aprovado para começar.</small></div>
                 <div class="progress-stat"><div id="session-progress" class="progress-ring progress-ring--empty" role="img" aria-label="Tempo restante"><span id="session-percent">—</span></div><div><span>Contagem regressiva</span><strong id="session-time">—</strong><small id="session-time-total">sem sessão aprovada</small></div></div>
-                <div class="progress-stat"><div id="quota-progress" class="progress-ring" role="img" aria-label="Uso restante"><span id="quota-percent">—</span></div><div><span>Uso restante</span><strong id="quota-used">—</strong><small id="quota-total">da sessão aprovada</small></div></div>
+                <div class="progress-stat"><div id="quota-progress" class="progress-ring" role="img" aria-label="Quota de 5 horas restante"><span id="quota-percent">—</span></div><div><span>Quota de 5 horas</span><strong id="quota-used">—</strong><small id="quota-total">aguardando telemetria</small></div></div>
               </div>
               <div class="session-telemetry" aria-live="polite"><div><i class="ph ph-pulse" aria-hidden="true"></i><span>Atividade do Codex</span></div><strong id="session-usage-tokens">0 tokens observados</strong><small id="session-activity">Aguardando a sessão iniciar.</small></div>
             </article>
@@ -148,7 +148,7 @@
             </div>
             </div>
             <div id="calendar-board" class="calendar-board" aria-label="Agenda semanal"></div>
-            <footer class="calendar-footer"><div class="calendar-legend"><span><i class="legend-dot legend-free"></i> livre</span><span><i class="legend-dot legend-mine"></i> sua solicitação</span><span><i class="legend-dot legend-busy"></i> ocupado</span></div><p id="calendar-constraint" class="constraint-note"><i class="ph ph-info" aria-hidden="true"></i> Solicitações disponíveis até 3 dias à frente.</p></footer>
+            <footer class="calendar-footer"><div class="calendar-legend"><span><i class="legend-dot legend-free"></i> livre</span><span><i class="legend-dot legend-mine"></i> sua solicitação</span><span><i class="legend-dot legend-busy"></i> ocupado</span></div><p id="calendar-constraint" class="constraint-note"><i class="ph ph-info" aria-hidden="true"></i> Sessões de 5 horas sincronizadas com o reset, disponíveis até 3 dias à frente.</p></footer>
           </section>
         </section>
 
@@ -452,13 +452,14 @@
 
     <dialog id="booking-modal" class="booking-dialog" aria-labelledby="booking-title">
       <form id="booking-form" method="dialog">
-        <header class="dialog-header"><div><span class="section-kicker">Solicitação de acesso</span><h2 id="booking-title">Novo agendamento</h2><p>Escolha quando você precisa usar o ambiente.</p></div><button id="booking-close" class="dialog-close" type="button" aria-label="Fechar modal"><i class="ph ph-x" aria-hidden="true"></i></button></header>
+        <header class="dialog-header"><div><span class="section-kicker">Solicitação de acesso</span><h2 id="booking-title">Novo agendamento</h2><p>O início é sincronizado com o reset para entregar um ciclo completo.</p></div><button id="booking-close" class="dialog-close" type="button" aria-label="Fechar modal"><i class="ph ph-x" aria-hidden="true"></i></button></header>
         <div class="dialog-body">
           <div class="dialog-field"><label for="booking-account">Conta</label><select id="booking-account" required></select></div>
           <div class="dialog-field"><label for="booking-date">Início</label><input id="booking-date" type="date" required></div>
-          <div class="dialog-field"><label for="booking-time">Horário</label><input id="booking-time" type="time" step="3600" required></div>
-          <div class="dialog-field"><label for="booking-duration">Duração</label><select id="booking-duration"><option value="1">1 hora</option><option value="2">2 horas</option><option value="3">3 horas</option></select></div>
-          <div class="dialog-field"><label for="booking-quota">Uso solicitado</label><select id="booking-quota"><option value="5" selected>5%</option><option value="10">10%</option><option value="15">15%</option><option value="20">20%</option><option value="25">25%</option></select></div>
+          <div class="dialog-field"><label for="booking-time">Horário</label><input id="booking-time" type="time" step="60" required></div>
+          <div class="dialog-field"><label for="booking-duration">Duração fixa</label><input id="booking-duration" type="text" value="5" readonly aria-readonly="true"></div>
+          <div class="dialog-field"><label for="booking-quota">Quota da sessão</label><input id="booking-quota" type="text" value="100" readonly aria-readonly="true"></div>
+          <div class="dialog-field"><label for="booking-reset">Reset sincronizado</label><input id="booking-reset" type="text" readonly aria-readonly="true"></div>
           <div class="dialog-field"><label for="booking-end">Fim previsto</label><input id="booking-end" type="text" readonly aria-readonly="true" placeholder="Calculado automaticamente"></div>
           <div class="dialog-field dialog-field--full"><label for="booking-note">Observação <span>opcional</span></label><textarea id="booking-note" rows="3" maxlength="500" placeholder="Descreva brevemente o que será feito com a API..."></textarea></div>
           <aside class="approval-callout"><i class="ph ph-clock" aria-hidden="true"></i><p>O pedido será enviado para aprovação. Depois de aprovado, o token será gerado quando o horário começar.</p></aside>

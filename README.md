@@ -8,13 +8,13 @@ Prefira o painel em `/admin` para emitir tokens administrativos ou operar contas
 
 Cada conta pode ter um token não revogado. `disable` é temporário; `revoke` é permanente e preserva o registro para auditoria, mas nunca permite reabilitação. O token revogado precisa ser substituído por uma nova emissão.
 
-O host observa as notificações `thread/tokenUsage/updated` do app-server e registra por dispositivo os tokens de entrada, cache, saída e raciocínio observados. O app-server não oferece um contador oficial de cota semanal separado por token: a cota retornada por `account/rateLimits/read` é da conta. Por isso a UI mostra separadamente o uso observado do token e o percentual global atual da conta; se houver uso direto na máquina central, a atribuição individual não é exata.
+O host observa as notificações `thread/tokenUsage/updated` do app-server e registra por dispositivo os tokens de entrada, cache, saída e raciocínio observados. A janela de 300 minutos retornada por `account/rateLimits/read` controla a sessão e aparece para o usuário com percentual restante e próximo reset. A janela mais longa continua registrada para a visão administrativa semanal. Como os contadores pertencem à conta, uso direto na máquina central também aparece no consumo da sessão.
 
 ## Usuários e agendamento
 
-O login unificado fica em `/login`: administradores entram com email e usuários comuns com o nome da equipe. A página `/dashboard` permite reservar uma janela exclusiva de uma a três horas. A credencial do relay só pode ser emitida quando a reserva está ativa e expira automaticamente no fim da janela.
+O login unificado fica em `/login`: administradores entram com email e usuários comuns com o nome da equipe. A página `/dashboard` permite reservar uma sessão fixa de cinco horas, iniciada em um reset derivado da janela de 300 minutos da conta. A credencial do relay só pode ser emitida quando a reserva está ativa e expira automaticamente no fim desse ciclo.
 
-Os grupos não possuem franquia individual. Cada pedido escolhe uma das contas disponíveis e entra como `pending`; somente `owner` ou `admin` pode aprovar ou recusar. Ao entrar em uma janela aprovada, o dashboard emite o token real e mostra o uso observado sem bloquear por percentual de quota.
+Cada sessão recebe 100% da janela de cinco horas da conta, sem upgrade, downgrade ou divisão de quota. Cada pedido escolhe uma conta disponível e entra como `pending`; somente `owner` ou `admin` pode aprovar ou recusar. Ao entrar na janela aprovada, o dashboard emite o token real e bloqueia o acesso quando a quota curta é esgotada ou o ciclo termina.
 
 Depois de aplicar a migration `codex_user_scheduling`, importe os logins do protótipo para usuários reais do Supabase Auth:
 

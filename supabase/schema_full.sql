@@ -206,16 +206,10 @@ begin
   ) into is_admin;
 
   if TG_OP = 'INSERT' then
-    if new.starts_at >= new.ends_at then
-      raise exception 'A data de início deve ser anterior à de término';
+    if new.ends_at - new.starts_at <> interval '5 hours' then
+      raise exception 'Toda nova sessão deve ter exatamente 5 horas';
     end if;
-    if (new.ends_at - new.starts_at) > interval '3 hours' then
-      raise exception 'A duração máxima permitida é de 3 horas';
-    end if;
-    if (new.ends_at - new.starts_at) < interval '1 hour' then
-      raise exception 'A duração mínima permitida é de 1 hora';
-    end if;
-    if not is_admin and (new.ends_at <= now() or new.starts_at < (pg_catalog.date_trunc('hour', now()) - interval '1 minute')) then
+    if not is_admin and (new.ends_at <= now() or new.starts_at < now() - interval '1 minute') then
       raise exception 'Não é possível agendar horários passados';
     end if;
     if not is_admin and new.approval_status is null then
@@ -225,11 +219,21 @@ begin
       new.reviewed_by := null;
       new.review_note := null;
     end if;
+    new.requested_quota_percent := 100;
+    if new.approval_status = 'approved' then new.quota_budget_percent := 100; end if;
   end if;
 
   if TG_OP = 'UPDATE' then
+    if (new.starts_at is distinct from old.starts_at or new.ends_at is distinct from old.ends_at)
+       and new.ends_at - new.starts_at <> interval '5 hours' then
+      raise exception 'Toda sessão ajustada deve ter exatamente 5 horas';
+    end if;
     if old.approval_status = 'pending' and new.approval_status = 'approved' and new.ends_at <= now() then
       raise exception 'Não é permitido aprovar uma solicitação cujo horário já expirou.';
+    end if;
+    if old.approval_status = 'pending' and new.approval_status = 'approved' then
+      new.requested_quota_percent := 100;
+      new.quota_budget_percent := 100;
     end if;
   end if;
 

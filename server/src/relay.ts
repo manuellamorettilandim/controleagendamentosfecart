@@ -29,6 +29,7 @@ import {
 } from "./rate-limiter.js";
 import { aggregateUsageReport, type RawDatabaseData } from "./report-aggregator.js";
 import { exportReportToPdf, exportReportToXlsx, exportReportToCsv, buildReportFilename } from "./report-exporter.js";
+import { fiveHourRateLimit, isFiveHourResetBoundary, nextFiveHourReset, SESSION_DURATION_MS, weeklyRateLimit } from "./quota-window.js";
 
 const DEFAULT_PORT = 10_000;
 const DEFAULT_HOST = "0.0.0.0";
@@ -329,19 +330,14 @@ function isLiveSocket(socket: WebSocket): boolean {
   return socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING;
 }
 
-function weeklyRateLimitUsedPercent(account: AccountSnapshot | undefined): number | null {
-  if (!account) return null;
-  const windows = Object.values(account.rateLimits).flatMap((limit) => [limit.primary, limit.secondary]).filter((window): window is NonNullable<typeof window> => Boolean(window));
-  return windows.sort((left, right) => (right.windowDurationMins ?? 0) - (left.windowDurationMins ?? 0))[0]?.usedPercent ?? null;
-}
-
 function deviceUsageLimitReached(device: RelayDevice, account: AccountSnapshot | undefined): boolean {
   if (device.usage?.usageLimitReachedAt) return true;
-  if (device.quotaBudgetPercent != null && (device.usage?.quotaConsumedPercent ?? 0) >= device.quotaBudgetPercent) return true;
-  const usedPercent = weeklyRateLimitUsedPercent(account);
+  const effectiveBudget = device.reservationId ? 100 : device.quotaBudgetPercent;
+  if (effectiveBudget != null && (device.usage?.quotaConsumedPercent ?? 0) >= effectiveBudget) return true;
+  const usedPercent = (device.reservationId ? fiveHourRateLimit(account) : weeklyRateLimit(account))?.usedPercent ?? null;
   if (usedPercent === null) return false;
   const quotaBase = device.quotaBaseUsedPercent;
-  const quotaBudget = device.quotaBudgetPercent;
+  const quotaBudget = effectiveBudget;
   if (quotaBase != null && quotaBudget != null) {
     const consumed = usedPercent >= quotaBase
       ? usedPercent - quotaBase
@@ -914,20 +910,11 @@ export class RelayServer {
       const body = await readJsonBody(request);
 
       if (parts.length === 3 && parts[2] === "settings") {
-        const maxRequestQuotaPercent = Number(body.maxRequestQuotaPercent);
         const autoApproveEnabled = body.autoApproveEnabled === true;
-        const autoApproveQuotaPercent = autoApproveEnabled ? Number(body.autoApproveQuotaPercent) : 0;
+        const autoApproveQuotaPercent = autoApproveEnabled ? 100 : 0;
         const enabledModels = Array.isArray(body.enabledModels)
           ? [...new Set(body.enabledModels.filter((model): model is string => typeof model === "string").map((model) => model.trim()).filter(Boolean))]
           : [];
-        if (!Number.isInteger(maxRequestQuotaPercent) || maxRequestQuotaPercent < 1 || maxRequestQuotaPercent > 100) {
-          jsonResponse(response, 400, { error: "O teto de solicitação deve ser de 1% a 100%." });
-          return;
-        }
-        if (!Number.isInteger(autoApproveQuotaPercent) || autoApproveQuotaPercent < 0 || autoApproveQuotaPercent > maxRequestQuotaPercent) {
-          jsonResponse(response, 400, { error: "A autoaprovação deve estar desativada ou entre 1% e o teto configurado." });
-          return;
-        }
         const availableModels = await this.liveModelCatalog(identity.userId).catch(() => []);
         const availableModelIds = new Set(availableModels.map((model) => model.id));
         if (availableModelIds.size === 0) {
@@ -941,7 +928,7 @@ export class RelayServer {
         const updated = await this.authClient.rest(token, "codex_app_settings", { singleton: "eq.true" }, {
           method: "PATCH",
           body: {
-            max_request_quota_percent: maxRequestQuotaPercent,
+            max_request_quota_percent: 100,
             auto_approve_quota_percent: autoApproveQuotaPercent,
             enabled_models: enabledModels,
             updated_at: new Date().toISOString(),
@@ -960,7 +947,7 @@ export class RelayServer {
             .filter((device) => typeof device.deviceId === "string" && !["revoked", "expired"].includes(String(device.status)))
             .map((device) => this.sendControlRequest("access.update-policy", { deviceId: device.deviceId, allowedModels: enabledModels }, identity.userId)));
         }
-        this.recordAdminAudit(identity.userId, "settings.access.update", "settings", "general", { maxRequestQuotaPercent, autoApproveQuotaPercent, enabledModels });
+        this.recordAdminAudit(identity.userId, "settings.access.update", "settings", "general", { fixedSessionHours: 5, sessionQuotaPercent: 100, autoApproveEnabled, enabledModels });
         jsonResponse(response, 200, { settings: updated.data[0] });
         return;
       }
@@ -1118,19 +1105,15 @@ export class RelayServer {
         const reviewNote = typeof body.note === "string" ? body.note.trim().slice(0, 500) : null;
         const adjustedStart = typeof body.startsAt === "string" ? new Date(body.startsAt) : null;
         const adjustedEnd = typeof body.endsAt === "string" ? new Date(body.endsAt) : null;
-        const approvedQuota = Number(body.quotaBudgetPercent);
+        const approvedQuota = 100;
         if (approvalStatus === "approved") {
           const durationMs = adjustedStart && adjustedEnd ? adjustedEnd.getTime() - adjustedStart.getTime() : Number.NaN;
-          if (!adjustedStart || !adjustedEnd || Number.isNaN(durationMs) || durationMs < 3_600_000 || durationMs > 3 * 3_600_000) {
-            jsonResponse(response, 400, { error: "O período aprovado deve ter entre uma e três horas." });
+          if (!adjustedStart || !adjustedEnd || Number.isNaN(durationMs) || durationMs !== SESSION_DURATION_MS) {
+            jsonResponse(response, 400, { error: "Toda sessão aprovada deve ter exatamente cinco horas." });
             return;
           }
           if (adjustedEnd.getTime() <= Date.now()) {
             jsonResponse(response, 400, { error: "Não é possível aprovar uma solicitação cujo horário já terminou." });
-            return;
-          }
-          if (!Number.isInteger(approvedQuota) || approvedQuota < 1 || approvedQuota > 100) {
-            jsonResponse(response, 400, { error: "O uso aprovado deve ser de 1% a 100%." });
             return;
           }
         }
@@ -1150,12 +1133,10 @@ export class RelayServer {
             return;
           }
           const reviewedReservation = approved.data[0] as Record<string, unknown>;
-          const requestedQuota = Number(reviewedReservation.requested_quota_percent);
-          const adjustment = approvedQuota === requestedQuota ? "unchanged" : approvedQuota > requestedQuota ? "upgrade" : "downgrade";
-          this.recordAdminAudit(identity.userId, `reservation.approve.${adjustment}`, "reservation", parts[3], {
+          this.recordAdminAudit(identity.userId, "reservation.approve", "reservation", parts[3], {
             note: reviewNote || null,
-            requestedQuota: Number.isFinite(requestedQuota) ? requestedQuota : null,
-            approvedQuota,
+            sessionHours: 5,
+            quotaPercent: 100,
           });
           jsonResponse(response, 200, { reservation: reviewedReservation });
           return;
@@ -1184,12 +1165,8 @@ export class RelayServer {
           jsonResponse(response, 409, { error: "A solicitação já foi revisada ou não está mais disponível." });
           return;
         }
-        const reviewedReservation = reviewed.data[0] as Record<string, unknown>;
-        const requestedQuota = Number(reviewedReservation.requested_quota_percent);
         this.recordAdminAudit(identity.userId, "reservation.reject", "reservation", parts[3], {
           note: reviewNote || null,
-          requestedQuota: Number.isFinite(requestedQuota) ? requestedQuota : null,
-          approvedQuota: null,
         });
         jsonResponse(response, 200, { reservation: reviewed.data[0] });
         return;
@@ -1386,15 +1363,11 @@ export class RelayServer {
         }
 
         const startsAt = typeof body.startsAt === "string" ? new Date(body.startsAt) : new Date(Number.NaN);
-        const durationHours = Number(body.durationHours);
-        const requestedQuotaPercent = Number(body.requestedQuotaPercent);
+        const durationHours = 5;
+        const requestedQuotaPercent = 100;
         const accountId = typeof body.accountId === "string" ? body.accountId.trim() : "";
-        if (Number.isNaN(startsAt.getTime()) || !Number.isInteger(durationHours) || durationHours < 1 || durationHours > 3) {
-          jsonResponse(response, 400, { error: "Escolha um horário válido e duração de uma a três horas." });
-          return;
-        }
-        if (!Number.isInteger(requestedQuotaPercent) || requestedQuotaPercent < 1 || requestedQuotaPercent > 100) {
-          jsonResponse(response, 400, { error: "Escolha uma cota válida entre 1% e 100%." });
+        if (Number.isNaN(startsAt.getTime())) {
+          jsonResponse(response, 400, { error: "Escolha um horário válido." });
           return;
         }
         if (profile.scheduling_enabled !== true) {
@@ -1405,11 +1378,15 @@ export class RelayServer {
           jsonResponse(response, 400, { error: "Escolha uma das contas disponíveis." });
           return;
         }
-        const currentHour = new Date();
-        currentHour.setMinutes(0, 0, 0);
-        currentHour.setMilliseconds(0);
-        if (startsAt.getTime() < currentHour.getTime() || startsAt.getMinutes() !== 0 || startsAt.getSeconds() !== 0) {
-          jsonResponse(response, 400, { error: "A reserva deve começar no horário atual ou em uma hora cheia futura." });
+        const account = this.accounts.get(accountId);
+        const fiveHourWindow = fiveHourRateLimit(account);
+        if (!account || account.status !== "ready" || !fiveHourWindow?.resetsAt) {
+          jsonResponse(response, 409, { error: "A conta ainda não informou o próximo reset da janela de 5 horas." });
+          return;
+        }
+        const alignedStart = nextFiveHourReset(fiveHourWindow.resetsAt, startsAt.getTime());
+        if (startsAt.getTime() < Date.now() - 60_000 || alignedStart === null || !isFiveHourResetBoundary(fiveHourWindow.resetsAt, startsAt.getTime())) {
+          jsonResponse(response, 400, { error: alignedStart ? `A sessão deve começar em um reset da quota de 5 horas. Próximo horário: ${new Date(alignedStart).toISOString()}.` : "Não foi possível sincronizar esta conta com o reset de 5 horas." });
           return;
         }
         const inserted = await this.authClient.rest(token, "rpc/codex_request_reservation", {}, {
@@ -1517,7 +1494,7 @@ export class RelayServer {
           userId: identity.userId,
           reservationId,
           expiresAt: new Date(endsAt).toISOString(),
-          quotaBudgetPercent: Number(reservation.quota_budget_percent ?? reservation.requested_quota_percent),
+          quotaBudgetPercent: 100,
           allowedModels,
         }, identity.userId) as Record<string, unknown>;
         const device = result.device as Record<string, unknown> | undefined;
@@ -1566,9 +1543,7 @@ export class RelayServer {
     const live = status.hostConnected && this.accountsSynced;
     const accounts = live ? [...this.accounts.values()] : [];
     const defaultAccountId = accounts.find((account) => account.isDefault)?.accountId ?? this.defaultAccountId;
-    const visibleAccounts = _identity.role === "owner"
-      ? accounts
-      : accounts.map((account) => ({ ...account, rateLimits: {}, usage: null }));
+    const visibleAccounts = accounts;
     return {
       role: _identity.role,
       hostConnected: status.hostConnected,
@@ -2137,7 +2112,7 @@ export class RelayServer {
     });
     webSocket.on("error", () => undefined);
 
-    this.sendToTunnel({ v: PROTOCOL_VERSION, type: "stream.open", streamId, deviceId: device.deviceId, accountId });
+    this.sendToTunnel({ v: PROTOCOL_VERSION, type: "stream.open", streamId, deviceId: device.deviceId, accountId, reservationId: device.reservationId ?? null });
     this.sendToTunnel({ v: PROTOCOL_VERSION, type: "access.seen", deviceId: device.deviceId });
   }
 
