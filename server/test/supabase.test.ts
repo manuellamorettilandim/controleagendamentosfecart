@@ -29,6 +29,31 @@ test("Supabase secret keys use only the apikey header, while legacy keys keep co
   }
 });
 
+test("Supabase service requests retry a transient future-issued JWT rejection", async () => {
+  let attempts = 0;
+  const server = http.createServer((_request, response) => {
+    attempts += 1;
+    response.setHeader("Content-Type", "application/json");
+    if (attempts === 1) {
+      response.statusCode = 401;
+      response.end(JSON.stringify({ message: "JWT issued at future" }));
+      return;
+    }
+    response.end("[]");
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+
+  try {
+    const client = new SupabaseServiceClient(`http://127.0.0.1:${address.port}`, "sb_secret_test", "secret");
+    assert.deepEqual(await client.request("/rest/v1/codex_account_snapshots"), []);
+    assert.equal(attempts, 2);
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
 test("listAdmins enriches privileged users with secure login and last access metadata", async () => {
   const server = http.createServer((request, response) => {
     response.setHeader("Content-Type", "application/json");
