@@ -437,10 +437,6 @@
       return;
     }
     if (sessionTokenAvailable(reservation)) return;
-    if (reservation.device_id) {
-      state.activationError = "O token desta sessão já foi emitido. Use a cópia guardada neste navegador.";
-      return;
-    }
     if (state.activationInFlight === reservation.id) return;
 
     state.activationInFlight = reservation.id;
