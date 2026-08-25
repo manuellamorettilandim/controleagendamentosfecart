@@ -82,6 +82,33 @@ test("AccessStore persists sanitized reservation ownership metadata", async () =
   }
 });
 
+test("AccessStore allows multiple device credentials for the same group reservation", async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "remote-codex-group-session-"));
+  try {
+    const store = new AccessStore(path.join(directory, "access.json"));
+    const now = new Date("2026-08-13T12:00:00.000Z");
+    const options = {
+      accountId: "primary",
+      userId: "group-user",
+      reservationId: "reservation-shared",
+      quotaBaseUsedPercent: 18,
+      quotaBudgetPercent: 5,
+    };
+    const first = await store.issue("member one", 3_600_000, now, options);
+    const second = await store.issue("member two", 3_600_000, now, options);
+
+    assert.notEqual(first.token, second.token);
+    assert.notEqual(first.device.deviceId, second.device.deviceId);
+    assert.equal((await store.list()).filter((device) => device.reservationId === options.reservationId).length, 2);
+    await assert.rejects(() => store.issue("other reservation", 3_600_000, now, {
+      ...options,
+      reservationId: "reservation-conflict",
+    }));
+  } finally {
+    await fs.rm(directory, { recursive: true, force: true });
+  }
+});
+
 test("AccessStore enforces a session quota as delta, including after account reset", async () => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "remote-codex-quota-"));
   try {

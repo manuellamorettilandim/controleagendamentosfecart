@@ -313,9 +313,14 @@
 
   function deviceFor(reservation) {
     if (!reservation) return null;
+    const localDeviceId = storedSessionFor(reservation)?.deviceId || null;
+    if (localDeviceId) {
+      const localDevice = (state.data?.devices || []).find((item) => item.device_id === localDeviceId);
+      if (localDevice) return localDevice;
+    }
     if (reservation.device_id) {
       return (state.data?.devices || []).find((item) => item.device_id === reservation.device_id)
-        || (state.data?.devices || []).find((item) => item.reservation_id === reservation.id)
+        || (state.data?.devices || []).find((item) => item.reservation_id === reservation.id && !["revoked", "disabled", "expired"].includes(item.status))
         || null;
     }
     return (state.data?.devices || []).find((item) => item.reservation_id === reservation.id && item.status !== "revoked") || null;

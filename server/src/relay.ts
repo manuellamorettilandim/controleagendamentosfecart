@@ -1496,10 +1496,6 @@ export class RelayServer {
           jsonResponse(response, 409, { error: "A credencial só fica disponível durante o horário reservado." });
           return;
         }
-        if (reservation.device_id) {
-          jsonResponse(response, 409, { error: "A credencial desta reserva já foi emitida. Use a cópia guardada neste navegador." });
-          return;
-        }
         const modelSettingsResult = await this.authClient.rest(token, "codex_app_settings", {
           select: "enabled_models",
           singleton: "eq.true",
@@ -1525,26 +1521,35 @@ export class RelayServer {
           allowedModels,
         }, identity.userId) as Record<string, unknown>;
         const device = result.device as Record<string, unknown> | undefined;
-        const updated = await this.authClient.rest(token, "codex_reservations", {
-          id: `eq.${reservationId}`,
-          user_id: `eq.${identity.userId}`,
-          device_id: "is.null",
-        }, {
-          method: "PATCH",
-          body: {
-            device_id: device?.deviceId ?? null,
-            quota_base_used_percent: device?.quotaBaseUsedPercent ?? null,
-            quota_budget_percent: device?.quotaBudgetPercent ?? reservation.quota_budget_percent ?? reservation.requested_quota_percent,
-            activated_at: new Date().toISOString(),
-          },
-          headers: { Prefer: "return=representation" },
-        });
-        if (!updated.ok || !Array.isArray(updated.data) || updated.data.length !== 1) {
-          if (device?.deviceId) await this.sendControlRequest("access.revoke", { deviceId: device.deviceId }, identity.userId).catch(() => undefined);
-          jsonResponse(response, 409, { error: "A reserva já foi ativada em outra janela." });
-          return;
+        let activeReservation = reservation;
+        if (!reservation.device_id) {
+          const updated = await this.authClient.rest(token, "codex_reservations", {
+            id: `eq.${reservationId}`,
+            user_id: `eq.${identity.userId}`,
+            device_id: "is.null",
+          }, {
+            method: "PATCH",
+            body: {
+              device_id: device?.deviceId ?? null,
+              quota_base_used_percent: device?.quotaBaseUsedPercent ?? null,
+              quota_budget_percent: device?.quotaBudgetPercent ?? reservation.quota_budget_percent ?? reservation.requested_quota_percent,
+              activated_at: new Date().toISOString(),
+            },
+            headers: { Prefer: "return=representation" },
+          });
+          if (!updated.ok) {
+            if (device?.deviceId) await this.sendControlRequest("access.revoke", { deviceId: device.deviceId }, identity.userId).catch(() => undefined);
+            const errorData = updated.data && typeof updated.data === "object" ? updated.data as Record<string, unknown> : null;
+            const errorMessage = typeof errorData?.message === "string" ? errorData.message.trim() : "";
+            const detail = errorMessage ? `: ${errorMessage}` : ` (HTTP ${updated.status})`;
+            jsonResponse(response, 500, { error: `Não foi possível vincular a credencial à reserva${detail}` });
+            return;
+          }
+          if (Array.isArray(updated.data) && updated.data.length === 1) {
+            activeReservation = updated.data[0] as Record<string, unknown>;
+          }
         }
-        jsonResponse(response, 200, { ...result, reservation: updated.data[0] });
+        jsonResponse(response, 200, { ...result, reservation: activeReservation });
         return;
       }
       jsonResponse(response, 404, { error: "User endpoint not found." });

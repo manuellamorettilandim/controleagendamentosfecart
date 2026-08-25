@@ -466,8 +466,14 @@ export class AccessStore {
 
     return withWriteLock(this.filePath, async () => {
       const registry = await this.read();
-      if (accountId && registry.devices.some((device) => device.accountId === accountId && device.revokedAt === null && Date.parse(device.expiresAt) > now.getTime())) {
-        throw new Error("Já existe um token não revogado para esta conta. Revogue o anterior antes de emitir outro.");
+      const reservationId = typeof options.reservationId === "string" && options.reservationId.trim() ? options.reservationId.trim() : null;
+      if (accountId && registry.devices.some((device) =>
+        device.accountId === accountId
+        && device.revokedAt === null
+        && Date.parse(device.expiresAt) > now.getTime()
+        && (!reservationId || device.reservationId !== reservationId)
+      )) {
+        throw new Error("Já existe um token não revogado para esta conta em outra reserva. Revogue o anterior antes de emitir outro.");
       }
       const token = createOpaqueToken();
       const sshKey = createEphemeralSshKeyPair();
@@ -483,7 +489,7 @@ export class AccessStore {
         accountId,
         weeklyLimitPercent,
         userId: typeof options.userId === "string" && options.userId.trim() ? options.userId.trim() : null,
-        reservationId: typeof options.reservationId === "string" && options.reservationId.trim() ? options.reservationId.trim() : null,
+        reservationId,
         quotaBaseUsedPercent: finiteNumber(options.quotaBaseUsedPercent),
         quotaBudgetPercent: finiteNumber(options.quotaBudgetPercent),
         allowedModels: Array.isArray(options.allowedModels) && options.allowedModels.length > 0
