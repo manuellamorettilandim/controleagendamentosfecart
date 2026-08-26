@@ -148,7 +148,7 @@
             </div>
             </div>
             <div id="calendar-board" class="calendar-board" aria-label="Agenda semanal"></div>
-            <footer class="calendar-footer"><div class="calendar-legend"><span><i class="legend-dot legend-free"></i> livre</span><span><i class="legend-dot legend-mine"></i> sua solicitação</span><span><i class="legend-dot legend-busy"></i> ocupado</span></div><p id="calendar-constraint" class="constraint-note"><i class="ph ph-info" aria-hidden="true"></i> Sessões de 5 horas sincronizadas com o reset, disponíveis até 3 dias à frente.</p></footer>
+            <footer class="calendar-footer"><div class="calendar-legend"><span><i class="legend-dot legend-free"></i> livre</span><span><i class="legend-dot legend-mine"></i> sua solicitação</span><span><i class="legend-dot legend-busy"></i> ocupado</span></div><p id="calendar-constraint" class="constraint-note"><i class="ph ph-info" aria-hidden="true"></i> Comece agora até o próximo reset ou reserve um ciclo completo de 5 horas.</p></footer>
           </section>
         </section>
 
@@ -457,7 +457,7 @@
           <div id="booking-account-field" class="dialog-field"><label for="booking-account">Conta disponível</label><select id="booking-account" required></select></div>
           <div class="dialog-field"><label for="booking-date">Data</label><input id="booking-date" type="date" required></div>
           <div class="dialog-field"><label for="booking-time">Horário</label><input id="booking-time" type="time" step="60" required></div>
-          <section class="booking-summary" aria-live="polite"><i class="ph ph-clock-countdown" aria-hidden="true"></i><div><strong>5 horas de acesso completo</strong><span id="booking-summary-window">Escolha a data e o horário</span><small id="booking-adjustment" hidden></small></div></section>
+          <section class="booking-summary" aria-live="polite"><i class="ph ph-clock-countdown" aria-hidden="true"></i><div><strong id="booking-summary-title">Horário da sessão</strong><span id="booking-summary-window">Escolha a data e o horário</span><small id="booking-summary-quota" hidden></small><small id="booking-adjustment" hidden></small></div></section>
           <aside class="approval-callout"><i class="ph ph-check-circle" aria-hidden="true"></i><p>Após a aprovação, seu acesso aparecerá automaticamente no horário escolhido.</p></aside>
           <p id="booking-message" class="dialog-message" role="alert"></p>
         </div>

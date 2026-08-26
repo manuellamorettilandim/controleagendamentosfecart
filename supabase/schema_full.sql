@@ -185,6 +185,89 @@ as $$
   );
 $$;
 
+create schema if not exists codex_private;
+
+create or replace function codex_private.five_hour_reset(p_account_id text)
+returns timestamptz
+language sql
+stable
+security definer
+set search_path = public, codex_private
+as $$
+  select pg_catalog.to_timestamp((candidate.window_data ->> 'resetsAt')::double precision)
+  from public.codex_account_snapshots snapshot
+  cross join lateral pg_catalog.jsonb_each(coalesce(snapshot.rate_limits, '{}'::jsonb)) rate_limit
+  cross join lateral (values (rate_limit.value -> 'primary'), (rate_limit.value -> 'secondary')) candidate(window_data)
+  where snapshot.account_id = p_account_id
+    and snapshot.status = 'ready'
+    and (candidate.window_data ->> 'windowDurationMins')::integer = 300
+    and coalesce((candidate.window_data ->> 'resetsAt')::numeric, 0) > 0
+  order by snapshot.observed_at desc
+  limit 1;
+$$;
+
+create or replace function codex_private.is_five_hour_boundary(p_account_id text, p_starts_at timestamptz)
+returns boolean
+language plpgsql
+stable
+security definer
+set search_path = public, codex_private
+as $$
+declare
+  reset_at timestamptz := codex_private.five_hour_reset(p_account_id);
+  offset_seconds numeric;
+begin
+  if reset_at is null or p_starts_at is null then return false; end if;
+  offset_seconds := pg_catalog.extract(epoch from (p_starts_at - reset_at));
+  return pg_catalog.abs(offset_seconds - pg_catalog.round(offset_seconds / 18000) * 18000) <= 60;
+end;
+$$;
+
+create or replace function codex_private.valid_five_hour_session(p_account_id text, p_starts_at timestamptz, p_ends_at timestamptz)
+returns boolean
+language plpgsql
+stable
+security definer
+set search_path = public, codex_private
+as $$
+declare
+  reset_at timestamptz := codex_private.five_hour_reset(p_account_id);
+begin
+  if reset_at is null or p_starts_at is null or p_ends_at is null or p_ends_at <= p_starts_at then return false; end if;
+  if p_ends_at - p_starts_at = interval '5 hours' then
+    return codex_private.is_five_hour_boundary(p_account_id, p_starts_at);
+  end if;
+  return p_ends_at = reset_at
+    and p_starts_at >= reset_at - interval '5 hours'
+    and p_starts_at < reset_at
+    and p_ends_at - p_starts_at >= interval '5 minutes';
+end;
+$$;
+
+create or replace function codex_private.account_is_privately_busy(p_account_id text, p_requester uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select exists (
+    select 1 from public.codex_reservations reservation
+    where reservation.account_id = p_account_id
+      and reservation.user_id is distinct from p_requester
+      and reservation.status = 'scheduled'
+      and reservation.approval_status in ('pending', 'approved')
+      and reservation.starts_at <= now()
+      and reservation.ends_at > now()
+  );
+$$;
+
+revoke all on function codex_private.five_hour_reset(text) from public, anon, authenticated;
+revoke all on function codex_private.is_five_hour_boundary(text, timestamptz) from public, anon, authenticated;
+revoke all on function codex_private.valid_five_hour_session(text, timestamptz, timestamptz) from public, anon, authenticated;
+revoke all on function codex_private.account_is_privately_busy(text, uuid) from public, anon;
+grant execute on function codex_private.account_is_privately_busy(text, uuid) to authenticated, service_role;
+
 -- 4. Triggers de Integridade e Reconciliação
 -- ------------------------------------------------------------------------------
 
@@ -192,7 +275,7 @@ create or replace function public.enforce_reservation_integrity()
 returns trigger
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, codex_private
 as $$
 declare
   is_admin boolean;
@@ -206,8 +289,8 @@ begin
   ) into is_admin;
 
   if TG_OP = 'INSERT' then
-    if new.ends_at - new.starts_at <> interval '5 hours' then
-      raise exception 'Toda nova sessão deve ter exatamente 5 horas';
+    if not codex_private.valid_five_hour_session(new.account_id, new.starts_at, new.ends_at) then
+      raise exception 'A sessão deve ocupar um ciclo completo ou terminar no reset atual';
     end if;
     if not is_admin and (new.ends_at <= now() or new.starts_at < now() - interval '1 minute') then
       raise exception 'Não é possível agendar horários passados';
@@ -225,8 +308,8 @@ begin
 
   if TG_OP = 'UPDATE' then
     if (new.starts_at is distinct from old.starts_at or new.ends_at is distinct from old.ends_at)
-       and new.ends_at - new.starts_at <> interval '5 hours' then
-      raise exception 'Toda sessão ajustada deve ter exatamente 5 horas';
+       and not codex_private.valid_five_hour_session(new.account_id, new.starts_at, new.ends_at) then
+      raise exception 'A sessão deve ocupar um ciclo completo ou terminar no reset atual';
     end if;
     if old.approval_status = 'pending' and new.approval_status = 'approved' and new.ends_at <= now() then
       raise exception 'Não é permitido aprovar uma solicitação cujo horário já expirou.';
@@ -409,15 +492,19 @@ create policy codex_admins_read on public.codex_admins
 
 -- Account Snapshots
 drop policy if exists codex_account_snapshots_read on public.codex_account_snapshots;
-create policy codex_account_snapshots_read on public.codex_account_snapshots
+drop policy if exists codex_account_snapshots_read_private_usage on public.codex_account_snapshots;
+create policy codex_account_snapshots_read_private_usage on public.codex_account_snapshots
   for select to authenticated
   using (
     (select public.codex_is_admin())
-    or exists (
-      select 1 from public.profiles profile
-      where profile.user_id = (select auth.uid())
-        and profile.enabled = true
-        and profile.scheduling_enabled = true
+    or (
+      exists (
+        select 1 from public.profiles profile
+        where profile.user_id = (select auth.uid())
+          and profile.enabled = true
+          and profile.scheduling_enabled = true
+      )
+      and not codex_private.account_is_privately_busy(account_id, (select auth.uid()))
     )
   );
 

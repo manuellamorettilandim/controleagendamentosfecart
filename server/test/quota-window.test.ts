@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { AccountSnapshot } from "../src/protocol.js";
-import { fiveHourRateLimit, isFiveHourResetBoundary, nextFiveHourReset, SESSION_DURATION_MS, weeklyRateLimit } from "../src/quota-window.js";
+import { fiveHourRateLimit, isFiveHourResetBoundary, nextFiveHourReset, reservationWindowForStart, SESSION_DURATION_MS, weeklyRateLimit } from "../src/quota-window.js";
 
 const resetAt = Date.parse("2026-08-25T15:17:00.000Z") / 1_000;
 const snapshot = {
@@ -28,4 +28,17 @@ test("aligns sessions to the next reset-derived five-hour boundary", () => {
   assert.equal(nextFiveHourReset(resetAt, resetMs + SESSION_DURATION_MS), resetMs + SESSION_DURATION_MS);
   assert.equal(isFiveHourResetBoundary(resetAt, resetMs + SESSION_DURATION_MS), true);
   assert.equal(isFiveHourResetBoundary(resetAt, resetMs + 60 * 60_000), false);
+});
+
+test("allows an immediate session to use only the remainder of the current window", () => {
+  const resetMs = resetAt * 1_000;
+  const nowMs = resetMs - 2 * 60 * 60_000;
+  const immediate = reservationWindowForStart(resetAt, nowMs - 30_000, nowMs);
+  assert.deepEqual(immediate, { startsAtMs: nowMs - 30_000, endsAtMs: resetMs, complete: false });
+
+  const complete = reservationWindowForStart(resetAt, resetMs, nowMs);
+  assert.deepEqual(complete, { startsAtMs: resetMs, endsAtMs: resetMs + SESSION_DURATION_MS, complete: true });
+
+  assert.equal(reservationWindowForStart(resetAt, nowMs + 10 * 60_000, nowMs), null);
+  assert.equal(reservationWindowForStart(resetAt, resetMs - 4 * 60_000, resetMs - 4 * 60_000), null);
 });

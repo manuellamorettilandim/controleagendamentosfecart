@@ -13,11 +13,37 @@ import {
   normalizeModelCatalog,
   RelayServer,
   type ModelPolicyStream,
+  userVisibleAccountSnapshot,
 } from "../src/relay.js";
 import { decodeMessage, encodeMessage, PROTOCOL_VERSION, type RelayDevice, type WireMessage } from "../src/protocol.js";
 
 const agentToken = "agent-secret-used-only-by-central-host";
 const deviceToken = "device-secret-shown-once";
+
+test("user account snapshots expose only the five-hour quota and redact it while another session is active", () => {
+  const account = {
+    account_id: "primary",
+    usage: { lifetimeTokens: 123_456 },
+    rate_limits: {
+      codex: {
+        limitId: "codex",
+        limitName: "Codex",
+        primary: { usedPercent: 63, windowDurationMins: 300, resetsAt: 1_900_000_000, credits: { balance: 10 } },
+        secondary: { usedPercent: 10, windowDurationMins: 10_080, resetsAt: 1_900_500_000, credits: null },
+        rateLimitReachedType: null,
+      },
+    },
+  };
+  const visible = userVisibleAccountSnapshot(account, true);
+  const visibleLimit = (visible.rate_limits as Record<string, Record<string, unknown>>).codex;
+  assert.equal((visibleLimit.primary as Record<string, unknown>).usedPercent, 63);
+  assert.equal(visibleLimit.secondary, null);
+  assert.equal(visible.usage, null);
+
+  const hidden = userVisibleAccountSnapshot(account, false);
+  const hiddenLimit = (hidden.rate_limits as Record<string, Record<string, unknown>>).codex;
+  assert.equal((hiddenLimit.primary as Record<string, unknown>).usedPercent, null);
+});
 
 test("model catalog is populated from the account API and excludes hidden entries", () => {
   assert.deepEqual(normalizeModelCatalog({ result: { data: [

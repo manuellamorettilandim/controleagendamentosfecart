@@ -369,6 +369,23 @@
     return Boolean(aligned && Math.abs(aligned.getTime() - new Date(start).getTime()) <= 60_000);
   }
 
+  function reservationWindow(start, account = selectedAccount()) {
+    const candidate = new Date(start);
+    const startsAt = candidate.getTime();
+    const current = now().getTime();
+    const resetAt = resetMilliseconds(fiveHourWindow(account));
+    if (!Number.isFinite(startsAt) || resetAt === null || startsAt < current - 60_000) return null;
+    if (isResetBoundary(candidate, account)) {
+      return { start: candidate, end: new Date(startsAt + 5 * 3_600_000), complete: true };
+    }
+    const immediate = startsAt <= current + 60_000;
+    const insideCurrentWindow = startsAt >= resetAt - 5 * 3_600_000 && startsAt < resetAt;
+    if (immediate && insideCurrentWindow && resetAt - startsAt >= 5 * 60_000) {
+      return { start: candidate, end: new Date(resetAt), complete: false };
+    }
+    return null;
+  }
+
   function selectedAccount() {
     const accounts = readyAccounts();
     return accounts.find((account) => account.account_id === state.selectedAccountId) || accounts[0] || null;
@@ -768,17 +785,17 @@
         ? readyAccounts().find((item) => item.account_id === upcoming.account_id)
         : selectedAccount();
       const monitoredWindow = fiveHourWindow(monitoredAccount);
-      const monitoredUsed = Number(monitoredWindow?.usedPercent);
+      const monitoredUsed = typeof monitoredWindow?.usedPercent === "number" ? monitoredWindow.usedPercent : Number.NaN;
       const monitoredRemaining = Number.isFinite(monitoredUsed) ? Math.max(0, Math.min(100, 100 - monitoredUsed)) : null;
       const monitoredReset = resetMilliseconds(monitoredWindow);
       components().setProgress($("#session-progress"), upcoming ? 100 : 0, upcoming ? `${formatCountdown(untilStart)} até a próxima sessão` : "Nenhuma sessão aprovada");
-      components().setProgress($("#quota-progress"), monitoredRemaining ?? 0, monitoredRemaining === null ? "Telemetria de 5 horas indisponível" : `${monitoredRemaining}% disponíveis na conta`);
+      components().setProgress($("#quota-progress"), monitoredRemaining ?? 0, monitoredRemaining === null ? "Uso oculto enquanto a conta está ocupada" : `${monitoredRemaining}% disponíveis na conta`);
       $("#session-percent").textContent = upcoming ? "100%" : "—";
       $("#session-time").textContent = upcoming ? formatCountdown(untilStart) : "—";
       $("#session-time-total").textContent = upcoming ? `começa ${components().formatDateTime(upcoming.starts_at)}` : "sem sessão aprovada";
       $("#quota-percent").textContent = monitoredRemaining === null ? "—" : `${Math.round(monitoredRemaining)}%`;
       $("#quota-used").textContent = monitoredRemaining === null ? "—" : `${Math.round(monitoredRemaining)}% disponível`;
-      $("#quota-total").textContent = monitoredReset ? `reset ${components().formatDateTime(new Date(monitoredReset))}` : "janela de 5 horas indisponível";
+      $("#quota-total").textContent = monitoredReset ? `reset ${components().formatDateTime(new Date(monitoredReset))}` : "uso oculto ou telemetria indisponível";
       status.textContent = "Sessão desligada";
       dot.classList.remove("is-active", "is-limited");
       $("#session-started").textContent = upcoming ? `Próxima janela ${components().formatDateTime(upcoming.starts_at)}` : "Ative um horário aprovado para começar.";
@@ -790,19 +807,20 @@
     return (state.data?.reservations || []).filter((item) => item.account_id === selectedAccount()?.account_id && item.status !== "cancelled");
   }
 
-  function slotConflict(start, durationHours, accountId = selectedAccount()?.account_id) {
+  function slotConflict(start, end, accountId = selectedAccount()?.account_id) {
     if (!accountId) return true;
-    const end = start.getTime() + durationHours * 3_600_000;
+    const endTime = new Date(end).getTime();
     const reservations = (state.data?.reservations || []).filter((item) => item.account_id === accountId && item.status !== "cancelled");
     const busy = (state.data?.busySlots || []).filter((item) => item.account_id === accountId);
-    return [...reservations, ...busy].some((item) => Date.parse(item.starts_at) < end && Date.parse(item.ends_at) > start.getTime());
+    return [...reservations, ...busy].some((item) => Date.parse(item.starts_at) < endTime && Date.parse(item.ends_at) > start.getTime());
   }
 
-  function isBookable(start, durationHours = 5) {
+  function isBookable(start) {
     const candidate = new Date(start);
-    if (!selectedAccount() || Number(durationHours) !== 5 || !isResetBoundary(candidate) || candidate.getTime() < now().getTime() - 60_000) return false;
+    const window = reservationWindow(candidate);
+    if (!selectedAccount() || !window) return false;
     if (candidate.getTime() > state.bookingMax.getTime()) return false;
-    return !slotConflict(candidate, 5);
+    return !slotConflict(candidate, window.end);
   }
 
   function calendarEvents() {
@@ -1019,7 +1037,8 @@
       .forEach((item) => {
         const rejected = item.approval_status === "rejected";
         const decision = rejected ? "Solicitação recusada" : "Solicitação aprovada";
-        const quotaCopy = rejected ? "" : " Janela completa de 5 horas (100%).";
+        const durationHours = (Date.parse(item.ends_at) - Date.parse(item.starts_at)) / 3_600_000;
+        const quotaCopy = rejected ? "" : durationHours < 5 ? ` Acesso disponível até ${components().formatTime(item.ends_at)}.` : " Janela completa de 5 horas (100%).";
         const noteCopy = item.review_note ? ` Justificativa: ${item.review_note}` : " Sem justificativa informada.";
         items.push({
           type: rejected ? "danger" : "success",
@@ -1034,7 +1053,9 @@
       .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
       .slice(0, 3)
       .forEach((item) => {
-        items.push({ type: "warning", icon: "ph-clock", title: "Solicitação em análise", message: `${components().formatDateTime(item.starts_at)} · ciclo completo de 5 horas em ${item.account_id}.`, time: formatRelative(item.created_at) });
+        const durationHours = (Date.parse(item.ends_at) - Date.parse(item.starts_at)) / 3_600_000;
+        const windowCopy = durationHours < 5 ? `até ${components().formatTime(item.ends_at)}` : "por 5 horas";
+        items.push({ type: "warning", icon: "ph-clock", title: "Solicitação em análise", message: `${components().formatDateTime(item.starts_at)} · acesso ${windowCopy} em ${item.account_id}.`, time: formatRelative(item.created_at) });
       });
     if (state.data?.relay && !state.data.relay.ready) items.unshift({ type: "warning", icon: "ph-warning", title: "Host temporariamente offline", message: "As solicitações continuam salvas, mas a ativação será retomada quando o host voltar.", time: "agora" });
     if (!items.length) items.push({ type: "info", icon: "ph-check-circle", title: "Tudo em dia", message: "Nenhuma notificação nova por enquanto.", time: "agora" });
@@ -1051,9 +1072,13 @@
   }
 
   function nextBookableStart() {
+    const immediate = now();
+    immediate.setSeconds(0, 0);
+    if (isBookable(immediate)) return immediate;
+
     let candidate = alignedResetStart(now());
     while (candidate && candidate.getTime() <= state.bookingMax.getTime()) {
-      if (isBookable(candidate, 5)) return candidate;
+      if (isBookable(candidate)) return candidate;
       candidate = new Date(candidate.getTime() + 5 * 3_600_000);
     }
     return null;
@@ -1067,16 +1092,28 @@
 
   function updateBookingEnd() {
     const requested = inputDateTime($("#booking-date").value, $("#booking-time").value);
-    const start = requested ? alignedResetStart(requested) : null;
+    let start = requested;
+    let window = start ? reservationWindow(start) : null;
+    if (start && !window) {
+      start = alignedResetStart(start);
+      window = start ? reservationWindow(start) : null;
+    }
     const adjustedByMinutes = start && requested ? Math.abs(start.getTime() - requested.getTime()) >= 60_000 : false;
     if (start && requested && start.getTime() !== requested.getTime()) {
       $("#booking-date").value = dateInputValue(start);
       $("#booking-time").value = timeInputValue(start);
     }
-    const end = start ? new Date(start.getTime() + 5 * 3_600_000) : null;
+    const end = window?.end || null;
+    $("#booking-summary-title").textContent = window?.complete ? "5 horas de acesso completo" : window ? "Usar a janela disponível agora" : "Horário da sessão";
     $("#booking-summary-window").textContent = start && end
       ? `${components().formatDateTime(start)} até ${components().formatTime(end)}`
       : "Escolha a data e o horário";
+    const quota = $("#booking-summary-quota");
+    const rawUsedPercent = fiveHourWindow(selectedAccount())?.usedPercent;
+    const usedPercent = typeof rawUsedPercent === "number" ? rawUsedPercent : Number.NaN;
+    const remainingPercent = Number.isFinite(usedPercent) ? Math.max(0, Math.min(100, Math.round(100 - usedPercent))) : null;
+    quota.hidden = Boolean(!window || window.complete || remainingPercent === null);
+    quota.textContent = !quota.hidden ? `${remainingPercent}% da quota de 5 horas disponível agora` : "";
     const adjustment = $("#booking-adjustment");
     adjustment.hidden = !adjustedByMinutes;
     adjustment.textContent = adjustedByMinutes && start
@@ -1090,10 +1127,10 @@
       components().showToast("Nenhuma conta está pronta para receber agendamentos.", "warning");
       return;
     }
-    let value = start ? alignedResetStart(start) : nextBookableStart();
+    let value = start ? (reservationWindow(start) ? new Date(start) : alignedResetStart(start)) : nextBookableStart();
     if (!value || value.getTime() < now().getTime() - 60_000 || value.getTime() > state.bookingMax.getTime()) value = nextBookableStart();
     if (!value) {
-      components().showToast("Nenhum ciclo completo de 5 horas está livre no período disponível.", "warning");
+      components().showToast("Nenhum horário está livre no período disponível.", "warning");
       return;
     }
     $("#booking-account").value = selectedAccount().account_id;
@@ -1224,7 +1261,7 @@
   }
 
   function addPreviewReservation(start, accountId) {
-    const end = new Date(start.getTime() + 5 * 3_600_000);
+    const end = reservationWindow(start)?.end || new Date(start.getTime() + 5 * 3_600_000);
     state.data.reservations.push({
       id: `preview-${Date.now()}`,
       account_id: accountId,
@@ -1246,8 +1283,8 @@
       setBookingMessage("Confira os dados do agendamento.");
       return;
     }
-    if (!isBookable(start, 5)) {
-      setBookingMessage(start.getTime() > state.bookingMax.getTime() ? `Solicitações disponíveis até ${components().formatDate(state.bookingMax)}.` : "Esse ciclo de 5 horas não está livre ou não coincide com o reset da conta.");
+    if (!isBookable(start)) {
+      setBookingMessage(start.getTime() > state.bookingMax.getTime() ? `Solicitações disponíveis até ${components().formatDate(state.bookingMax)}.` : "Esse horário não está livre. Para usar agora, escolha o minuto atual; para depois, escolha o início de um novo ciclo.");
       return;
     }
     const button = $("#booking-submit");
