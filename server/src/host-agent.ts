@@ -910,16 +910,23 @@ export class HostAgent {
       this.send(streamClose(message.streamId, 1013, "App-server da conta indisponível."));
       return;
     }
-    let reservationId = message.reservationId ?? null;
-    if (!reservationId) {
-      const activeDevices = await this.accessStore.list().catch(() => []);
-      const matched = activeDevices.find((d) => d.deviceId === message.deviceId);
-      if (matched?.reservationId) {
-        reservationId = matched.reservationId;
-      }
-    }
-    const stream: LocalStream = { streamId: message.streamId, deviceId: message.deviceId, accountId: message.accountId, reservationId, socket, pending: [], closed: false };
+    const stream: LocalStream = {
+      streamId: message.streamId,
+      deviceId: message.deviceId,
+      accountId: message.accountId,
+      reservationId: message.reservationId ?? null,
+      socket,
+      pending: [],
+      closed: false,
+    };
     this.localStreams.set(message.streamId, stream);
+    if (!stream.reservationId) {
+      void this.accessStore.list().then((activeDevices) => {
+        const current = this.localStreams.get(message.streamId);
+        if (current !== stream) return;
+        current.reservationId = activeDevices.find((device) => device.deviceId === message.deviceId)?.reservationId ?? null;
+      }).catch(() => undefined);
+    }
 
     socket.on("open", () => {
       for (const frame of stream.pending.splice(0)) socket.send(frame.payload, { binary: frame.binary });
