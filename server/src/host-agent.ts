@@ -910,7 +910,15 @@ export class HostAgent {
       this.send(streamClose(message.streamId, 1013, "App-server da conta indisponível."));
       return;
     }
-    const stream: LocalStream = { streamId: message.streamId, deviceId: message.deviceId, accountId: message.accountId, reservationId: message.reservationId, socket, pending: [], closed: false };
+    let reservationId = message.reservationId ?? null;
+    if (!reservationId) {
+      const activeDevices = await this.accessStore.list().catch(() => []);
+      const matched = activeDevices.find((d) => d.deviceId === message.deviceId);
+      if (matched?.reservationId) {
+        reservationId = matched.reservationId;
+      }
+    }
+    const stream: LocalStream = { streamId: message.streamId, deviceId: message.deviceId, accountId: message.accountId, reservationId, socket, pending: [], closed: false };
     this.localStreams.set(message.streamId, stream);
 
     socket.on("open", () => {

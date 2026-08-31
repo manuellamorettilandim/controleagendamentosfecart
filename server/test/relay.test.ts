@@ -639,3 +639,48 @@ test("relay enforces WebSocket upgrade rate limits and max concurrent streams pe
   }
 });
 
+test("protocol decodes stream.open with or without reservationId for backward compatibility", () => {
+  const legacyPayload = Buffer.from(JSON.stringify({
+    v: PROTOCOL_VERSION,
+    type: "stream.open",
+    streamId: "stream-123",
+    deviceId: "device-456",
+    accountId: "account-789",
+  }), "utf8");
+  const decodedLegacy = decodeMessage(legacyPayload);
+  assert.ok(decodedLegacy);
+  assert.equal(decodedLegacy.type, "stream.open");
+  if (decodedLegacy.type === "stream.open") {
+    assert.equal(decodedLegacy.reservationId, undefined);
+  }
+
+  const modernPayload = Buffer.from(JSON.stringify({
+    v: PROTOCOL_VERSION,
+    type: "stream.open",
+    streamId: "stream-123",
+    deviceId: "device-456",
+    accountId: "account-789",
+    reservationId: "res-abc",
+  }), "utf8");
+  const decodedModern = decodeMessage(modernPayload);
+  assert.ok(decodedModern);
+  assert.equal(decodedModern.type, "stream.open");
+  if (decodedModern.type === "stream.open") {
+    assert.equal(decodedModern.reservationId, "res-abc");
+  }
+
+  const nullPayload = Buffer.from(JSON.stringify({
+    v: PROTOCOL_VERSION,
+    type: "stream.open",
+    streamId: "stream-123",
+    deviceId: "device-456",
+    accountId: "account-789",
+    reservationId: null,
+  }), "utf8");
+  const decodedNull = decodeMessage(nullPayload);
+  assert.ok(decodedNull);
+  assert.equal(decodedNull.type, "stream.open");
+  if (decodedNull.type === "stream.open") {
+    assert.equal(decodedNull.reservationId, null);
+  }
+});

@@ -107,7 +107,7 @@ npm.cmd run admin -- create --login professor --role owner
 npm.cmd run admin -- create --login raissa --role admin
 ```
 
-Somente `owner` visualiza telemetria; `owner` e `admin` podem revisar pedidos, bloquear agendamentos de um grupo e revogar seu token ativo.
+Tanto `owner` quanto `admin` visualizam o status, cotas e telemetria das contas, revisam pedidos e gerenciam tokens de acesso; a listagem de administradores e o registro de auditoria completo são restritos ao `owner`.
 
 Depois abra `https://SEU_RELAY.onrender.com/admin`. O host inicia um app-server por conta, cada um em seu próprio `CODEX_HOME`; novas contas podem ser adicionadas no painel e o login device-code é exibido ali.
 

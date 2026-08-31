@@ -1,4 +1,4 @@
-﻿import type { RawData } from "ws";
+import type { RawData } from "ws";
 
 export const PROTOCOL_VERSION = 1 as const;
 
@@ -159,7 +159,7 @@ export interface StreamOpenMessage {
   streamId: string;
   deviceId: string;
   accountId: string;
-  reservationId: string | null;
+  reservationId?: string | null;
 }
 
 export interface StreamDataMessage {
@@ -455,7 +455,13 @@ function validMessage(value: unknown): value is WireMessage {
     case "access.seen":
       return isString(value.deviceId) && value.deviceId.length > 0 && value.deviceId.length <= 120;
     case "stream.open":
-      return isString(value.streamId) && isString(value.deviceId) && isString(value.accountId) && isNullableString(value.reservationId) && value.streamId.length > 0;
+      return (
+        isString(value.streamId) &&
+        isString(value.deviceId) &&
+        isString(value.accountId) &&
+        (value.reservationId === undefined || isNullableString(value.reservationId)) &&
+        value.streamId.length > 0
+      );
     case "stream.data":
       return (
         isString(value.streamId) &&

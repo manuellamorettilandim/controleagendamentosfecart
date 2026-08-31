@@ -623,6 +623,10 @@ summary:focus-visible {
   flex: 0 0 auto;
 }
 
+.access-mobile-notice {
+  display: none;
+}
+
 .support-contact-card {
   display: flex;
   align-items: flex-start;
@@ -2642,13 +2646,14 @@ summary:focus-visible {
 }
 
 .booking-dialog {
-  width: min(680px, calc(100vw - 24px));
-  max-width: 680px;
+  width: min(560px, calc(100vw - 24px));
+  max-width: 560px;
   max-height: calc(100vh - 24px);
   padding: 0;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
   border: 1px solid var(--line-strong);
-  border-radius: 15px;
+  border-radius: 18px;
   color: var(--text);
   background: var(--surface-raised);
   box-shadow: 0 28px 80px var(--shadow);
@@ -2668,6 +2673,7 @@ summary:focus-visible {
   display: grid;
   max-height: calc(100vh - 24px);
   grid-template-rows: auto 1fr auto;
+  overflow-x: hidden;
 }
 
 .dialog-header {
@@ -2683,7 +2689,7 @@ summary:focus-visible {
   margin: 1px 0 0;
   font-size: 20px;
   font-weight: 650;
-  letter-spacing: -0.03em;
+  letter-spacing: -0.02em;
 }
 
 .dialog-header p {
@@ -2835,40 +2841,576 @@ summary:focus-visible {
   color: var(--muted-strong);
 }
 
-.booking-summary {
+/* ==========================================================================
+   Modern Minimalist Booking Dialog (3D Carousel, Date Nav & Account Tabs)
+   ========================================================================== */
+
+.booking-dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px 24px 16px;
+  overflow-x: hidden;
+  overflow-y: visible;
+}
+
+/* 1. Account Segmented Tabs */
+.booking-account-tabs-wrapper {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 2px;
+}
+
+.booking-account-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  background: var(--field);
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.booking-account-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 9px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-soft);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 180ms ease;
+  white-space: nowrap;
+}
+
+.booking-account-tab:hover:not(.is-active) {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+.booking-account-tab.is-active {
+  background: var(--surface-raised);
+  border-color: var(--line-strong);
+  color: var(--text);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+}
+
+.booking-account-tab .tab-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 99px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.booking-account-tab.is-active .tab-badge {
+  background: rgba(var(--accent-rgb), 0.2);
+  color: var(--accent);
+}
+
+/* 2. Centered Date Navigation */
+.booking-date-nav-wrapper {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 12px;
-  padding: 14px 15px;
-  border: 1px solid var(--line-strong);
-  border-radius: 9px;
+  margin: 2px 0 6px;
+}
+
+.date-nav-arrow {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
   background: var(--field);
+  border: 1px solid var(--line-strong);
+  color: var(--text-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  cursor: pointer;
+  transition: all 180ms ease;
 }
 
-.booking-summary > .ph {
-  flex: 0 0 auto;
-  color: var(--accent);
-  font-size: 24px;
-}
-
-.booking-summary div {
-  display: grid;
-  gap: 3px;
-}
-
-.booking-summary strong {
+.date-nav-arrow:hover:not(:disabled) {
+  border-color: var(--accent);
   color: var(--text);
-  font-size: 13px;
+  background: var(--surface-hover);
+  transform: translateY(-1px);
 }
 
-.booking-summary span,
-.booking-summary small {
-  color: var(--muted-strong);
-  font-size: 11px;
+.date-nav-arrow:disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
 }
 
-.booking-summary small {
+.booking-date-center {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 18px;
+  background: var(--field);
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 180ms ease;
+  min-width: 190px;
+  justify-content: center;
+  user-select: none;
+}
+
+.booking-date-center:hover {
+  border-color: var(--accent);
+  background: var(--surface-hover);
+}
+
+.booking-date-icon {
+  font-size: 18px;
   color: var(--accent);
+}
+
+.booking-date-info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+
+.booking-date-info strong {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.booking-date-info span {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.booking-date-caret {
+  font-size: 12px;
+  color: var(--muted);
+  transition: transform 0.2s ease;
+}
+
+.booking-date-input-overlay {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+  width: 100%;
+  height: 100%;
+  pointer-events: auto;
+}
+
+/* 3. Modern 3D Carousel Section */
+.booking-carousel-section {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin: 4px 0;
+}
+
+.booking-carousel-viewport {
+  position: relative;
+  width: 100%;
+  height: 170px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  perspective: 1100px;
+  overflow-x: hidden;
+  overflow-y: visible;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.booking-carousel-track {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform-style: preserve-3d;
+  touch-action: pan-y;
+  cursor: grab;
+}
+
+.booking-carousel-track.is-dragging {
+  cursor: grabbing;
+}
+
+.booking-carousel-track.is-dragging .booking-carousel-card {
+  transition: none !important;
+}
+
+/* Carousel Arrow Buttons */
+.carousel-control-btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 25;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--surface-raised);
+  border: 1px solid var(--line-strong);
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 17px;
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  transition: all 160ms ease;
+}
+
+.carousel-control-btn:hover:not(:disabled) {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #ffffff;
+  transform: translateY(-50%) scale(1.08);
+}
+
+.carousel-control-btn:disabled {
+  opacity: 0.15;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.carousel-control-btn.is-prev {
+  left: 4px;
+}
+
+.carousel-control-btn.is-next {
+  right: 4px;
+}
+
+/* Carousel Cards - 100% Solid background to eliminate see-through text ghosting */
+.booking-carousel-card {
+  position: absolute;
+  width: 295px;
+  height: 144px;
+  padding: 14px 18px;
+  border-radius: 16px;
+  background: #181d24; /* Solid opaque card background */
+  border: 1px solid var(--line-strong);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  cursor: pointer;
+  transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+              filter 0.22s ease,
+              opacity 0.22s ease,
+              border-color 0.2s ease,
+              box-shadow 0.25s ease;
+  will-change: transform, filter, opacity;
+  box-sizing: border-box;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Focused Center Card: Larger, elevated, prominent glowing border */
+.booking-carousel-card.is-center {
+  transform: translateX(0) scale(1.03) translateZ(0);
+  opacity: 1;
+  z-index: 10;
+  border-color: var(--accent);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.6), 0 0 0 2px var(--accent), 0 0 24px rgba(var(--accent-rgb), 0.32);
+  background: #1c2431; /* Crisp solid dark-accent surface */
+  filter: none;
+  cursor: default;
+}
+
+/* Left / Prev Card: Receded, dimmed via brightness (NO text bleed-through) */
+.booking-carousel-card.is-prev {
+  transform: translateX(-155px) scale(0.86) translateZ(-50px) rotateY(10deg);
+  opacity: 1;
+  z-index: 5;
+  filter: brightness(0.48) saturate(0.7);
+}
+
+.booking-carousel-card.is-prev:hover {
+  filter: brightness(0.75) saturate(0.9);
+}
+
+/* Right / Next Card: Receded, dimmed via brightness (NO text bleed-through) */
+.booking-carousel-card.is-next {
+  transform: translateX(155px) scale(0.86) translateZ(-50px) rotateY(-10deg);
+  opacity: 1;
+  z-index: 5;
+  filter: brightness(0.48) saturate(0.7);
+}
+
+.booking-carousel-card.is-next:hover {
+  filter: brightness(0.75) saturate(0.9);
+}
+
+/* Far Cards: Deeply in background */
+.booking-carousel-card.is-far-prev {
+  transform: translateX(-265px) scale(0.72) translateZ(-110px) rotateY(18deg);
+  opacity: 0.6;
+  filter: brightness(0.28);
+  z-index: 2;
+}
+
+.booking-carousel-card.is-far-next {
+  transform: translateX(265px) scale(0.72) translateZ(-110px) rotateY(-18deg);
+  opacity: 0.6;
+  filter: brightness(0.28);
+  z-index: 2;
+}
+
+/* Hidden Cards beyond 2 steps */
+.booking-carousel-card.is-hidden {
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+  z-index: 1;
+}
+
+/* Blocked / Unavailable Visual States */
+.booking-carousel-card.is-blocked {
+  cursor: pointer;
+}
+
+.booking-carousel-card.is-center.is-busy {
+  border-color: rgba(var(--danger-rgb), 0.6);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6), 0 0 0 2px rgba(var(--danger-rgb), 0.6), 0 0 24px rgba(var(--danger-rgb), 0.25);
+  background: #241a1d;
+}
+
+.booking-carousel-card.is-center.is-past {
+  border-color: var(--line-strong);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+  background: #171a1f;
+  filter: grayscale(0.75) brightness(0.85);
+}
+
+.booking-carousel-card.is-past:not(.is-center),
+.booking-carousel-card.is-busy:not(.is-center) {
+  filter: brightness(0.35) grayscale(0.5);
+}
+
+/* Card Interior */
+.carousel-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.carousel-period-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted-strong);
+}
+
+.carousel-period-pill .ph {
+  font-size: 14px;
+  color: var(--accent);
+}
+
+.carousel-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 99px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.carousel-status-badge.is-available {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.carousel-status-badge.is-busy {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.carousel-status-badge.is-past {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--muted);
+}
+
+.status-indicator-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.carousel-card-time {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 4px 0;
+}
+
+.carousel-card-time .time-part {
+  font-size: 20px;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+
+.carousel-card-time .time-arrow {
+  font-size: 16px;
+  color: var(--muted);
+}
+
+.carousel-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.carousel-card-desc {
+  font-size: 11px;
+  color: var(--muted-strong);
+  font-weight: 500;
+}
+
+/* Carousel Pagination Dots */
+.booking-carousel-dots {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 8px;
+  max-width: 260px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 4px 6px;
+}
+
+.booking-carousel-dots::-webkit-scrollbar {
+  display: none;
+}
+
+.carousel-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 99px;
+  background: var(--line-strong);
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  transition: all 220ms ease;
+  flex-shrink: 0;
+}
+
+.carousel-dot:hover {
+  background: var(--muted-strong);
+}
+
+.carousel-dot.is-active {
+  width: 20px;
+  background: var(--accent);
+  box-shadow: 0 2px 8px rgba(var(--accent-rgb), 0.45);
+}
+
+/* 4. Feedback / Status Message */
+.booking-feedback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 9px 14px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  margin-top: 4px;
+  transition: all 180ms ease;
+  text-align: center;
+}
+
+.booking-feedback.is-available {
+  background: var(--success-soft);
+  border: 1px solid rgba(var(--success-rgb), 0.28);
+  color: var(--success);
+}
+
+.booking-feedback.is-conflict {
+  background: var(--danger-soft);
+  border: 1px solid rgba(var(--danger-rgb), 0.28);
+  color: var(--danger);
+}
+
+.booking-feedback.is-past {
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  color: var(--muted);
+}
+
+.booking-feedback .ph {
+  font-size: 16px;
+  flex: 0 0 auto;
+}
+
+/* Mobile Responsiveness for Carousel */
+@media (max-width: 600px) {
+  .booking-dialog {
+    width: calc(100vw - 16px);
+  }
+
+  .booking-dialog-body {
+    padding: 14px 16px;
+  }
+
+  /* Hide floating navigation buttons on mobile as user requested swipe gesture */
+  .carousel-control-btn {
+    display: none !important;
+  }
+
+  .booking-carousel-viewport {
+    height: 155px;
+  }
+
+  .booking-carousel-card {
+    width: 250px;
+    height: 134px;
+    padding: 12px 14px;
+  }
+
+  .booking-carousel-card.is-prev {
+    transform: translateX(-112px) scale(0.84) translateZ(-40px);
+  }
+
+  .booking-carousel-card.is-next {
+    transform: translateX(112px) scale(0.84) translateZ(-40px);
+  }
+
+  .booking-carousel-card.is-far-prev,
+  .booking-carousel-card.is-far-next {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+  }
+
+  .carousel-card-time .time-part {
+    font-size: 18px;
+  }
 }
 
 .approval-callout {
@@ -3029,13 +3571,17 @@ summary:focus-visible {
     font-size: 16px;
   }
 
+  .brand-tagline {
+    display: none;
+  }
+
   .brand img {
     width: 28px;
     height: 28px;
   }
 
   .top-actions {
-    gap: 2px;
+    gap: 4px;
   }
 
   .top-action {
@@ -3087,47 +3633,78 @@ summary:focus-visible {
   }
 
   .access-card-actions {
-    width: 100%;
+    display: none;
   }
 
-  .access-card-actions .primary-button,
-  .access-card-actions .secondary-button {
-    flex: 1;
-    justify-content: center;
+  #access-copy-status {
+    display: none;
   }
 
-  .access-platform-row {
+  .access-command-box {
+    display: none;
+  }
+
+  .access-mobile-notice {
+    display: flex;
     flex-direction: column;
-    align-items: flex-start;
-    gap: 8px;
+    gap: 14px;
+    margin-top: 14px;
+    padding: 16px;
+    border-radius: 12px;
+    border: 1px solid rgba(var(--accent-rgb), 0.22);
+    background: rgba(var(--accent-rgb), 0.06);
   }
 
-  .access-platform-tabs {
-    width: 100%;
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
+  .access-mobile-notice-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .access-mobile-notice-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    background: rgba(var(--accent-rgb), 0.16);
+    border: 1px solid rgba(var(--accent-rgb), 0.3);
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    flex-shrink: 0;
+  }
+
+  .access-mobile-notice-text {
+    display: flex;
+    flex-direction: column;
     gap: 4px;
   }
 
-  .platform-tab {
-    text-align: center;
+  .access-mobile-notice-text strong {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text);
   }
 
-  .access-terminal-line {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 10px;
-    padding: 10px 12px;
+  .access-mobile-notice-text p {
+    font-size: 12px;
+    color: var(--text-soft);
+    line-height: 1.45;
+    margin: 0;
   }
 
-  .terminal-actions {
-    justify-content: flex-end;
+  .access-mobile-notice-actions {
     width: 100%;
   }
 
-  .copy-command-btn {
-    flex: 1;
+  .mobile-book-btn {
+    width: 100%;
+    min-height: 42px;
     justify-content: center;
+    font-size: 13px;
+    font-weight: 650;
+    box-shadow: 0 4px 14px rgba(var(--accent-rgb), 0.35);
   }
 
   .metric-list {
@@ -3175,11 +3752,33 @@ summary:focus-visible {
   .guides-intro {
     align-items: flex-start;
     flex-direction: column;
+    gap: 12px;
   }
 
   .calendar-header-actions {
     width: 100%;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
     justify-content: space-between;
+  }
+
+  .limit-label {
+    font-size: 11px;
+    color: var(--muted);
+    order: 3;
+    width: 100%;
+  }
+
+  #open-booking {
+    order: 2;
+  }
+
+  .stats-group-pill {
+    display: inline-block;
+    word-break: break-word;
+    white-space: normal;
   }
 
   .calendar-sticky-header {
@@ -3192,6 +3791,8 @@ summary:focus-visible {
   .account-switcher {
     justify-content: flex-start;
     overflow-x: auto;
+    max-width: 100%;
+    order: 1;
   }
 
   .calendar-toolbar {
@@ -3349,17 +3950,70 @@ summary:focus-visible {
     grid-column: auto;
   }
 
-  .dialog-footer .primary-button,
-  .dialog-footer .secondary-button {
-    flex: 1;
-    padding-right: 8px;
-    padding-left: 8px;
-  }
-
   .toast {
     right: 12px;
     bottom: 12px;
     max-width: calc(100vw - 24px);
+  }
+}
+
+@media (max-width: 600px) {
+  .booking-dialog,
+  .reservation-action-dialog {
+    width: calc(100vw - 24px) !important;
+    max-width: calc(100vw - 24px) !important;
+    margin: auto;
+  }
+
+  .dialog-footer {
+    flex-direction: column-reverse;
+    gap: 8px;
+    padding: 12px 16px 16px;
+  }
+
+  .dialog-footer .primary-button,
+  .dialog-footer .secondary-button {
+    width: 100%;
+    min-height: 44px;
+    justify-content: center;
+    white-space: nowrap;
+    padding: 0 16px;
+  }
+
+  .notifications-popover {
+    position: fixed;
+    top: 56px;
+    left: 12px;
+    right: 12px;
+    width: auto;
+    max-width: calc(100vw - 24px);
+    z-index: 50;
+  }
+
+  .notifications-popover::before {
+    display: none;
+  }
+
+  .booking-date-center {
+    min-width: 0;
+    width: 100%;
+    padding: 6px 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .top-nav {
+    padding-right: 10px;
+    padding-left: 10px;
+  }
+
+  .user-profile-badge {
+    padding: 2px;
+    margin-right: 2px;
+  }
+
+  .user-profile-info {
+    display: none;
   }
 }
 

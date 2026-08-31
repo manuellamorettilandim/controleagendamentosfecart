@@ -74,6 +74,7 @@ import { mountCalendar } from "../components/CalendarHost";
     endOfMonth,
     formatRange,
     formatTime,
+    isSameDay: sameDay,
     sameDay,
     startOfDay,
     startOfHour,
