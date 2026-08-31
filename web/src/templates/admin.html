@@ -28,7 +28,7 @@
             </article>
             <article class="metric-card">
               <div class="metric-icon metric-icon-blue"><i class="ph ph-gauge" aria-hidden="true"></i></div>
-              <div class="metric-copy"><span>Quota remanescente <em>(agregada)</em></span><strong id="metric-quota">—</strong><small id="metric-quota-detail">carregando dados reais</small></div>
+              <div class="metric-copy"><span>Quota de 5 horas <em>(média)</em></span><strong id="metric-quota">—</strong><small id="metric-quota-detail">carregando dados reais</small></div>
               <div class="metric-progress"><span id="metric-quota-progress" style="width: 0%"></span></div>
             </article>
             <article class="metric-card">
@@ -99,11 +99,9 @@
             </header>
             <form id="general-settings-form" class="general-settings-form">
               <div class="settings-quota-grid">
-                <label class="settings-field" for="settings-max-quota"><span>Teto máximo por solicitação</span><select id="settings-max-quota" required></select><small>Limite que um grupo pode solicitar por sessão.</small></label>
                 <div class="settings-auto-card">
-                  <div class="settings-auto-copy"><strong>Autoaprovação</strong><small>Aprova automaticamente pedidos dentro do limite e com cota disponível.</small></div>
+                  <div class="settings-auto-copy"><strong>Autoaprovação</strong><small>Aprova automaticamente pedidos de uma janela completa de 5 horas.</small></div>
                   <label class="switch-control" for="settings-auto-approve-enabled"><input id="settings-auto-approve-enabled" type="checkbox"><span aria-hidden="true"></span><b id="settings-auto-label">Desativada</b></label>
-                  <label class="settings-field settings-auto-limit" for="settings-auto-approve"><span>Aprovar automaticamente até</span><select id="settings-auto-approve" required disabled></select></label>
                 </div>
               </div>
 
@@ -134,12 +132,8 @@
             </dl>
           </div>
           <div class="review-fields">
-            <div class="field-row"><label>Início aprovado<input id="review-start" type="datetime-local" step="900"></label><label>Fim aprovado<input id="review-end" type="datetime-local" step="900"></label></div>
-            <label class="range-field" for="review-quota">
-              <span><span>Uso aprovado <small id="review-requested-quota">solicitado: —</small></span><output id="review-quota-output" for="review-quota">5%</output></span>
-              <input id="review-quota" type="range" min="1" max="100" step="1" value="5">
-              <small id="review-adjustment-label">Sem ajuste de uso</small>
-            </label>
+            <div class="field-row"><label>Início sincronizado<input id="review-start" type="datetime-local" step="60" readonly></label><label>Fim da sessão<input id="review-end" type="datetime-local" step="60" readonly></label></div>
+            <div class="modal-callout"><i class="ph ph-gauge" aria-hidden="true"></i><span>Esta sessão recebe 100% da quota da janela fixa de 5 horas.</span></div>
             <label class="textarea-field">Justificativa da decisão<textarea id="review-note" maxlength="200" rows="3" placeholder="Explique o motivo da decisão..."></textarea><small><span id="review-note-count">0</span>/200</small></label>
           </div>
           <div class="modal-callout"><i class="ph ph-info" aria-hidden="true"></i><span>O pedido só libera a sessão depois da aprovação administrativa.</span></div>

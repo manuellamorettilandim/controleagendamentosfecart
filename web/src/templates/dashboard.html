@@ -2,7 +2,7 @@
       <header class="top-nav" aria-label="Navegação principal">
         <a class="brand" href="/dashboard" aria-label="Fecart AI Share — visão geral">
           <img src="/assets/fecart-logo.png" alt="">
-          <span>Fecart <strong>AI</strong> Share</span>
+          <span>Fecart <span class="brand-tagline"><strong>AI</strong> Share</span></span>
         </a>
 
         <nav class="main-tabs" role="tablist" aria-label="Áreas do usuário">
@@ -107,6 +107,25 @@
                 </div>
               </div>
             </div>
+
+            <!-- Mobile notice for smartphones (desktop orientation + booking action) -->
+            <div class="access-mobile-notice" aria-label="Informações de acesso no smartphone">
+              <div class="access-mobile-notice-header">
+                <div class="access-mobile-notice-icon">
+                  <i class="ph ph-laptop" aria-hidden="true"></i>
+                </div>
+                <div class="access-mobile-notice-text">
+                  <strong>Acesso ao Codex pelo computador</strong>
+                  <p>O ambiente de terminal e os aplicativos desktop funcionam no seu computador de desenvolvimento. Use o celular para consultar a agenda e agendar seus horários.</p>
+                </div>
+              </div>
+              <div class="access-mobile-notice-actions">
+                <button type="button" class="primary-button mobile-book-btn" onclick="document.querySelector('#open-booking-top')?.click()">
+                  <i class="ph ph-calendar-plus" aria-hidden="true"></i>
+                  <span>Agendar novo horário</span>
+                </button>
+              </div>
+            </div>
           </section>
 
           <section class="summary-grid" aria-label="Resumo da conta">
@@ -129,7 +148,7 @@
               <div class="session-overview">
                 <div class="session-state-block"><span id="session-dot" class="session-dot"></span><strong id="session-status">Sessão desligada</strong><small id="session-started">Ative um horário aprovado para começar.</small></div>
                 <div class="progress-stat"><div id="session-progress" class="progress-ring progress-ring--empty" role="img" aria-label="Tempo restante"><span id="session-percent">—</span></div><div><span>Contagem regressiva</span><strong id="session-time">—</strong><small id="session-time-total">sem sessão aprovada</small></div></div>
-                <div class="progress-stat"><div id="quota-progress" class="progress-ring" role="img" aria-label="Uso restante"><span id="quota-percent">—</span></div><div><span>Uso restante</span><strong id="quota-used">—</strong><small id="quota-total">da sessão aprovada</small></div></div>
+                <div class="progress-stat"><div id="quota-progress" class="progress-ring" role="img" aria-label="Quota de 5 horas restante"><span id="quota-percent">—</span></div><div><span>Quota de 5 horas</span><strong id="quota-used">—</strong><small id="quota-total">aguardando telemetria</small></div></div>
               </div>
               <div class="session-telemetry" aria-live="polite"><div><i class="ph ph-pulse" aria-hidden="true"></i><span>Atividade do Codex</span></div><strong id="session-usage-tokens">0 tokens observados</strong><small id="session-activity">Aguardando a sessão iniciar.</small></div>
             </article>
@@ -144,11 +163,11 @@
             <div class="calendar-toolbar">
               <div class="calendar-nav"><button id="calendar-prev" class="calendar-control" type="button" aria-label="Semana anterior"><i class="ph ph-caret-left" aria-hidden="true"></i></button><button id="calendar-next" class="calendar-control" type="button" aria-label="Próxima semana"><i class="ph ph-caret-right" aria-hidden="true"></i></button><button id="calendar-today" class="calendar-control today-control" type="button">Hoje</button></div>
               <strong id="calendar-range" class="calendar-range">—</strong>
-              <div class="calendar-view-switch" role="group" aria-label="Modo de visualização"><button class="is-active" type="button" data-calendar-view="timeGridWeek">Semana</button><button type="button" data-calendar-view="timeGridDay">Dia</button><button type="button" data-calendar-view="listWeek">Lista</button></div>
+              <div class="calendar-view-switch" role="group" aria-label="Modo de visualização"><button type="button" data-calendar-view="timeGridWeek">Semana</button><button type="button" data-calendar-view="timeGridDay">Dia</button><button type="button" data-calendar-view="listWeek">Lista</button></div>
             </div>
             </div>
             <div id="calendar-board" class="calendar-board" aria-label="Agenda semanal"></div>
-            <footer class="calendar-footer"><div class="calendar-legend"><span><i class="legend-dot legend-free"></i> livre</span><span><i class="legend-dot legend-mine"></i> sua solicitação</span><span><i class="legend-dot legend-busy"></i> ocupado</span></div><p id="calendar-constraint" class="constraint-note"><i class="ph ph-info" aria-hidden="true"></i> Solicitações disponíveis até 3 dias à frente.</p></footer>
+            <footer class="calendar-footer"><div class="calendar-legend"><span><i class="legend-dot legend-free"></i> livre</span><span><i class="legend-dot legend-mine"></i> sua solicitação</span><span><i class="legend-dot legend-busy"></i> ocupado</span></div><p id="calendar-constraint" class="constraint-note"><i class="ph ph-info" aria-hidden="true"></i> Comece agora até o próximo reset ou reserve um ciclo completo de 5 horas.</p></footer>
           </section>
         </section>
 
@@ -452,19 +471,83 @@
 
     <dialog id="booking-modal" class="booking-dialog" aria-labelledby="booking-title">
       <form id="booking-form" method="dialog">
-        <header class="dialog-header"><div><span class="section-kicker">Solicitação de acesso</span><h2 id="booking-title">Novo agendamento</h2><p>Escolha quando você precisa usar o ambiente.</p></div><button id="booking-close" class="dialog-close" type="button" aria-label="Fechar modal"><i class="ph ph-x" aria-hidden="true"></i></button></header>
-        <div class="dialog-body">
-          <div class="dialog-field"><label for="booking-account">Conta</label><select id="booking-account" required></select></div>
-          <div class="dialog-field"><label for="booking-date">Início</label><input id="booking-date" type="date" required></div>
-          <div class="dialog-field"><label for="booking-time">Horário</label><input id="booking-time" type="time" step="3600" required></div>
-          <div class="dialog-field"><label for="booking-duration">Duração</label><select id="booking-duration"><option value="1">1 hora</option><option value="2">2 horas</option><option value="3">3 horas</option></select></div>
-          <div class="dialog-field"><label for="booking-quota">Uso solicitado</label><select id="booking-quota"><option value="5" selected>5%</option><option value="10">10%</option><option value="15">15%</option><option value="20">20%</option><option value="25">25%</option></select></div>
-          <div class="dialog-field"><label for="booking-end">Fim previsto</label><input id="booking-end" type="text" readonly aria-readonly="true" placeholder="Calculado automaticamente"></div>
-          <div class="dialog-field dialog-field--full"><label for="booking-note">Observação <span>opcional</span></label><textarea id="booking-note" rows="3" maxlength="500" placeholder="Descreva brevemente o que será feito com a API..."></textarea></div>
-          <aside class="approval-callout"><i class="ph ph-clock" aria-hidden="true"></i><p>O pedido será enviado para aprovação. Depois de aprovado, o token será gerado quando o horário começar.</p></aside>
-          <p id="booking-message" class="dialog-message" role="alert"></p>
+        <header class="dialog-header">
+          <div>
+            <span class="section-kicker">Solicitação de acesso</span>
+            <h2 id="booking-title">Novo agendamento</h2>
+            <p id="booking-subtitle">Selecione a conta, a data e o intervalo de 5 horas desejado.</p>
+          </div>
+          <button id="booking-close" class="dialog-close" type="button" aria-label="Fechar modal">
+            <i class="ph ph-x" aria-hidden="true"></i>
+          </button>
+        </header>
+
+        <div class="dialog-body booking-dialog-body">
+          <!-- Fallback/compatible select for form data -->
+          <select id="booking-account" class="visually-hidden" tabindex="-1" aria-hidden="true" style="position:absolute; width:1px; height:1px; opacity:0; pointer-events:none;"></select>
+
+          <!-- 1. Account Segmented Tabs (hidden if <= 1 account) -->
+          <div id="booking-account-field" class="booking-account-tabs-wrapper" hidden>
+            <div id="booking-account-tabs" class="booking-account-tabs" role="tablist" aria-label="Contas disponíveis"></div>
+          </div>
+
+          <!-- 2. Centered Date Navigation -->
+          <div class="booking-date-nav-wrapper">
+            <button type="button" id="booking-date-prev" class="date-nav-arrow" aria-label="Dia anterior" title="Dia anterior">
+              <i class="ph ph-caret-left" aria-hidden="true"></i>
+            </button>
+            <div class="booking-date-center" id="booking-date-picker-trigger" title="Clique para escolher uma data no calendário">
+              <i class="ph ph-calendar-blank booking-date-icon" aria-hidden="true"></i>
+              <div class="booking-date-info">
+                <strong id="booking-date-day-name">Hoje</strong>
+                <span id="booking-date-formatted">Carregando…</span>
+              </div>
+              <i class="ph ph-caret-down booking-date-caret" aria-hidden="true"></i>
+              <input id="booking-date" type="date" class="booking-date-input-overlay" aria-label="Escolher data específica">
+            </div>
+            <button type="button" id="booking-date-next" class="date-nav-arrow" aria-label="Próximo dia" title="Próximo dia">
+              <i class="ph ph-caret-right" aria-hidden="true"></i>
+            </button>
+          </div>
+
+          <!-- 3. Modern 3D Carousel Section -->
+          <section class="booking-carousel-section" aria-label="Seleção de intervalo de 5 horas">
+            <div class="booking-carousel-viewport">
+              <button type="button" id="carousel-prev-btn" class="carousel-control-btn is-prev" aria-label="Intervalo anterior" title="Intervalo anterior">
+                <i class="ph ph-caret-left" aria-hidden="true"></i>
+              </button>
+              <button type="button" id="carousel-next-btn" class="carousel-control-btn is-next" aria-label="Próximo intervalo" title="Próximo intervalo">
+                <i class="ph ph-caret-right" aria-hidden="true"></i>
+              </button>
+              <div id="booking-carousel-track" class="booking-carousel-track" role="region" aria-label="Carrossel de intervalos"></div>
+            </div>
+            <div id="booking-carousel-dots" class="booking-carousel-dots" role="tablist" aria-label="Navegação por pontos do carrossel"></div>
+            <input id="booking-time" type="time" step="60" style="position:absolute; width:1px; height:1px; opacity:0; pointer-events:none;" aria-hidden="true">
+          </section>
+
+          <!-- 4. Feedback / Status Message -->
+          <div id="booking-feedback" class="booking-feedback is-available" role="status" aria-live="polite">
+            <i class="ph ph-check-circle" aria-hidden="true"></i>
+            <span id="booking-feedback-text">Intervalo pronto para agendamento.</span>
+          </div>
+
+          <!-- Legacy & accessibility helpers -->
+          <div hidden>
+            <strong id="booking-summary-title">5 horas de acesso completo</strong>
+            <span id="booking-summary-window"></span>
+            <small id="booking-summary-quota"></small>
+            <small id="booking-adjustment"></small>
+          </div>
+          <p id="booking-message" class="dialog-message" role="alert" hidden></p>
         </div>
-        <footer class="dialog-footer"><button id="booking-cancel" class="secondary-button" type="button">Cancelar</button><button id="booking-submit" class="primary-button" type="submit"><span>Enviar solicitação</span><i class="ph ph-arrow-right" aria-hidden="true"></i></button></footer>
+
+        <footer class="dialog-footer">
+          <button id="booking-cancel" class="secondary-button" type="button">Cancelar</button>
+          <button id="booking-submit" class="primary-button" type="submit">
+            <span>Confirmar agendamento</span>
+            <i class="ph ph-arrow-right" aria-hidden="true"></i>
+          </button>
+        </footer>
       </form>
     </dialog>
 

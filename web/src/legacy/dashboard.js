@@ -29,6 +29,12 @@
     actionKind: null,
     endedReservationIds: new Set(),
     loading: false,
+    carouselSlots: [],
+    carouselIndex: 0,
+    bookingSelectedDate: null,
+    isDraggingCarousel: false,
+    dragStartX: 0,
+    dragDeltaX: 0,
   };
 
   function now() {
@@ -142,7 +148,7 @@
     const device = deviceFor(reservation);
     if (!reservation || !device) return false;
     if (device.status === "limited" || device.usage_limit_reached_at) return true;
-    const budget = Number(device.quota_budget_percent ?? reservation.quota_budget_percent ?? reservation.requested_quota_percent);
+    const budget = 100;
     const accumulated = Number(device.quota_consumed_percent);
     if (Number.isFinite(budget) && Number.isFinite(accumulated)) return accumulated >= budget;
     const base = Number(device.quota_base_used_percent ?? reservation.quota_base_used_percent ?? 0);
@@ -153,13 +159,11 @@
   }
 
   function sessionUsage(reservation, device = deviceFor(reservation)) {
-    const budget = Number(device?.quota_budget_percent ?? reservation?.quota_budget_percent ?? reservation?.requested_quota_percent ?? 0);
-    const accumulated = Number(device?.quota_consumed_percent);
-    const base = Number(device?.quota_base_used_percent ?? reservation?.quota_base_used_percent ?? 0);
-    const current = Number(device?.account_used_percent);
-    const consumed = Number.isFinite(accumulated)
-      ? Math.max(0, accumulated)
-      : Number.isFinite(current) ? Math.max(0, current >= base ? current - base : current) : 0;
+    const account = readyAccounts().find((item) => item.account_id === reservation?.account_id);
+    const window = fiveHourWindow(account);
+    const current = Number(device?.account_used_percent ?? window?.usedPercent);
+    const consumed = Number.isFinite(current) ? Math.max(0, Math.min(100, current)) : 0;
+    const budget = 100;
     const exhausted = device?.status === "limited" || Boolean(device?.usage_limit_reached_at);
     if (exhausted) {
       return { budget, consumed: Math.max(consumed, budget), remaining: 0, remainingPercent: 0 };
@@ -199,7 +203,7 @@
 
   function configTomlSnippet(model = "gpt-5.6-sol") {
     const baseUrl = providerBaseUrl();
-    return `model = "${model}"\nmodel_provider = "fecart"\n\n[model_providers.fecart]\nname = "FECART Codex"\nbase_url = "${baseUrl}"\nenv_key = "FECART_CODEX_TOKEN"\nwire_api = "responses"\nsupports_websockets = false`;
+    return `model = "${model}"\nmodel_provider = "fecart"\nweb_search = "live"\n\n[features]\nstandalone_web_search = true\n\n[model_providers.fecart]\nname = "FECART Codex"\nbase_url = "${baseUrl}"\nenv_key = "FECART_CODEX_TOKEN"\nwire_api = "responses"\nsupports_websockets = false\nsupports_standalone_web_search = true`;
   }
 
   function cliCommandFor(token, platform = state.platform) {
@@ -343,6 +347,51 @@
     return (state.data?.accounts || []).filter((account) => account.status === "ready");
   }
 
+  function rateLimitWindows(account) {
+    const limits = Object.values(account?.rate_limits || account?.rateLimits || {});
+    return limits.flatMap((limit) => [limit?.primary, limit?.secondary]).filter(Boolean);
+  }
+
+  function fiveHourWindow(account) {
+    return rateLimitWindows(account).find((window) => Number(window.windowDurationMins) === 300) || null;
+  }
+
+  function resetMilliseconds(window) {
+    const value = Number(window?.resetsAt);
+    if (!Number.isFinite(value) || value <= 0) return null;
+    return value < 10_000_000_000 ? value * 1_000 : value;
+  }
+
+  function alignedResetStart(requested, account = selectedAccount()) {
+    const anchor = resetMilliseconds(fiveHourWindow(account));
+    const requestedMs = new Date(requested).getTime();
+    if (anchor === null || !Number.isFinite(requestedMs)) return null;
+    if (requestedMs <= anchor) return new Date(anchor);
+    return new Date(anchor + Math.ceil((requestedMs - anchor) / (5 * 3_600_000)) * 5 * 3_600_000);
+  }
+
+  function isResetBoundary(start, account = selectedAccount()) {
+    const aligned = alignedResetStart(new Date(start).getTime() - 60_000, account);
+    return Boolean(aligned && Math.abs(aligned.getTime() - new Date(start).getTime()) <= 60_000);
+  }
+
+  function reservationWindow(start, account = selectedAccount()) {
+    const candidate = new Date(start);
+    const startsAt = candidate.getTime();
+    const current = now().getTime();
+    const resetAt = resetMilliseconds(fiveHourWindow(account));
+    if (!Number.isFinite(startsAt) || resetAt === null || startsAt < current - 60_000) return null;
+    if (isResetBoundary(candidate, account)) {
+      return { start: candidate, end: new Date(startsAt + 5 * 3_600_000), complete: true };
+    }
+    const immediate = startsAt <= current + 60_000;
+    const insideCurrentWindow = startsAt >= resetAt - 5 * 3_600_000 && startsAt < resetAt;
+    if (immediate && insideCurrentWindow && resetAt - startsAt >= 5 * 60_000) {
+      return { start: candidate, end: new Date(resetAt), complete: false };
+    }
+    return null;
+  }
+
   function selectedAccount() {
     const accounts = readyAccounts();
     return accounts.find((account) => account.account_id === state.selectedAccountId) || accounts[0] || null;
@@ -372,8 +421,8 @@
       relay: { ready: true, hostConnected: true, registered: true, activeDevices: 1 },
       profile: { user_id: "preview-user", username: "renan", group_name: "Equipe de desenvolvimento", enabled: true, weekly_quota_percent: 20 },
       accounts: [
-        { account_id: "account-1", label: "Account 1", status: "ready", is_default: true, usage: { used_percent: 12 }, observed_at: new Date().toISOString() },
-        { account_id: "account-2", label: "Account 2", status: "ready", is_default: false, usage: { used_percent: 7 }, observed_at: new Date().toISOString() },
+        { account_id: "account-1", label: "Account 1", status: "ready", is_default: true, rate_limits: { codex: { primary: { usedPercent: 12, windowDurationMins: 300, resetsAt: Math.floor(Date.now() / 1000) + 1800 }, secondary: { usedPercent: 28, windowDurationMins: 10080, resetsAt: Math.floor(Date.now() / 1000) + 432000 } } }, observed_at: new Date().toISOString() },
+        { account_id: "account-2", label: "Account 2", status: "ready", is_default: false, rate_limits: { codex: { primary: { usedPercent: 7, windowDurationMins: 300, resetsAt: Math.floor(Date.now() / 1000) + 3600 }, secondary: { usedPercent: 19, windowDurationMins: 10080, resetsAt: Math.floor(Date.now() / 1000) + 518400 } } }, observed_at: new Date().toISOString() },
       ],
       reservations: [
         { id: "preview-active", account_id: "account-1", starts_at: activeStart.toISOString(), ends_at: activeEnd.toISOString(), status: "scheduled", approval_status: "approved", requested_quota_percent: 20, activated_at: activeStart.toISOString(), created_at: pastStart.toISOString(), quota_base_used_percent: 0, quota_budget_percent: 20 },
@@ -702,6 +751,8 @@
       const remainingTime = Math.max(0, end.getTime() - now().getTime());
       const timePercentage = Math.round((remainingTime / total) * 100);
       const usage = sessionUsage(reservation, device);
+      const account = readyAccounts().find((item) => item.account_id === reservation.account_id);
+      const quotaReset = resetMilliseconds(fiveHourWindow(account));
       const limited = sessionLimitReached(reservation);
       components().setProgress($("#session-progress"), timePercentage, `${formatCountdown(remainingTime)} restantes na sessão`);
       $("#session-percent").textContent = `${timePercentage}%`;
@@ -719,7 +770,7 @@
       components().setProgress($("#quota-progress"), usage.remainingPercent, `${usage.remaining.toFixed(1)}% de uso restante`);
       $("#quota-percent").textContent = `${usage.remainingPercent}%`;
       $("#quota-used").textContent = `${usage.remaining.toFixed(1).replace(".0", "")}% restante`;
-      $("#quota-total").textContent = `de ${usage.budget}% aprovados`;
+      $("#quota-total").textContent = quotaReset ? `reset ${components().formatDateTime(new Date(quotaReset))}` : "da janela de 5 horas";
       $("#session-activity").textContent = state.activationInFlight
           ? "Aguardando o host central emitir o token."
           : limited
@@ -736,15 +787,14 @@
         .filter((item) => item.status === "scheduled" && item.approval_status === "approved" && Date.parse(item.starts_at) > now().getTime())
         .sort((a, b) => Date.parse(a.starts_at) - Date.parse(b.starts_at))[0];
       const untilStart = upcoming ? Math.max(0, Date.parse(upcoming.starts_at) - now().getTime()) : 0;
-      const usage = upcoming ? sessionUsage(upcoming, null) : { budget: 0, remaining: 0, remainingPercent: 0 };
       components().setProgress($("#session-progress"), upcoming ? 100 : 0, upcoming ? `${formatCountdown(untilStart)} até a próxima sessão` : "Nenhuma sessão aprovada");
-      components().setProgress($("#quota-progress"), upcoming ? 100 : 0, upcoming ? `${usage.budget}% aprovados para a próxima sessão` : "Sem uso aprovado");
+      components().setProgress($("#quota-progress"), 0, "Sem sessão ativa");
       $("#session-percent").textContent = upcoming ? "100%" : "—";
       $("#session-time").textContent = upcoming ? formatCountdown(untilStart) : "—";
       $("#session-time-total").textContent = upcoming ? `começa ${components().formatDateTime(upcoming.starts_at)}` : "sem sessão aprovada";
-      $("#quota-percent").textContent = upcoming ? "100%" : "—";
-      $("#quota-used").textContent = upcoming ? `${usage.budget}% disponível` : "—";
-      $("#quota-total").textContent = upcoming ? "na próxima sessão" : "sem uso aprovado";
+      $("#quota-percent").textContent = "—";
+      $("#quota-used").textContent = "sem sessão ativa";
+      $("#quota-total").textContent = "disponível na sessão ativa";
       status.textContent = "Sessão desligada";
       dot.classList.remove("is-active", "is-limited");
       $("#session-started").textContent = upcoming ? `Próxima janela ${components().formatDateTime(upcoming.starts_at)}` : "Ative um horário aprovado para começar.";
@@ -756,22 +806,20 @@
     return (state.data?.reservations || []).filter((item) => item.account_id === selectedAccount()?.account_id && item.status !== "cancelled");
   }
 
-  function slotConflict(start, durationHours, accountId = selectedAccount()?.account_id) {
+  function slotConflict(start, end, accountId = selectedAccount()?.account_id) {
     if (!accountId) return true;
-    const end = start.getTime() + durationHours * 3_600_000;
+    const endTime = new Date(end).getTime();
     const reservations = (state.data?.reservations || []).filter((item) => item.account_id === accountId && item.status !== "cancelled");
     const busy = (state.data?.busySlots || []).filter((item) => item.account_id === accountId);
-    return [...reservations, ...busy].some((item) => Date.parse(item.starts_at) < end && Date.parse(item.ends_at) > start.getTime());
+    return [...reservations, ...busy].some((item) => Date.parse(item.starts_at) < endTime && Date.parse(item.ends_at) > start.getTime());
   }
 
-  function isBookable(start, durationHours = 1) {
+  function isBookable(start) {
     const candidate = new Date(start);
-    const value = calendarTools().startOfHour(candidate);
-    const current = now();
-    const currentHour = calendarTools().startOfHour(current);
-    if (!selectedAccount() || candidate.getMinutes() !== 0 || candidate.getSeconds() !== 0 || value.getTime() < currentHour.getTime()) return false;
-    if (value.getTime() > state.bookingMax.getTime() || value.getHours() + Number(durationHours) > 24) return false;
-    return !slotConflict(value, Number(durationHours));
+    const window = reservationWindow(candidate);
+    if (!selectedAccount() || !window) return false;
+    if (candidate.getTime() > state.bookingMax.getTime()) return false;
+    return !slotConflict(candidate, window.end);
   }
 
   function calendarEvents() {
@@ -852,8 +900,8 @@
       return;
     }
 
-    const start = calendarTools().startOfHour(new Date(`${dayCell.dataset.date}T${slot.dataset.time}`));
-    if (Number.isNaN(start.getTime()) || !isBookable(start, 1)) {
+    const start = alignedResetStart(new Date(`${dayCell.dataset.date}T${slot.dataset.time}`));
+    if (!start || Number.isNaN(start.getTime()) || !isBookable(start, 5)) {
       hideCalendarHover();
       return;
     }
@@ -883,11 +931,11 @@
       button.addEventListener("click", () => {
         const start = state.hoverStart ? new Date(state.hoverStart) : null;
         hideCalendarHover();
-        if (!start || !isBookable(start, 1)) {
+        if (!start || !isBookable(start, 5)) {
           components().showToast("Esse horário não está mais livre para solicitação.", "warning");
           return;
         }
-        openBooking(start, 1);
+        openBooking(start);
       });
       board.append(button);
       state.hoverButton = button;
@@ -911,26 +959,27 @@
         selectOverlap: false,
         validRange: { start: calendarRangeStart(), end: calendarRangeEnd() },
         selectAllow: (info) => {
-          const duration = (info.end.getTime() - info.start.getTime()) / 3_600_000;
-          return duration >= 1 && duration <= 3 && isBookable(info.start, duration);
+          const aligned = alignedResetStart(info.start);
+          return Boolean(aligned && isBookable(aligned, 5));
         },
         dateClick: (info) => {
-          const start = calendarTools().startOfHour(info.date);
-          if (!isBookable(start, 1)) {
+          const start = alignedResetStart(info.date);
+          if (!start || !isBookable(start, 5)) {
             const limit = components().formatDate(state.bookingMax);
-            components().showToast(start.getTime() > state.bookingMax.getTime() ? `Solicitações disponíveis até ${limit}.` : "Esse horário não está livre para solicitação.", "warning");
+            const isPastBookingMax = Boolean(start && state.bookingMax && start.getTime() > state.bookingMax.getTime());
+            components().showToast(isPastBookingMax ? `Solicitações disponíveis até ${limit}.` : "Esse horário não está livre para solicitação.", "warning");
             return;
           }
-          openBooking(start, 1);
+          openBooking(start);
         },
         select: (info) => {
-          const duration = (info.end.getTime() - info.start.getTime()) / 3_600_000;
           state.calendar.unselect();
-          if (!isBookable(info.start, duration)) {
-            components().showToast("Selecione um horário livre, futuro e de até 3 horas.", "warning");
+          const start = alignedResetStart(info.start);
+          if (!start || !isBookable(start, 5)) {
+            components().showToast("Não há um ciclo completo de 5 horas livre após esse horário.", "warning");
             return;
           }
-          openBooking(info.start, duration);
+          openBooking(start);
         },
         eventClick: (info) => {
           if (info.event.extendedProps.kind === "busy") {
@@ -965,16 +1014,378 @@
     if (state.calendar) updateCalendarNavigation({ start: state.calendar.view.currentStart, end: state.calendar.view.currentEnd });
   }
 
+  function getDayPeriodLabel(date) {
+    const hours = date.getHours();
+    if (hours >= 0 && hours < 6) return { label: "Madrugada", icon: "ph-moon-stars" };
+    if (hours >= 6 && hours < 12) return { label: "Manhã", icon: "ph-sun" };
+    if (hours >= 12 && hours < 18) return { label: "Tarde", icon: "ph-sun-dim" };
+    return { label: "Noite", icon: "ph-moon" };
+  }
+
+  function getDayRelativeName(date) {
+    if (!date) return "";
+    const today = calendarTools().startOfDay(now());
+    const target = calendarTools().startOfDay(date);
+    const diffDays = Math.round((target.getTime() - today.getTime()) / 86_400_000);
+    if (diffDays === 0) return "Hoje";
+    if (diffDays === 1) return "Amanhã";
+    if (diffDays === 2) return "Depois de amanhã";
+    const daysOfWeek = ["Domingo", "Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado"];
+    return daysOfWeek[target.getDay()];
+  }
+
+  function getDayFormattedShort(date) {
+    const daysShort = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+    return daysShort[date.getDay()];
+  }
+
+  function getFormattedDateExtended(date) {
+    if (!date) return "";
+    const months = [
+      "janeiro", "fevereiro", "março", "abril", "maio", "junho",
+      "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"
+    ];
+    return `${date.getDate()} de ${months[date.getMonth()]}`;
+  }
+
+  function generateSlotsForDate(targetDate, account = selectedAccount()) {
+    if (!account) return [];
+    const dayStart = calendarTools().startOfDay(targetDate);
+    const dayEnd = new Date(dayStart.getTime() + 86_400_000);
+    const anchor = resetMilliseconds(fiveHourWindow(account));
+    if (anchor === null) return [];
+
+    const slots = [];
+    const fiveHoursMs = 5 * 3_600_000;
+    const current = now().getTime();
+
+    // Ongoing partial slot if date is today
+    const isToday = dayStart.getTime() === calendarTools().startOfDay(now()).getTime();
+    if (isToday) {
+      const imm = reservationWindow(now(), account);
+      if (imm && !imm.complete && imm.end.getTime() > current + 5 * 60_000) {
+        const isConflict = slotConflict(imm.start, imm.end, account.account_id);
+        const period = getDayPeriodLabel(imm.start);
+        const relativeDay = getDayRelativeName(imm.start);
+        const durationHours = Math.max(1, Math.round((imm.end.getTime() - imm.start.getTime()) / 3_600_000));
+        slots.push({
+          start: imm.start,
+          end: imm.end,
+          isPartial: true,
+          durationHours,
+          isPast: false,
+          isBusy: isConflict,
+          isAvailable: !isConflict && imm.start.getTime() <= state.bookingMax.getTime(),
+          period,
+          relativeDay,
+          periodTag: `${relativeDay} • ${period.label}`,
+        });
+      }
+    }
+
+    // 5-hour slots throughout target day
+    let t = anchor - Math.ceil((anchor - dayStart.getTime()) / fiveHoursMs) * fiveHoursMs;
+    while (t < dayStart.getTime() - fiveHoursMs) {
+      t += fiveHoursMs;
+    }
+
+    while (t < dayEnd.getTime()) {
+      const slotStart = new Date(t);
+      const slotEnd = new Date(t + fiveHoursMs);
+
+      if (slotStart.getTime() >= dayStart.getTime() && slotStart.getTime() < dayEnd.getTime()) {
+        const isPast = slotStart.getTime() < current - 60_000;
+        const isConflict = slotConflict(slotStart, slotEnd, account.account_id);
+        const isWithinMax = slotStart.getTime() <= state.bookingMax.getTime();
+        const period = getDayPeriodLabel(slotStart);
+        const relativeDay = getDayRelativeName(slotStart);
+        const dayShort = getDayFormattedShort(slotStart);
+        const diffDays = Math.round((dayStart.getTime() - calendarTools().startOfDay(now()).getTime()) / 86_400_000);
+
+        slots.push({
+          start: slotStart,
+          end: slotEnd,
+          isPartial: false,
+          durationHours: 5,
+          isPast,
+          isBusy: !isPast && isConflict,
+          isAvailable: !isPast && !isConflict && isWithinMax,
+          period,
+          relativeDay,
+          periodTag: diffDays <= 1 ? `${relativeDay} • ${period.label}` : `${dayShort} • ${period.label}`,
+        });
+      }
+
+      t += fiveHoursMs;
+    }
+
+    return slots;
+  }
+
+  function updateCarouselCardClasses() {
+    const track = $("#booking-carousel-track");
+    if (!track) return;
+    const cards = track.querySelectorAll(".booking-carousel-card");
+    cards.forEach((card, i) => {
+      const diff = i - state.carouselIndex;
+      card.classList.remove("is-center", "is-prev", "is-next", "is-far-prev", "is-far-next", "is-hidden");
+      if (diff === 0) {
+        card.classList.add("is-center");
+      } else if (diff === -1) {
+        card.classList.add("is-prev");
+      } else if (diff === 1) {
+        card.classList.add("is-next");
+      } else if (diff === -2) {
+        card.classList.add("is-far-prev");
+      } else if (diff === 2) {
+        card.classList.add("is-far-next");
+      } else {
+        card.classList.add("is-hidden");
+      }
+      card.setAttribute("aria-selected", String(diff === 0));
+    });
+
+    const dotsContainer = $("#booking-carousel-dots");
+    if (dotsContainer) {
+      const dots = dotsContainer.querySelectorAll(".carousel-dot");
+      dots.forEach((dot, i) => {
+        dot.classList.toggle("is-active", i === state.carouselIndex);
+      });
+      const activeDot = dots[state.carouselIndex];
+      if (activeDot && typeof activeDot.scrollIntoView === "function") {
+        activeDot.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+      }
+    }
+
+    const prevBtn = $("#carousel-prev-btn");
+    const nextBtn = $("#carousel-next-btn");
+    if (prevBtn) prevBtn.disabled = state.carouselIndex <= 0;
+    if (nextBtn) nextBtn.disabled = state.carouselIndex >= state.carouselSlots.length - 1;
+
+    syncSelectedSlotDetails();
+  }
+
+  function syncSelectedSlotDetails() {
+    const slot = state.carouselSlots[state.carouselIndex];
+    if (!slot) {
+      const feedback = $("#booking-feedback");
+      if (feedback) feedback.className = "booking-feedback is-past";
+      const feedbackText = $("#booking-feedback-text");
+      if (feedbackText) feedbackText.textContent = "Nenhum intervalo disponível para esta data.";
+      const submit = $("#booking-submit");
+      if (submit) submit.disabled = true;
+      return;
+    }
+
+    $("#booking-date").value = dateInputValue(slot.start);
+    $("#booking-time").value = timeInputValue(slot.start);
+
+    const feedback = $("#booking-feedback");
+    const feedbackText = $("#booking-feedback-text");
+    const submit = $("#booking-submit");
+
+    if (slot.isAvailable) {
+      if (feedback) {
+        feedback.className = "booking-feedback is-available";
+        const icon = feedback.querySelector(".ph");
+        if (icon) icon.className = "ph ph-check-circle";
+      }
+      if (feedbackText) {
+        feedbackText.textContent = `Intervalo pronto para agendamento (${components().formatTime(slot.start)} às ${components().formatTime(slot.end)} • ${slot.isPartial ? `${slot.durationHours}h disponíveis` : "5 horas completas"}).`;
+      }
+      if (submit) submit.disabled = false;
+    } else if (slot.isBusy) {
+      if (feedback) {
+        feedback.className = "booking-feedback is-conflict";
+        const icon = feedback.querySelector(".ph");
+        if (icon) icon.className = "ph ph-warning-circle";
+      }
+      if (feedbackText) {
+        feedbackText.textContent = "Este horário já está reservado ou em análise para outro usuário.";
+      }
+      if (submit) submit.disabled = true;
+    } else {
+      if (feedback) {
+        feedback.className = "booking-feedback is-past";
+        const icon = feedback.querySelector(".ph");
+        if (icon) icon.className = "ph ph-clock";
+      }
+      if (feedbackText) {
+        feedbackText.textContent = "Este horário já encerrou. Escolha um próximo intervalo livre.";
+      }
+      if (submit) submit.disabled = true;
+    }
+
+    const summaryTitle = $("#booking-summary-title");
+    if (summaryTitle) summaryTitle.textContent = slot.isPartial ? "Janela disponível agora" : "5 horas de acesso completo";
+    const summaryWindow = $("#booking-summary-window");
+    if (summaryWindow) summaryWindow.textContent = `${components().formatDateTime(slot.start)} até ${components().formatTime(slot.end)}`;
+  }
+
+  function renderBookingCarousel() {
+    if (!state.bookingSelectedDate) {
+      state.bookingSelectedDate = calendarTools().startOfDay(now());
+    }
+
+    const dayName = $("#booking-date-day-name");
+    if (dayName) dayName.textContent = getDayRelativeName(state.bookingSelectedDate);
+
+    const formattedDate = $("#booking-date-formatted");
+    if (formattedDate) formattedDate.textContent = getFormattedDateExtended(state.bookingSelectedDate);
+
+    const dateInput = $("#booking-date");
+    if (dateInput) {
+      dateInput.value = dateInputValue(state.bookingSelectedDate);
+      dateInput.min = dateInputValue(calendarTools().startOfDay(now()));
+      dateInput.max = dateInputValue(state.bookingMax);
+    }
+
+    const prevDateBtn = $("#booking-date-prev");
+    if (prevDateBtn) {
+      prevDateBtn.disabled = state.bookingSelectedDate.getTime() <= calendarTools().startOfDay(now()).getTime();
+    }
+    const nextDateBtn = $("#booking-date-next");
+    if (nextDateBtn) {
+      nextDateBtn.disabled = state.bookingSelectedDate.getTime() >= calendarTools().startOfDay(state.bookingMax).getTime();
+    }
+
+    const slots = generateSlotsForDate(state.bookingSelectedDate, selectedAccount());
+    state.carouselSlots = slots;
+
+    if (state.carouselIndex >= slots.length) {
+      state.carouselIndex = Math.max(0, slots.length - 1);
+    } else if (state.carouselIndex < 0) {
+      state.carouselIndex = 0;
+    }
+
+    const track = $("#booking-carousel-track");
+    if (track) {
+      if (!slots.length) {
+        track.innerHTML = `<div class="booking-carousel-empty"><p>Nenhum horário gerado para este dia.</p></div>`;
+      } else {
+        track.innerHTML = slots.map((slot, i) => {
+          const diff = i - state.carouselIndex;
+          const posClass = diff === 0 ? "is-center" : diff === -1 ? "is-prev" : diff === 1 ? "is-next" : diff === -2 ? "is-far-prev" : diff === 2 ? "is-far-next" : "is-hidden";
+          const statusClass = slot.isAvailable ? "is-available" : slot.isBusy ? "is-busy is-blocked" : "is-past is-blocked";
+          const badgeClass = slot.isAvailable ? "is-available" : slot.isBusy ? "is-busy" : "is-past";
+          const badgeText = slot.isAvailable ? `Disponível (${slot.durationHours}h)` : slot.isBusy ? "Ocupado" : "Encerrado";
+          const descText = slot.isPartial ? `${slot.durationHours} horas • janela em andamento` : "5 horas completas • 100% quota";
+
+          return `
+            <article class="booking-carousel-card booking-slot-card carousel-slot slot-button ${posClass} ${statusClass}" data-slot-index="${i}" role="tab" aria-selected="${diff === 0}">
+              <div class="carousel-card-header">
+                <span class="carousel-period-pill">
+                  <i class="ph ${slot.period.icon}" aria-hidden="true"></i>
+                  <span>${components().escapeHTML(slot.periodTag)}</span>
+                </span>
+                <span class="carousel-status-badge ${badgeClass}">
+                  <span class="status-indicator-dot"></span>
+                  <span>${components().escapeHTML(badgeText)}</span>
+                </span>
+              </div>
+              <div class="carousel-card-time">
+                <span class="time-part">${components().formatTime(slot.start)}</span>
+                <i class="ph ph-arrow-right time-arrow" aria-hidden="true"></i>
+                <span class="time-part">${components().formatTime(slot.end)}</span>
+              </div>
+              <div class="carousel-card-footer">
+                <span class="carousel-card-desc">${components().escapeHTML(descText)}</span>
+              </div>
+            </article>
+          `;
+        }).join("");
+      }
+    }
+
+    const dotsContainer = $("#booking-carousel-dots");
+    if (dotsContainer) {
+      dotsContainer.innerHTML = slots.map((_, i) => `
+        <button type="button" class="carousel-dot ${i === state.carouselIndex ? "is-active" : ""}" data-index="${i}" aria-label="Ir para intervalo ${i + 1}"></button>
+      `).join("");
+    }
+
+    updateCarouselCardClasses();
+  }
+
+  function setCarouselIndex(index) {
+    if (index < 0 || index >= state.carouselSlots.length) return;
+    state.carouselIndex = index;
+    updateCarouselCardClasses();
+  }
+
+  function carouselPrev() {
+    if (state.carouselIndex > 0) {
+      setCarouselIndex(state.carouselIndex - 1);
+    }
+  }
+
+  function carouselNext() {
+    if (state.carouselIndex < state.carouselSlots.length - 1) {
+      setCarouselIndex(state.carouselIndex + 1);
+    }
+  }
+
+  function bookingDatePrev() {
+    const today = calendarTools().startOfDay(now());
+    const prevDay = calendarTools().addDays(state.bookingSelectedDate, -1);
+    if (prevDay.getTime() >= today.getTime()) {
+      state.bookingSelectedDate = prevDay;
+      state.carouselIndex = 0;
+      renderBookingCarousel();
+      findFirstAvailableSlotOrIndex();
+    }
+  }
+
+  function bookingDateNext() {
+    const maxDay = calendarTools().startOfDay(state.bookingMax);
+    const nextDay = calendarTools().addDays(state.bookingSelectedDate, 1);
+    if (nextDay.getTime() <= maxDay.getTime()) {
+      state.bookingSelectedDate = nextDay;
+      state.carouselIndex = 0;
+      renderBookingCarousel();
+      findFirstAvailableSlotOrIndex();
+    }
+  }
+
+  function findFirstAvailableSlotOrIndex() {
+    const availIdx = state.carouselSlots.findIndex((s) => s.isAvailable);
+    if (availIdx >= 0) {
+      setCarouselIndex(availIdx);
+    } else {
+      setCarouselIndex(0);
+    }
+  }
+
   function renderBookingOptions() {
     const accounts = readyAccounts();
     const select = $("#booking-account");
-    if (!select.options.length || [...select.options].some((option) => option.value !== accounts.find((account) => account.account_id === option.value)?.account_id)) {
-      select.innerHTML = accounts.map((account) => `<option value="${components().escapeHTML(account.account_id)}">${components().escapeHTML(account.label || account.account_id)}</option>`).join("");
+    if (select) {
+      if (!select.options.length || [...select.options].some((option) => option.value !== accounts.find((account) => account.account_id === option.value)?.account_id)) {
+        select.innerHTML = accounts.map((account) => `<option value="${components().escapeHTML(account.account_id)}">${components().escapeHTML(account.label || account.account_id)}</option>`).join("");
+      }
+      if (selectedAccount()) select.value = selectedAccount().account_id;
     }
-    if (selectedAccount()) select.value = selectedAccount().account_id;
+
+    const accountField = $("#booking-account-field") || $(".booking-account-tabs-wrapper");
+    if (accountField) accountField.hidden = accounts.length <= 1;
+
+    const tabsContainer = $("#booking-account-tabs");
+    if (tabsContainer) {
+      tabsContainer.innerHTML = accounts.map((account) => {
+        const isActive = account.account_id === selectedAccount()?.account_id;
+        return `<button type="button" class="booking-account-tab ${isActive ? "is-active" : ""}" data-booking-account="${components().escapeHTML(account.account_id)}" role="tab" aria-selected="${isActive}">
+          <span>${components().escapeHTML(account.label || account.account_id)}</span>
+          <span class="tab-badge">100% livre</span>
+        </button>`;
+      }).join("");
+    }
+
     const today = calendarTools().startOfDay(now());
-    $("#booking-date").min = dateInputValue(today);
-    $("#booking-date").max = dateInputValue(state.bookingMax);
+    const dateInput = $("#booking-date");
+    if (dateInput) {
+      dateInput.min = dateInputValue(today);
+      dateInput.max = dateInputValue(state.bookingMax);
+    }
   }
 
   function renderNotifications() {
@@ -985,16 +1396,14 @@
       .sort((a, b) => Date.parse(b.reviewed_at) - Date.parse(a.reviewed_at))
       .slice(0, 6)
       .forEach((item) => {
-        const requested = Number(item.requested_quota_percent || 5);
-        const approved = Number(item.quota_budget_percent || requested);
         const rejected = item.approval_status === "rejected";
-        const adjustment = approved === requested ? "" : approved > requested ? " com upgrade" : " com downgrade";
-        const decision = rejected ? "Solicitação recusada" : `Solicitação aprovada${adjustment}`;
-        const quotaCopy = rejected ? "" : ` Uso: ${requested}% → ${approved}%.`;
+        const decision = rejected ? "Solicitação recusada" : "Solicitação aprovada";
+        const durationHours = (Date.parse(item.ends_at) - Date.parse(item.starts_at)) / 3_600_000;
+        const quotaCopy = rejected ? "" : durationHours < 5 ? ` Acesso disponível até ${components().formatTime(item.ends_at)}.` : " Janela completa de 5 horas (100%).";
         const noteCopy = item.review_note ? ` Justificativa: ${item.review_note}` : " Sem justificativa informada.";
         items.push({
           type: rejected ? "danger" : "success",
-          icon: rejected ? "ph-x-circle" : approved === requested ? "ph-check-circle" : approved > requested ? "ph-arrow-up" : "ph-arrow-down",
+          icon: rejected ? "ph-x-circle" : "ph-check-circle",
           title: decision,
           message: `${components().formatDateTime(item.starts_at)} · ${item.account_id}.${quotaCopy}${noteCopy}`,
           time: formatRelative(item.reviewed_at),
@@ -1005,7 +1414,9 @@
       .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
       .slice(0, 3)
       .forEach((item) => {
-        items.push({ type: "warning", icon: "ph-clock", title: "Solicitação em análise", message: `${components().formatDateTime(item.starts_at)} · ${item.requested_quota_percent || 5}% solicitados para ${item.account_id}.`, time: formatRelative(item.created_at) });
+        const durationHours = (Date.parse(item.ends_at) - Date.parse(item.starts_at)) / 3_600_000;
+        const windowCopy = durationHours < 5 ? `até ${components().formatTime(item.ends_at)}` : "por 5 horas";
+        items.push({ type: "warning", icon: "ph-clock", title: "Solicitação em análise", message: `${components().formatDateTime(item.starts_at)} · acesso ${windowCopy} em ${item.account_id}.`, time: formatRelative(item.created_at) });
       });
     if (state.data?.relay && !state.data.relay.ready) items.unshift({ type: "warning", icon: "ph-warning", title: "Host temporariamente offline", message: "As solicitações continuam salvas, mas a ativação será retomada quando o host voltar.", time: "agora" });
     if (!items.length) items.push({ type: "info", icon: "ph-check-circle", title: "Tudo em dia", message: "Nenhuma notificação nova por enquanto.", time: "agora" });
@@ -1022,16 +1433,16 @@
   }
 
   function nextBookableStart() {
-    const current = calendarTools().startOfHour(now());
-    if (isBookable(current, 1)) return current;
-    const candidate = calendarTools().startOfHour(now());
-    candidate.setHours(candidate.getHours() + 1);
-    if (candidate.getTime() > state.bookingMax.getTime()) {
-      const tomorrow = calendarTools().addDays(calendarTools().startOfDay(now()), 1);
-      tomorrow.setHours(9, 0, 0, 0);
-      return tomorrow.getTime() <= state.bookingMax.getTime() ? tomorrow : state.bookingMax;
+    const immediate = now();
+    immediate.setSeconds(0, 0);
+    if (isBookable(immediate)) return immediate;
+
+    let candidate = alignedResetStart(now());
+    while (candidate && candidate.getTime() <= state.bookingMax.getTime()) {
+      if (isBookable(candidate)) return candidate;
+      candidate = new Date(candidate.getTime() + 5 * 3_600_000);
     }
-    return candidate;
+    return null;
   }
 
   function setBookingMessage(message = "") {
@@ -1041,33 +1452,78 @@
   }
 
   function updateBookingEnd() {
-    const start = inputDateTime($("#booking-date").value, $("#booking-time").value);
-    const duration = Number($("#booking-duration").value || 1);
-    const end = start ? new Date(start.getTime() + duration * 3_600_000) : null;
-    $("#booking-end").value = end ? `${components().formatDate(end)} · ${components().formatTime(end)}` : "";
+    const requested = inputDateTime($("#booking-date").value, $("#booking-time").value);
+    let start = requested;
+    let window = start ? reservationWindow(start) : null;
+    if (start && !window) {
+      start = alignedResetStart(start);
+      window = start ? reservationWindow(start) : null;
+    }
+    const adjustedByMinutes = start && requested ? Math.abs(start.getTime() - requested.getTime()) >= 60_000 : false;
+    if (start && requested && start.getTime() !== requested.getTime()) {
+      $("#booking-date").value = dateInputValue(start);
+      $("#booking-time").value = timeInputValue(start);
+    }
+    const end = window?.end || null;
+    const summaryTitle = $("#booking-summary-title");
+    if (summaryTitle) {
+      summaryTitle.textContent = window?.complete ? "5 horas de acesso completo" : window ? "Usar a janela disponível agora" : "Horário da sessão";
+    }
+    const summaryWindow = $("#booking-summary-window");
+    if (summaryWindow) {
+      summaryWindow.textContent = start && end
+        ? `${components().formatDateTime(start)} até ${components().formatTime(end)}`
+        : "Escolha a data e o horário";
+    }
+    const quota = $("#booking-summary-quota");
+    if (quota) {
+      const rawUsedPercent = fiveHourWindow(selectedAccount())?.usedPercent;
+      const usedPercent = typeof rawUsedPercent === "number" ? rawUsedPercent : Number.NaN;
+      const remainingPercent = Number.isFinite(usedPercent) ? Math.max(0, Math.min(100, Math.round(100 - usedPercent))) : null;
+      quota.hidden = Boolean(!window || window.complete || remainingPercent === null);
+      quota.textContent = !quota.hidden ? `${remainingPercent}% da quota de 5 horas disponível agora` : "";
+    }
+    const adjustment = $("#booking-adjustment");
+    if (adjustment) {
+      adjustment.hidden = !adjustedByMinutes;
+      adjustment.textContent = adjustedByMinutes && start
+        ? `Ajustamos para ${components().formatTime(start)}, o próximo horário com 5 horas completas.`
+        : "";
+    }
+    const feedback = $("#booking-feedback-text");
+    if (feedback) {
+      feedback.textContent = start && end
+        ? `Intervalo pronto para agendamento (${components().formatTime(start)} às ${components().formatTime(end)} • 5 horas completas).`
+        : "Selecione um intervalo";
+    }
   }
 
-  function openBooking(start = null, duration = 1) {
+  function openBooking(start = null) {
     hideCalendarHover();
     if (!readyAccounts().length) {
       components().showToast("Nenhuma conta está pronta para receber agendamentos.", "warning");
       return;
     }
-    let value = start ? calendarTools().startOfHour(start) : nextBookableStart();
-    const currentHour = calendarTools().startOfHour(now());
-    if (value.getTime() < currentHour.getTime() || value.getTime() > state.bookingMax.getTime()) value = nextBookableStart();
-    $("#booking-account").value = selectedAccount().account_id;
-    $("#booking-date").value = dateInputValue(value);
-    $("#booking-time").value = timeInputValue(value);
-    $("#booking-duration").value = String(Math.min(3, Math.max(1, Math.round(duration))));
-    $("#booking-quota").value = "5";
-    $("#booking-note").value = "";
+    renderBookingOptions();
+
+    let value = start ? (reservationWindow(start) ? new Date(start) : alignedResetStart(start)) : nextBookableStart();
+    if (!value || value.getTime() < now().getTime() - 60_000 || value.getTime() > state.bookingMax.getTime()) value = nextBookableStart() || now();
+
+    state.bookingSelectedDate = calendarTools().startOfDay(value);
+    renderBookingCarousel();
+
+    const matchingIdx = state.carouselSlots.findIndex((s) => Math.abs(s.start.getTime() - value.getTime()) <= 60_000);
+    if (matchingIdx >= 0) {
+      setCarouselIndex(matchingIdx);
+    } else {
+      findFirstAvailableSlotOrIndex();
+    }
+
     setBookingMessage();
-    updateBookingEnd();
     const modal = $("#booking-modal");
     if (typeof modal.showModal === "function") modal.showModal();
     else modal.setAttribute("open", "");
-    window.setTimeout(() => $("#booking-date").focus(), 60);
+    window.setTimeout(() => $("#booking-date")?.focus(), 60);
   }
 
   function closeBooking() {
@@ -1186,8 +1642,8 @@
     }
   }
 
-  function addPreviewReservation(start, duration, accountId, quota) {
-    const end = new Date(start.getTime() + duration * 3_600_000);
+  function addPreviewReservation(start, accountId) {
+    const end = reservationWindow(start)?.end || new Date(start.getTime() + 5 * 3_600_000);
     state.data.reservations.push({
       id: `preview-${Date.now()}`,
       account_id: accountId,
@@ -1195,7 +1651,8 @@
       ends_at: end.toISOString(),
       status: "scheduled",
       approval_status: "approved",
-      requested_quota_percent: quota,
+      requested_quota_percent: 100,
+      quota_budget_percent: 100,
       created_at: new Date().toISOString(),
     });
   }
@@ -1203,15 +1660,13 @@
   async function submitBooking(event) {
     event.preventDefault();
     const start = inputDateTime($("#booking-date").value, $("#booking-time").value);
-    const duration = Number($("#booking-duration").value);
     const accountId = $("#booking-account").value;
-    const requestedQuotaPercent = Number($("#booking-quota").value);
-    if (!start || ![1, 2, 3].includes(duration) || requestedQuotaPercent < 1 || requestedQuotaPercent > 100 || !accountId) {
+    if (!start || !accountId) {
       setBookingMessage("Confira os dados do agendamento.");
       return;
     }
-    if (!isBookable(start, duration)) {
-      setBookingMessage(start.getTime() > state.bookingMax.getTime() ? `Solicitações disponíveis até ${components().formatDate(state.bookingMax)}.` : "Esse horário não está livre, é passado ou não começa em uma hora cheia.");
+    if (!isBookable(start)) {
+      setBookingMessage(start.getTime() > state.bookingMax.getTime() ? `Solicitações disponíveis até ${components().formatDate(state.bookingMax)}.` : "Esse horário não está livre. Para usar agora, escolha o minuto atual; para depois, escolha o início de um novo ciclo.");
       return;
     }
     const button = $("#booking-submit");
@@ -1219,12 +1674,12 @@
     setBookingMessage("Enviando solicitação…");
     try {
       if (preview) {
-        addPreviewReservation(start, duration, accountId, requestedQuotaPercent);
+        addPreviewReservation(start, accountId);
         closeBooking();
         loadDashboardData({ ...state.data, serverTime: new Date().toISOString(), reservations: state.data.reservations });
         components().showToast("Pedido enviado para aprovação.", "success");
       } else {
-        await api("/api/user/reservations", { method: "POST", body: JSON.stringify({ startsAt: start.toISOString(), durationHours: duration, accountId, requestedQuotaPercent }) });
+        await api("/api/user/reservations", { method: "POST", body: JSON.stringify({ startsAt: start.toISOString(), durationHours: 5, accountId, requestedQuotaPercent: 100 }) });
         closeBooking();
         await loadDashboard(true);
         components().showToast("Pedido enviado para aprovação.", "success");
@@ -1366,17 +1821,120 @@
     });
 
     $("#open-booking").addEventListener("click", () => openBooking());
-    $("#open-booking-top")?.addEventListener("click", () => {
-      activateTab("overview");
-      const calendar = document.querySelector(".calendar-section");
-      if (calendar) {
-        calendar.scrollIntoView({ behavior: "smooth", block: "start" });
-      }
-    });
+    $("#open-booking-top")?.addEventListener("click", () => openBooking());
     $("#booking-close").addEventListener("click", closeBooking);
     $("#booking-cancel").addEventListener("click", closeBooking);
     $("#booking-form").addEventListener("submit", submitBooking);
-    ["#booking-date", "#booking-time", "#booking-duration"].forEach((selector) => $(selector).addEventListener("input", updateBookingEnd));
+
+    // Carousel buttons
+    $("#carousel-prev-btn")?.addEventListener("click", carouselPrev);
+    $("#carousel-next-btn")?.addEventListener("click", carouselNext);
+
+    // Date navigation buttons
+    $("#booking-date-prev")?.addEventListener("click", bookingDatePrev);
+    $("#booking-date-next")?.addEventListener("click", bookingDateNext);
+
+    // Date input change
+    $("#booking-date")?.addEventListener("change", (e) => {
+      const val = e.currentTarget.value;
+      if (val) {
+        state.bookingSelectedDate = calendarTools().startOfDay(new Date(`${val}T00:00:00`));
+        renderBookingCarousel();
+        findFirstAvailableSlotOrIndex();
+      }
+    });
+
+    // Account tab buttons
+    $("#booking-account-tabs")?.addEventListener("click", (e) => {
+      const tab = e.target.closest("[data-booking-account]");
+      if (tab) {
+        state.selectedAccountId = tab.dataset.bookingAccount;
+        renderBookingOptions();
+        renderBookingCarousel();
+        findFirstAvailableSlotOrIndex();
+      }
+    });
+
+    // Carousel track card click
+    $("#booking-carousel-track")?.addEventListener("click", (e) => {
+      const card = e.target.closest(".booking-carousel-card");
+      if (card && card.dataset.slotIndex !== undefined) {
+        setCarouselIndex(Number(card.dataset.slotIndex));
+      }
+    });
+
+    // Carousel dots click
+    $("#booking-carousel-dots")?.addEventListener("click", (e) => {
+      const dot = e.target.closest(".carousel-dot");
+      if (dot && dot.dataset.index !== undefined) {
+        setCarouselIndex(Number(dot.dataset.index));
+      }
+    });
+
+    // Carousel touch / mouse drag with real-time smooth tracking
+    const track = $("#booking-carousel-track");
+    if (track) {
+      const onDragStart = (e) => {
+        state.isDraggingCarousel = true;
+        state.dragStartX = e.pageX !== undefined ? e.pageX : (e.touches?.[0]?.pageX || 0);
+        state.dragDeltaX = 0;
+        track.classList.add("is-dragging");
+        track.style.transition = "none";
+      };
+
+      const onDragMove = (e) => {
+        if (!state.isDraggingCarousel) return;
+        const currentX = e.pageX !== undefined ? e.pageX : (e.touches?.[0]?.pageX || 0);
+        if (!currentX) return;
+        state.dragDeltaX = currentX - state.dragStartX;
+        let offset = state.dragDeltaX;
+        // Damping at edge limits
+        if ((state.carouselIndex === 0 && offset > 0) || (state.carouselIndex >= state.carouselSlots.length - 1 && offset < 0)) {
+          offset = offset * 0.32;
+        }
+        track.style.transform = `translateX(${offset}px) rotateY(${offset * -0.035}deg)`;
+      };
+
+      const onDragEnd = () => {
+        if (!state.isDraggingCarousel) return;
+        state.isDraggingCarousel = false;
+        track.classList.remove("is-dragging");
+
+        const diffX = state.dragDeltaX;
+        state.dragDeltaX = 0;
+
+        track.style.transition = "transform 0.28s cubic-bezier(0.22, 1, 0.36, 1)";
+        track.style.transform = "";
+
+        window.setTimeout(() => {
+          if (!state.isDraggingCarousel) {
+            track.style.transition = "";
+          }
+        }, 300);
+
+        if (diffX < -40) {
+          carouselNext();
+        } else if (diffX > 40) {
+          carouselPrev();
+        }
+      };
+
+      track.addEventListener("mousedown", onDragStart);
+      window.addEventListener("mousemove", onDragMove);
+      window.addEventListener("mouseup", onDragEnd);
+
+      track.addEventListener("touchstart", onDragStart, { passive: true });
+      track.addEventListener("touchmove", onDragMove, { passive: true });
+      track.addEventListener("touchend", onDragEnd, { passive: true });
+      track.addEventListener("touchcancel", onDragEnd, { passive: true });
+    }
+
+    $("#booking-account")?.addEventListener("change", (event) => {
+      state.selectedAccountId = event.currentTarget.value;
+      renderBookingOptions();
+      renderBookingCarousel();
+      findFirstAvailableSlotOrIndex();
+    });
     $("#booking-modal").addEventListener("click", (event) => {
       if (event.target === $("#booking-modal")) closeBooking();
     });

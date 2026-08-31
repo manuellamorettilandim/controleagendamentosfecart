@@ -29,6 +29,7 @@ import {
 } from "./rate-limiter.js";
 import { aggregateUsageReport, type RawDatabaseData } from "./report-aggregator.js";
 import { exportReportToPdf, exportReportToXlsx, exportReportToCsv, buildReportFilename } from "./report-exporter.js";
+import { fiveHourRateLimit, reservationWindowForStart, SESSION_DURATION_MS, weeklyRateLimit } from "./quota-window.js";
 
 const DEFAULT_PORT = 10_000;
 const DEFAULT_HOST = "0.0.0.0";
@@ -193,6 +194,40 @@ function dataError(value: unknown, fallback: string): string {
   return fallback;
 }
 
+function sanitizedFiveHourWindow(value: unknown, exposeUsage: boolean): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const window = value as Record<string, unknown>;
+  if (Number(window.windowDurationMins) !== 300) return null;
+  return {
+    usedPercent: exposeUsage && typeof window.usedPercent === "number" ? window.usedPercent : null,
+    windowDurationMins: 300,
+    resetsAt: typeof window.resetsAt === "number" ? window.resetsAt : null,
+    credits: null,
+  };
+}
+
+export function userVisibleAccountSnapshot(account: Record<string, unknown>, exposeUsage: boolean): Record<string, unknown> {
+  const rawLimits = account.rate_limits && typeof account.rate_limits === "object" && !Array.isArray(account.rate_limits)
+    ? account.rate_limits as Record<string, unknown>
+    : {};
+  const rateLimits: Record<string, unknown> = {};
+  for (const [key, rawLimit] of Object.entries(rawLimits)) {
+    if (!rawLimit || typeof rawLimit !== "object" || Array.isArray(rawLimit)) continue;
+    const limit = rawLimit as Record<string, unknown>;
+    const primary = sanitizedFiveHourWindow(limit.primary, exposeUsage);
+    const secondary = sanitizedFiveHourWindow(limit.secondary, exposeUsage);
+    if (!primary && !secondary) continue;
+    rateLimits[key] = {
+      limitId: typeof limit.limitId === "string" ? limit.limitId : key,
+      limitName: typeof limit.limitName === "string" ? limit.limitName : null,
+      primary,
+      secondary,
+      rateLimitReachedType: null,
+    };
+  }
+  return { ...account, rate_limits: rateLimits, usage: null };
+}
+
 export interface AvailableModel {
   id: string;
   displayName: string;
@@ -329,19 +364,14 @@ function isLiveSocket(socket: WebSocket): boolean {
   return socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING;
 }
 
-function weeklyRateLimitUsedPercent(account: AccountSnapshot | undefined): number | null {
-  if (!account) return null;
-  const windows = Object.values(account.rateLimits).flatMap((limit) => [limit.primary, limit.secondary]).filter((window): window is NonNullable<typeof window> => Boolean(window));
-  return windows.sort((left, right) => (right.windowDurationMins ?? 0) - (left.windowDurationMins ?? 0))[0]?.usedPercent ?? null;
-}
-
 function deviceUsageLimitReached(device: RelayDevice, account: AccountSnapshot | undefined): boolean {
   if (device.usage?.usageLimitReachedAt) return true;
-  if (device.quotaBudgetPercent != null && (device.usage?.quotaConsumedPercent ?? 0) >= device.quotaBudgetPercent) return true;
-  const usedPercent = weeklyRateLimitUsedPercent(account);
+  const effectiveBudget = device.reservationId ? 100 : device.quotaBudgetPercent;
+  if (effectiveBudget != null && (device.usage?.quotaConsumedPercent ?? 0) >= effectiveBudget) return true;
+  const usedPercent = (device.reservationId ? fiveHourRateLimit(account) : weeklyRateLimit(account))?.usedPercent ?? null;
   if (usedPercent === null) return false;
   const quotaBase = device.quotaBaseUsedPercent;
-  const quotaBudget = device.quotaBudgetPercent;
+  const quotaBudget = effectiveBudget;
   if (quotaBase != null && quotaBudget != null) {
     const consumed = usedPercent >= quotaBase
       ? usedPercent - quotaBase
@@ -419,6 +449,7 @@ export class RelayServer {
   private hostId: string | null = null;
   private registered = false;
   private accessSynced = false;
+  private tunnelConnectedAt = 0;
   private lastHeartbeatAt = 0;
   private lastSyncAt = 0;
   private defaultAccountId: string | null = null;
@@ -914,20 +945,11 @@ export class RelayServer {
       const body = await readJsonBody(request);
 
       if (parts.length === 3 && parts[2] === "settings") {
-        const maxRequestQuotaPercent = Number(body.maxRequestQuotaPercent);
         const autoApproveEnabled = body.autoApproveEnabled === true;
-        const autoApproveQuotaPercent = autoApproveEnabled ? Number(body.autoApproveQuotaPercent) : 0;
+        const autoApproveQuotaPercent = autoApproveEnabled ? 100 : 0;
         const enabledModels = Array.isArray(body.enabledModels)
           ? [...new Set(body.enabledModels.filter((model): model is string => typeof model === "string").map((model) => model.trim()).filter(Boolean))]
           : [];
-        if (!Number.isInteger(maxRequestQuotaPercent) || maxRequestQuotaPercent < 1 || maxRequestQuotaPercent > 100) {
-          jsonResponse(response, 400, { error: "O teto de solicitação deve ser de 1% a 100%." });
-          return;
-        }
-        if (!Number.isInteger(autoApproveQuotaPercent) || autoApproveQuotaPercent < 0 || autoApproveQuotaPercent > maxRequestQuotaPercent) {
-          jsonResponse(response, 400, { error: "A autoaprovação deve estar desativada ou entre 1% e o teto configurado." });
-          return;
-        }
         const availableModels = await this.liveModelCatalog(identity.userId).catch(() => []);
         const availableModelIds = new Set(availableModels.map((model) => model.id));
         if (availableModelIds.size === 0) {
@@ -941,7 +963,7 @@ export class RelayServer {
         const updated = await this.authClient.rest(token, "codex_app_settings", { singleton: "eq.true" }, {
           method: "PATCH",
           body: {
-            max_request_quota_percent: maxRequestQuotaPercent,
+            max_request_quota_percent: 100,
             auto_approve_quota_percent: autoApproveQuotaPercent,
             enabled_models: enabledModels,
             updated_at: new Date().toISOString(),
@@ -960,7 +982,7 @@ export class RelayServer {
             .filter((device) => typeof device.deviceId === "string" && !["revoked", "expired"].includes(String(device.status)))
             .map((device) => this.sendControlRequest("access.update-policy", { deviceId: device.deviceId, allowedModels: enabledModels }, identity.userId)));
         }
-        this.recordAdminAudit(identity.userId, "settings.access.update", "settings", "general", { maxRequestQuotaPercent, autoApproveQuotaPercent, enabledModels });
+        this.recordAdminAudit(identity.userId, "settings.access.update", "settings", "general", { fixedSessionHours: 5, sessionQuotaPercent: 100, autoApproveEnabled, enabledModels });
         jsonResponse(response, 200, { settings: updated.data[0] });
         return;
       }
@@ -1118,19 +1140,15 @@ export class RelayServer {
         const reviewNote = typeof body.note === "string" ? body.note.trim().slice(0, 500) : null;
         const adjustedStart = typeof body.startsAt === "string" ? new Date(body.startsAt) : null;
         const adjustedEnd = typeof body.endsAt === "string" ? new Date(body.endsAt) : null;
-        const approvedQuota = Number(body.quotaBudgetPercent);
+        const approvedQuota = 100;
+        const durationMs = adjustedStart && adjustedEnd ? adjustedEnd.getTime() - adjustedStart.getTime() : Number.NaN;
         if (approvalStatus === "approved") {
-          const durationMs = adjustedStart && adjustedEnd ? adjustedEnd.getTime() - adjustedStart.getTime() : Number.NaN;
-          if (!adjustedStart || !adjustedEnd || Number.isNaN(durationMs) || durationMs < 3_600_000 || durationMs > 3 * 3_600_000) {
-            jsonResponse(response, 400, { error: "O período aprovado deve ter entre uma e três horas." });
+          if (!adjustedStart || !adjustedEnd || Number.isNaN(durationMs) || durationMs <= 0 || durationMs > SESSION_DURATION_MS) {
+            jsonResponse(response, 400, { error: "O período aprovado precisa terminar no reset da conta e ter no máximo cinco horas." });
             return;
           }
           if (adjustedEnd.getTime() <= Date.now()) {
             jsonResponse(response, 400, { error: "Não é possível aprovar uma solicitação cujo horário já terminou." });
-            return;
-          }
-          if (!Number.isInteger(approvedQuota) || approvedQuota < 1 || approvedQuota > 100) {
-            jsonResponse(response, 400, { error: "O uso aprovado deve ser de 1% a 100%." });
             return;
           }
         }
@@ -1150,12 +1168,10 @@ export class RelayServer {
             return;
           }
           const reviewedReservation = approved.data[0] as Record<string, unknown>;
-          const requestedQuota = Number(reviewedReservation.requested_quota_percent);
-          const adjustment = approvedQuota === requestedQuota ? "unchanged" : approvedQuota > requestedQuota ? "upgrade" : "downgrade";
-          this.recordAdminAudit(identity.userId, `reservation.approve.${adjustment}`, "reservation", parts[3], {
+          this.recordAdminAudit(identity.userId, "reservation.approve", "reservation", parts[3], {
             note: reviewNote || null,
-            requestedQuota: Number.isFinite(requestedQuota) ? requestedQuota : null,
-            approvedQuota,
+            sessionHours: durationMs / 3_600_000,
+            quotaPercent: 100,
           });
           jsonResponse(response, 200, { reservation: reviewedReservation });
           return;
@@ -1184,12 +1200,8 @@ export class RelayServer {
           jsonResponse(response, 409, { error: "A solicitação já foi revisada ou não está mais disponível." });
           return;
         }
-        const reviewedReservation = reviewed.data[0] as Record<string, unknown>;
-        const requestedQuota = Number(reviewedReservation.requested_quota_percent);
         this.recordAdminAudit(identity.userId, "reservation.reject", "reservation", parts[3], {
           note: reviewNote || null,
-          requestedQuota: Number.isFinite(requestedQuota) ? requestedQuota : null,
-          approvedQuota: null,
         });
         jsonResponse(response, 200, { reservation: reviewed.data[0] });
         return;
@@ -1344,9 +1356,11 @@ export class RelayServer {
         ]);
 
         let accountsList = accountResult.ok && Array.isArray(accountResult.data) ? accountResult.data as Record<string, unknown>[] : [];
-        if (accountsList.length === 0) {
-          accountsList = [...this.accounts.values()]
-            .filter((account) => account.status === "ready")
+        const listedAccountIds = new Set(accountsList.map((account) => String(account.account_id)));
+        accountsList = [
+          ...accountsList,
+          ...[...this.accounts.values()]
+            .filter((account) => account.status === "ready" && !listedAccountIds.has(account.accountId))
             .map((account) => ({
               account_id: account.accountId,
               label: account.label,
@@ -1355,18 +1369,33 @@ export class RelayServer {
               rate_limits: account.rateLimits,
               usage: account.usage,
               observed_at: new Date().toISOString(),
-            }));
+            })),
+        ];
+
+        const reservations = reservationsResult.ok && Array.isArray(reservationsResult.data) ? reservationsResult.data as Record<string, unknown>[] : [];
+        const busySlots = busyResult.ok && Array.isArray(busyResult.data) ? busyResult.data as Record<string, unknown>[] : [];
+        const currentTime = Date.now();
+        const ownActiveAccounts = new Set(reservations
+          .filter((reservation) => reservation.status === "scheduled" && Date.parse(String(reservation.starts_at)) <= currentTime && Date.parse(String(reservation.ends_at)) > currentTime)
+          .map((reservation) => String(reservation.account_id)));
+        const privatelyBusyAccounts = new Set(busySlots
+          .filter((slot) => Date.parse(String(slot.starts_at)) <= currentTime && Date.parse(String(slot.ends_at)) > currentTime)
+          .map((slot) => String(slot.account_id))
+          .filter((accountId) => !ownActiveAccounts.has(accountId)));
+        for (const device of this.devices.values()) {
+          if (device.accountId && device.userId !== identity.userId) privatelyBusyAccounts.add(device.accountId);
         }
+        const userAccounts = accountsList.map((account) => userVisibleAccountSnapshot(account, !privatelyBusyAccounts.has(String(account.account_id))));
 
         jsonResponse(response, 200, {
           serverTime: new Date().toISOString(),
           relay: this.status(),
           profile,
-          reservations: reservationsResult.ok && Array.isArray(reservationsResult.data) ? reservationsResult.data : [],
-          accounts: accountsList,
-          account: accountsList[0] ?? null,
+          reservations,
+          accounts: userAccounts,
+          account: userAccounts[0] ?? null,
           devices: devicesResult.ok && Array.isArray(devicesResult.data) ? devicesResult.data : [],
-          busySlots: busyResult.ok && Array.isArray(busyResult.data) ? busyResult.data : [],
+          busySlots,
           settings: settingsResult.ok && Array.isArray(settingsResult.data) ? settingsResult.data[0] ?? null : null,
         });
         return;
@@ -1386,15 +1415,11 @@ export class RelayServer {
         }
 
         const startsAt = typeof body.startsAt === "string" ? new Date(body.startsAt) : new Date(Number.NaN);
-        const durationHours = Number(body.durationHours);
-        const requestedQuotaPercent = Number(body.requestedQuotaPercent);
+        const durationHours = 5;
+        const requestedQuotaPercent = 100;
         const accountId = typeof body.accountId === "string" ? body.accountId.trim() : "";
-        if (Number.isNaN(startsAt.getTime()) || !Number.isInteger(durationHours) || durationHours < 1 || durationHours > 3) {
-          jsonResponse(response, 400, { error: "Escolha um horário válido e duração de uma a três horas." });
-          return;
-        }
-        if (!Number.isInteger(requestedQuotaPercent) || requestedQuotaPercent < 1 || requestedQuotaPercent > 100) {
-          jsonResponse(response, 400, { error: "Escolha uma cota válida entre 1% e 100%." });
+        if (Number.isNaN(startsAt.getTime())) {
+          jsonResponse(response, 400, { error: "Escolha um horário válido." });
           return;
         }
         if (profile.scheduling_enabled !== true) {
@@ -1405,11 +1430,15 @@ export class RelayServer {
           jsonResponse(response, 400, { error: "Escolha uma das contas disponíveis." });
           return;
         }
-        const currentHour = new Date();
-        currentHour.setMinutes(0, 0, 0);
-        currentHour.setMilliseconds(0);
-        if (startsAt.getTime() < currentHour.getTime() || startsAt.getMinutes() !== 0 || startsAt.getSeconds() !== 0) {
-          jsonResponse(response, 400, { error: "A reserva deve começar no horário atual ou em uma hora cheia futura." });
+        const account = this.accounts.get(accountId);
+        const fiveHourWindow = fiveHourRateLimit(account);
+        if (!account || account.status !== "ready" || !fiveHourWindow?.resetsAt) {
+          jsonResponse(response, 409, { error: "A conta ainda não informou o próximo reset da janela de 5 horas." });
+          return;
+        }
+        const requestedWindow = reservationWindowForStart(fiveHourWindow.resetsAt, startsAt.getTime(), Date.now());
+        if (!requestedWindow) {
+          jsonResponse(response, 400, { error: "Escolha agora para usar o restante da janela atual ou selecione o início de um novo ciclo de 5 horas." });
           return;
         }
         const inserted = await this.authClient.rest(token, "rpc/codex_request_reservation", {}, {
@@ -1517,7 +1546,7 @@ export class RelayServer {
           userId: identity.userId,
           reservationId,
           expiresAt: new Date(endsAt).toISOString(),
-          quotaBudgetPercent: Number(reservation.quota_budget_percent ?? reservation.requested_quota_percent),
+          quotaBudgetPercent: 100,
           allowedModels,
         }, identity.userId) as Record<string, unknown>;
         const device = result.device as Record<string, unknown> | undefined;
@@ -1566,9 +1595,7 @@ export class RelayServer {
     const live = status.hostConnected && this.accountsSynced;
     const accounts = live ? [...this.accounts.values()] : [];
     const defaultAccountId = accounts.find((account) => account.isDefault)?.accountId ?? this.defaultAccountId;
-    const visibleAccounts = _identity.role === "owner"
-      ? accounts
-      : accounts.map((account) => ({ ...account, rateLimits: {}, usage: null }));
+    const visibleAccounts = accounts;
     return {
       role: _identity.role,
       hostConnected: status.hostConnected,
@@ -1884,7 +1911,8 @@ export class RelayServer {
     this.registered = false;
     this.accessSynced = false;
     this.accountsSynced = false;
-    this.lastHeartbeatAt = Date.now();
+    this.tunnelConnectedAt = Date.now();
+    this.lastHeartbeatAt = this.tunnelConnectedAt;
     this.lastSyncAt = 0;
     this.devices.clear();
     this.accounts.clear();
@@ -2137,7 +2165,7 @@ export class RelayServer {
     });
     webSocket.on("error", () => undefined);
 
-    this.sendToTunnel({ v: PROTOCOL_VERSION, type: "stream.open", streamId, deviceId: device.deviceId, accountId });
+    this.sendToTunnel({ v: PROTOCOL_VERSION, type: "stream.open", streamId, deviceId: device.deviceId, accountId, reservationId: device.reservationId ?? null });
     this.sendToTunnel({ v: PROTOCOL_VERSION, type: "access.seen", deviceId: device.deviceId });
   }
 
@@ -2233,9 +2261,13 @@ export class RelayServer {
 
   private pruneState(): void {
     const now = Date.now();
-    if (this.tunnel && (!this.isFresh(now) || !this.registered || !this.accessSynced || !this.accountsSynced)) {
-      this.failClosed("Túnel central sem sincronização");
-      return;
+    if (this.tunnel) {
+      const initialSyncComplete = this.registered && this.accessSynced && this.accountsSynced;
+      const initialSyncExpired = this.tunnelConnectedAt <= 0 || now - this.tunnelConnectedAt > this.options.heartbeatTimeoutMs;
+      if ((!initialSyncComplete && initialSyncExpired) || (initialSyncComplete && !this.isFresh(now))) {
+        this.failClosed("Túnel central sem sincronização");
+        return;
+      }
     }
 
     for (const device of [...this.devices.values()]) {
@@ -2252,6 +2284,7 @@ export class RelayServer {
     this.registered = false;
     this.accessSynced = false;
     this.accountsSynced = false;
+    this.tunnelConnectedAt = 0;
     this.lastHeartbeatAt = 0;
     this.lastSyncAt = 0;
     this.devices.clear();

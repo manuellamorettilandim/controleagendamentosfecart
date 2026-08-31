@@ -11,7 +11,7 @@ web
 
 ## Product Purpose
 
-Permitir acesso remoto, temporário e revogável ao Codex sem copiar credenciais OpenAI para os computadores dos usuários. O acesso comum é organizado por agenda, exige aprovação administrativa e é limitado pelo horário aprovado, sem quota individual por grupo.
+Permitir acesso remoto, temporário e revogável ao Codex sem copiar credenciais OpenAI para os computadores dos usuários. O acesso comum é organizado por agenda, exige aprovação administrativa e entrega uma janela exclusiva de cinco horas com 100% da quota curta da conta.
 
 ## Positioning
 
@@ -28,11 +28,11 @@ O produto combina agendamento exclusivo, credenciais efêmeras e um relay que fa
 ## Capabilities and Constraints
 
 - Há papéis separados de `owner`, `admin` e usuário comum.
-- Reservas duram de uma a três horas e não podem se sobrepor na mesma conta.
+- Reservas duram exatamente cinco horas, começam em um reset derivado da janela de 300 minutos e não podem se sobrepor na mesma conta.
 - Sem reserva ativa, a sessão aparece desligada e nenhuma credencial nova pode ser emitida.
 - A credencial temporária expira no fim da reserva; não há franquia percentual individual.
 - Cada grupo escolhe uma conta disponível ao solicitar o horário.
-- O app-server informa quota por conta, não por token. A atribuição individual usa a variação observada durante a sessão e os tokens observados pelo host.
+- O app-server informa quota por conta, não por token. A janela de cinco horas controla a sessão do usuário; a janela semanal é preservada para análise administrativa.
 - O protótipo legado contém senhas de demonstração em texto simples e políticas abertas; elas servem apenas como fonte de migração e devem ser rotacionadas.
 
 ## Brand Commitments

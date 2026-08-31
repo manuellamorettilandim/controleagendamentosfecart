@@ -109,23 +109,22 @@ test("AccessStore allows multiple device credentials for the same group reservat
   }
 });
 
-test("AccessStore enforces a session quota as delta, including after account reset", async () => {
+test("AccessStore gives reservation sessions the complete five-hour quota", async () => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "remote-codex-quota-"));
   try {
     const store = new AccessStore(path.join(directory, "access.json"));
     const issued = await store.issue("scheduled session", 3_600_000, new Date("2026-08-13T12:00:00.000Z"), {
       accountId: "primary",
-      quotaBaseUsedPercent: 80,
+      reservationId: "reservation-five-hour",
+      quotaBaseUsedPercent: 0,
       quotaBudgetPercent: 5,
-      weeklyLimitPercent: 85,
+      weeklyLimitPercent: 100,
     });
-    await store.updateAccountLimit("primary", 84.9, 10_080, 1_800_000_000);
+    await store.updateAccountLimit("primary", 99.9, 300, 1_800_000_000);
     assert.equal((await store.list()).find((device) => device.deviceId === issued.device.deviceId)?.usage.usageLimitReachedAt, null);
-    await store.updateAccountLimit("primary", 0.09, 10_080, 1_800_604_800);
-    assert.equal((await store.list()).find((device) => device.deviceId === issued.device.deviceId)?.usage.usageLimitReachedAt, null);
-    await store.updateAccountLimit("primary", 0.1, 10_080, 1_800_604_800, new Date("2026-08-13T12:20:00.000Z"));
+    await store.updateAccountLimit("primary", 100, 300, 1_800_000_000, new Date("2026-08-13T12:20:00.000Z"));
     assert.equal((await store.list()).find((device) => device.deviceId === issued.device.deviceId)?.usage.usageLimitReachedAt, "2026-08-13T12:20:00.000Z");
-    assert.equal((await store.list()).find((device) => device.deviceId === issued.device.deviceId)?.usage.quotaConsumedPercent, 5);
+    assert.equal((await store.list()).find((device) => device.deviceId === issued.device.deviceId)?.usage.quotaConsumedPercent, 100);
   } finally {
     await fs.rm(directory, { recursive: true, force: true });
   }

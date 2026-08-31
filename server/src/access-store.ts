@@ -254,7 +254,8 @@ function positiveDelta(current: number, previous: number): number {
 
 function quotaLimitReached(device: DeviceAccess, accountUsedPercent: number | null): boolean {
   if (device.quotaBaseUsedPercent !== null && device.quotaBudgetPercent !== null) {
-    return device.usage.quotaConsumedPercent >= device.quotaBudgetPercent;
+    const budget = device.reservationId ? 100 : device.quotaBudgetPercent;
+    return device.usage.quotaConsumedPercent >= budget;
   }
   if (accountUsedPercent === null) return false;
   // A value of 100 with no per-session budget means monitoring only. It must
@@ -760,6 +761,7 @@ export class AccessStore {
     accountWindowDurationMins: number | null,
     accountResetsAt: number | null,
     now = new Date(),
+    scope: "all" | "reservations" | "manual" = "all",
   ): Promise<boolean> {
     return withWriteLock(this.filePath, async () => {
       const registry = await this.read();
@@ -767,6 +769,8 @@ export class AccessStore {
       const resetIso = resetIsoFromUnixSeconds(accountResetsAt);
       for (const device of registry.devices) {
         if (device.accountId !== accountId || device.revokedAt !== null || device.disabledAt !== null) continue;
+        if (scope === "reservations" && !device.reservationId) continue;
+        if (scope === "manual" && device.reservationId) continue;
         const usage = device.usage ?? emptyUsage();
         const before = JSON.stringify(usage);
         updateQuotaProgress(device, usage, accountUsedPercent, resetIso);

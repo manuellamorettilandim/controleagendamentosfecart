@@ -13,11 +13,37 @@ import {
   normalizeModelCatalog,
   RelayServer,
   type ModelPolicyStream,
+  userVisibleAccountSnapshot,
 } from "../src/relay.js";
 import { decodeMessage, encodeMessage, PROTOCOL_VERSION, type RelayDevice, type WireMessage } from "../src/protocol.js";
 
 const agentToken = "agent-secret-used-only-by-central-host";
 const deviceToken = "device-secret-shown-once";
+
+test("user account snapshots expose only the five-hour quota and redact it while another session is active", () => {
+  const account = {
+    account_id: "primary",
+    usage: { lifetimeTokens: 123_456 },
+    rate_limits: {
+      codex: {
+        limitId: "codex",
+        limitName: "Codex",
+        primary: { usedPercent: 63, windowDurationMins: 300, resetsAt: 1_900_000_000, credits: { balance: 10 } },
+        secondary: { usedPercent: 10, windowDurationMins: 10_080, resetsAt: 1_900_500_000, credits: null },
+        rateLimitReachedType: null,
+      },
+    },
+  };
+  const visible = userVisibleAccountSnapshot(account, true);
+  const visibleLimit = (visible.rate_limits as Record<string, Record<string, unknown>>).codex;
+  assert.equal((visibleLimit.primary as Record<string, unknown>).usedPercent, 63);
+  assert.equal(visibleLimit.secondary, null);
+  assert.equal(visible.usage, null);
+
+  const hidden = userVisibleAccountSnapshot(account, false);
+  const hiddenLimit = (hidden.rate_limits as Record<string, Record<string, unknown>>).codex;
+  assert.equal((hiddenLimit.primary as Record<string, unknown>).usedPercent, null);
+});
 
 test("model catalog is populated from the account API and excludes hidden entries", () => {
   assert.deepEqual(normalizeModelCatalog({ result: { data: [
@@ -296,6 +322,34 @@ test("relay fails closed when the central tunnel disappears and enforces expiry"
     assert.equal(await rejectedStatus(`${base}/codex`, { Authorization: `Bearer ${deviceToken}` }), 503);
   } finally {
     client?.terminate();
+    tunnel?.terminate();
+    await relay.close();
+  }
+});
+
+test("relay allows the host time to finish its initial synchronization", async () => {
+  const relay = new RelayServer({
+    agentTokenHash: hashToken(agentToken),
+    host: "127.0.0.1",
+    port: 0,
+    siteDir: "site",
+    heartbeatTimeoutMs: 1_500,
+  });
+  await relay.listen();
+  const port = addressPort(relay);
+  let tunnel: WebSocket | undefined;
+  try {
+    tunnel = await open(`ws://127.0.0.1:${port}/tunnel`, { Authorization: `Bearer ${agentToken}` });
+    tunnel.send(encodeMessage({ v: PROTOCOL_VERSION, type: "register", hostId: "slow-sync-host" }));
+
+    await new Promise((resolve) => setTimeout(resolve, 1_100));
+    assert.equal(relay.status().hostConnected, true);
+    assert.equal(relay.status().ready, false);
+
+    tunnel.send(encodeMessage(syncAccounts()));
+    tunnel.send(encodeMessage({ v: PROTOCOL_VERSION, type: "access.sync", devices: [syncDevice()] }));
+    await waitFor(() => relay.status(), (status) => status.ready);
+  } finally {
     tunnel?.terminate();
     await relay.close();
   }
@@ -585,3 +639,48 @@ test("relay enforces WebSocket upgrade rate limits and max concurrent streams pe
   }
 });
 
+test("protocol decodes stream.open with or without reservationId for backward compatibility", () => {
+  const legacyPayload = Buffer.from(JSON.stringify({
+    v: PROTOCOL_VERSION,
+    type: "stream.open",
+    streamId: "stream-123",
+    deviceId: "device-456",
+    accountId: "account-789",
+  }), "utf8");
+  const decodedLegacy = decodeMessage(legacyPayload);
+  assert.ok(decodedLegacy);
+  assert.equal(decodedLegacy.type, "stream.open");
+  if (decodedLegacy.type === "stream.open") {
+    assert.equal(decodedLegacy.reservationId, undefined);
+  }
+
+  const modernPayload = Buffer.from(JSON.stringify({
+    v: PROTOCOL_VERSION,
+    type: "stream.open",
+    streamId: "stream-123",
+    deviceId: "device-456",
+    accountId: "account-789",
+    reservationId: "res-abc",
+  }), "utf8");
+  const decodedModern = decodeMessage(modernPayload);
+  assert.ok(decodedModern);
+  assert.equal(decodedModern.type, "stream.open");
+  if (decodedModern.type === "stream.open") {
+    assert.equal(decodedModern.reservationId, "res-abc");
+  }
+
+  const nullPayload = Buffer.from(JSON.stringify({
+    v: PROTOCOL_VERSION,
+    type: "stream.open",
+    streamId: "stream-123",
+    deviceId: "device-456",
+    accountId: "account-789",
+    reservationId: null,
+  }), "utf8");
+  const decodedNull = decodeMessage(nullPayload);
+  assert.ok(decodedNull);
+  assert.equal(decodedNull.type, "stream.open");
+  if (decodedNull.type === "stream.open") {
+    assert.equal(decodedNull.reservationId, null);
+  }
+});

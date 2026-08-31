@@ -46,6 +46,10 @@ Use o suporte do Codex CLI a **custom model providers** compatíveis com Respons
 ```toml
 model = "gpt-5.6-sol"
 model_provider = "fecart"
+web_search = "live"
+
+[features]
+standalone_web_search = true
 
 [model_providers.fecart]
 name = "FECART Codex"
@@ -53,6 +57,7 @@ base_url = "https://DOMINIO/api/codex/v1"
 env_key = "FECART_CODEX_TOKEN"
 wire_api = "responses"
 supports_websockets = false
+supports_standalone_web_search = true
 ```
 
 Referências oficiais que devem ser relidas antes da implementação:

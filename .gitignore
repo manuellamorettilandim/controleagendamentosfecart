@@ -13,3 +13,5 @@ site-next/
 *.secret
 coverage/
 supabase/.temp/
+.codex-remote-attachments/
+qa/test-run/

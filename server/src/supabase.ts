@@ -64,6 +64,11 @@ interface SupabaseRequestOptions {
 }
 
 const SUPABASE_REQUEST_TIMEOUT_MS = 15_000;
+const FUTURE_JWT_RETRY_DELAY_MS = 2_000;
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 function requestSignal(options: SupabaseRequestOptions): AbortSignal {
   const timeout = AbortSignal.timeout(options.timeoutMs ?? SUPABASE_REQUEST_TIMEOUT_MS);
@@ -568,23 +573,30 @@ export class SupabaseServiceClient {
   }
 
   public async request(path: string, options: SupabaseRequestOptions = {}): Promise<unknown> {
-    const response = await fetch(`${this.url}${path}`, {
-      method: options.method ?? "GET",
-      headers: {
-        apikey: this.adminKey,
-        Accept: "application/json",
-        ...(this.adminKeyType === "service_role" || this.adminKey.startsWith("eyJ") ? { Authorization: `Bearer ${this.adminKey}` } : {}),
-        ...(options.body === undefined ? {} : { "Content-Type": "application/json" }),
-        ...options.headers,
-      },
-      body: options.body === undefined ? undefined : JSON.stringify(options.body),
-      signal: requestSignal(options),
-    });
-    const data = await parseResponse(response);
-    if (!response.ok) {
-      throw new Error(`Supabase request failed (${response.status}): ${errorMessage(data, "request failed")}`);
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const response = await fetch(`${this.url}${path}`, {
+        method: options.method ?? "GET",
+        headers: {
+          apikey: this.adminKey,
+          Accept: "application/json",
+          ...(this.adminKeyType === "service_role" || this.adminKey.startsWith("eyJ") ? { Authorization: `Bearer ${this.adminKey}` } : {}),
+          ...(options.body === undefined ? {} : { "Content-Type": "application/json" }),
+          ...options.headers,
+        },
+        body: options.body === undefined ? undefined : JSON.stringify(options.body),
+        signal: requestSignal(options),
+      });
+      const data = await parseResponse(response);
+      if (response.ok) return data;
+
+      const message = errorMessage(data, "request failed");
+      if (attempt === 0 && response.status === 401 && /jwt issued at future/i.test(message)) {
+        await delay(FUTURE_JWT_RETRY_DELAY_MS);
+        continue;
+      }
+      throw new Error(`Supabase request failed (${response.status}): ${message}`);
     }
-    return data;
+    throw new Error("Supabase request failed after retry.");
   }
 }
 
