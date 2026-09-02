@@ -268,13 +268,35 @@ export interface RawDatabaseData {
 }
 
 function parseIso(value: unknown): number | null {
+  if (value instanceof Date) {
+    const time = value.getTime();
+    return Number.isFinite(time) ? time : null;
+  }
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
   if (typeof value !== "string" || !value.trim()) return null;
   const time = Date.parse(value);
   return Number.isFinite(time) ? time : null;
 }
 
+function toIso(value: unknown): string | null {
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === "string" && value.trim()) return value.trim();
+  if (typeof value === "number") {
+    const d = new Date(value);
+    return Number.isFinite(d.getTime()) ? d.toISOString() : null;
+  }
+  return null;
+}
+
 function safeNumber(value: unknown, fallback = 0): number {
-  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : fallback;
+  if (typeof value === "number") return Number.isFinite(value) && value >= 0 ? value : fallback;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+  }
+  return fallback;
 }
 
 function round(value: number, digits = 1): number {
@@ -551,7 +573,7 @@ export function aggregateUsageReport(data: RawDatabaseData, options: ReportFilte
       const reservation = reservationById.get(reservationId);
       const profile = profileMap.get(String(reservation?.user_id || event.user_id || ""));
       activityTimeline.push({
-        observedAt: String(event.observed_at),
+        observedAt: toIso(event.observed_at) || String(event.observed_at),
         eventType: String(event.event_type || "unknown"),
         reservationId,
         groupName: profile?.groupName || "Grupo não identificado",
@@ -929,14 +951,14 @@ export function aggregateUsageReport(data: RawDatabaseData, options: ReportFilte
       }
       group.weeklyQuotaUsedPercent += weeklyQuotaUsedPercent;
 
-      const deviceCreated = typeof device.created_at === "string" ? device.created_at : null;
+      const deviceCreated = toIso(device.created_at);
       if (deviceCreated) {
         if (!group.firstUsageAt || Date.parse(deviceCreated) < Date.parse(group.firstUsageAt)) {
           group.firstUsageAt = deviceCreated;
         }
       }
 
-      const usageLastSeen = typeof device.usage_last_seen_at === "string" ? device.usage_last_seen_at : null;
+      const usageLastSeen = toIso(device.usage_last_seen_at);
       if (usageLastSeen) {
         if (!group.lastUsageAt || Date.parse(usageLastSeen) > Date.parse(group.lastUsageAt)) {
           group.lastUsageAt = usageLastSeen;
@@ -1102,8 +1124,8 @@ export function aggregateUsageReport(data: RawDatabaseData, options: ReportFilte
       username: profile.username,
       accountId,
       accountLabel: accountLabelById.get(accountId) || (accountId ? `Conta (${accountId})` : "Sem conta vinculada"),
-      startsAt: typeof res.starts_at === "string" ? res.starts_at : new Date(startsAtMs).toISOString(),
-      endsAt: typeof res.ends_at === "string" ? res.ends_at : new Date(endsAtMs).toISOString(),
+      startsAt: toIso(res.starts_at) || new Date(startsAtMs).toISOString(),
+      endsAt: toIso(res.ends_at) || new Date(endsAtMs).toISOString(),
       durationHours: Math.round(durationHours * 100) / 100,
       reservedHours: Math.round(durationHours * 100) / 100,
       connectedHours: round(connectedHours, 2),
@@ -1115,7 +1137,7 @@ export function aggregateUsageReport(data: RawDatabaseData, options: ReportFilte
       requestedQuotaPercent: requestedQuota,
       approvedQuotaPercent: approvedQuota,
       deviceId: typeof res.device_id === "string" ? res.device_id : (device ? String(device.device_id || "") : null),
-      activatedAt: typeof res.activated_at === "string" ? res.activated_at : null,
+      activatedAt: toIso(res.activated_at),
       observedTokens,
       inputTokens: sessionInputTokens,
       cachedInputTokens: sessionCachedInputTokens,
