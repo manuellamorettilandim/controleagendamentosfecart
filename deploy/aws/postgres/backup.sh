@@ -37,8 +37,8 @@ DUMP_PATH="$TIER_DIR/$BASE_NAME"
 CHECKSUM_PATH="$DUMP_PATH.sha256"
 trap 'rm -f -- "$PARTIAL_PATH"' EXIT
 
-export PGDATABASE="$DATABASE_URL"
 pg_dump \
+  --dbname="$DATABASE_URL" \
   --format=custom \
   --compress=6 \
   --no-owner \
