@@ -148,7 +148,7 @@
     const device = deviceFor(reservation);
     if (!reservation || !device) return false;
     if (device.status === "limited" || device.usage_limit_reached_at) return true;
-    const budget = 100;
+    const budget = Number(device.quota_budget_percent ?? reservation.quota_budget_percent ?? 10);
     const accumulated = Number(device.quota_consumed_percent);
     if (Number.isFinite(budget) && Number.isFinite(accumulated)) return accumulated >= budget;
     const base = Number(device.quota_base_used_percent ?? reservation.quota_base_used_percent ?? 0);
@@ -160,17 +160,40 @@
 
   function sessionUsage(reservation, device = deviceFor(reservation)) {
     const account = readyAccounts().find((item) => item.account_id === reservation?.account_id);
-    const window = fiveHourWindow(account);
-    const current = Number(device?.account_used_percent ?? window?.usedPercent);
-    const consumed = Number.isFinite(current) ? Math.max(0, Math.min(100, current)) : 0;
-    const budget = 100;
+    const fiveHour = fiveHourWindow(account);
+    const fiveHourUsed = Number.isFinite(Number(fiveHour?.usedPercent)) ? Math.max(0, Math.min(100, Number(fiveHour?.usedPercent))) : 0;
+    const fiveHourRemainingPercent = Math.max(0, 100 - fiveHourUsed);
+
+    const budget = Math.max(1, Number(device?.quota_budget_percent ?? reservation?.quota_budget_percent ?? 10));
+    const accumulatedWeekly = Number(device?.quota_consumed_percent ?? 0);
+    const weeklyConsumed = Number.isFinite(accumulatedWeekly) ? Math.max(0, Math.min(budget, accumulatedWeekly)) : 0;
+    const weeklyRemaining = Math.max(0, budget - weeklyConsumed);
+    const weeklyRemainingPercent = Math.max(0, Math.min(100, Math.round((weeklyRemaining / budget) * 100)));
+
     const exhausted = device?.status === "limited" || Boolean(device?.usage_limit_reached_at);
     if (exhausted) {
-      return { budget, consumed: Math.max(consumed, budget), remaining: 0, remainingPercent: 0 };
+      return {
+        budget,
+        consumed: budget,
+        remaining: 0,
+        remainingPercent: 0,
+        weeklyRemaining: 0,
+        weeklyConsumed: budget,
+        fiveHourRemainingPercent: 0,
+      };
     }
-    const remaining = Math.max(0, budget - consumed);
-    const remainingPercent = budget > 0 ? Math.max(0, Math.min(100, Math.round((remaining / budget) * 100))) : 0;
-    return { budget, consumed, remaining, remainingPercent };
+
+    const effectiveRemainingPercent = Math.min(weeklyRemainingPercent, fiveHourRemainingPercent);
+
+    return {
+      budget,
+      consumed: weeklyConsumed,
+      remaining: weeklyRemaining,
+      remainingPercent: effectiveRemainingPercent,
+      weeklyRemaining,
+      weeklyConsumed,
+      fiveHourRemainingPercent,
+    };
   }
 
   function formatCountdown(milliseconds) {
@@ -362,15 +385,39 @@
     return value < 10_000_000_000 ? value * 1_000 : value;
   }
 
+  function isAccountWindowActive(account = selectedAccount()) {
+    if (!account) return false;
+    const window = fiveHourWindow(account);
+    const resetAt = resetMilliseconds(window);
+    const current = now().getTime();
+    if (!resetAt || resetAt <= current) return false;
+    const used = Number(window?.usedPercent);
+    const hasUsage = Number.isFinite(used) && used > 0;
+    const hasActiveReservation = (state.data?.reservations || []).some((item) =>
+      item.account_id === account.account_id &&
+      item.status === "scheduled" &&
+      item.approval_status === "approved" &&
+      Date.parse(item.starts_at) <= current &&
+      Date.parse(item.ends_at) > current
+    );
+    return hasUsage || hasActiveReservation;
+  }
+
   function alignedResetStart(requested, account = selectedAccount()) {
-    const anchor = resetMilliseconds(fiveHourWindow(account));
+    const active = isAccountWindowActive(account);
     const requestedMs = new Date(requested).getTime();
-    if (anchor === null || !Number.isFinite(requestedMs)) return null;
+    if (!Number.isFinite(requestedMs)) return null;
+    if (!active) {
+      return new Date(requestedMs);
+    }
+    const anchor = resetMilliseconds(fiveHourWindow(account));
+    if (anchor === null) return null;
     if (requestedMs <= anchor) return new Date(anchor);
     return new Date(anchor + Math.ceil((requestedMs - anchor) / (5 * 3_600_000)) * 5 * 3_600_000);
   }
 
   function isResetBoundary(start, account = selectedAccount()) {
+    const active = isAccountWindowActive(account);
     const aligned = alignedResetStart(new Date(start).getTime() - 60_000, account);
     return Boolean(aligned && Math.abs(aligned.getTime() - new Date(start).getTime()) <= 60_000);
   }
@@ -379,14 +426,23 @@
     const candidate = new Date(start);
     const startsAt = candidate.getTime();
     const current = now().getTime();
+    if (!Number.isFinite(startsAt) || startsAt < current - 60_000) return null;
+    const active = isAccountWindowActive(account);
     const resetAt = resetMilliseconds(fiveHourWindow(account));
-    if (!Number.isFinite(startsAt) || resetAt === null || startsAt < current - 60_000) return null;
+    const immediate = startsAt <= current + 60_000;
+
+    // 1. Account is idle: immediate session gets full 5 hours starting now!
+    if (!active && immediate) {
+      return { start: candidate, end: new Date(startsAt + 5 * 3_600_000), complete: true };
+    }
+
+    // 2. Future 5-hour boundary aligned to reset
     if (isResetBoundary(candidate, account)) {
       return { start: candidate, end: new Date(startsAt + 5 * 3_600_000), complete: true };
     }
-    const immediate = startsAt <= current + 60_000;
-    const insideCurrentWindow = startsAt >= resetAt - 5 * 3_600_000 && startsAt < resetAt;
-    if (immediate && insideCurrentWindow && resetAt - startsAt >= 5 * 60_000) {
+
+    // 3. Account is active: immediate start gets remainder of active window
+    if (active && immediate && resetAt && startsAt < resetAt && resetAt - startsAt >= 5 * 60_000) {
       return { start: candidate, end: new Date(resetAt), complete: false };
     }
     return null;
@@ -770,7 +826,9 @@
       components().setProgress($("#quota-progress"), usage.remainingPercent, `${usage.remaining.toFixed(1)}% de uso restante`);
       $("#quota-percent").textContent = `${usage.remainingPercent}%`;
       $("#quota-used").textContent = `${usage.remaining.toFixed(1).replace(".0", "")}% restante`;
-      $("#quota-total").textContent = quotaReset ? `reset ${components().formatDateTime(new Date(quotaReset))}` : "da janela de 5 horas";
+      $("#quota-total").textContent = quotaReset
+        ? `de ${usage.budget}% da semana • reset ${components().formatDateTime(new Date(quotaReset))}`
+        : `de ${usage.budget}% da cota semanal`;
       $("#session-activity").textContent = state.activationInFlight
           ? "Aguardando o host central emitir o token."
           : limited
@@ -808,10 +866,23 @@
 
   function slotConflict(start, end, accountId = selectedAccount()?.account_id) {
     if (!accountId) return true;
+    const startTime = start.getTime();
     const endTime = new Date(end).getTime();
-    const reservations = (state.data?.reservations || []).filter((item) => item.account_id === accountId && item.status !== "cancelled");
-    const busy = (state.data?.busySlots || []).filter((item) => item.account_id === accountId);
-    return [...reservations, ...busy].some((item) => Date.parse(item.starts_at) < endTime && Date.parse(item.ends_at) > start.getTime());
+    const reservations = (state.data?.reservations || []).filter((item) =>
+      item.account_id === accountId &&
+      item.status === "scheduled" &&
+      item.approval_status !== "rejected" &&
+      !reservationIsEnded(item)
+    );
+    const busy = (state.data?.busySlots || []).filter((item) =>
+      item.account_id === accountId &&
+      Date.parse(item.ends_at) > now().getTime()
+    );
+    return [...reservations, ...busy].some((item) => {
+      const itemStart = Date.parse(item.starts_at);
+      const itemEnd = Date.parse(item.ends_at);
+      return itemStart < endTime && itemEnd > startTime;
+    });
   }
 
   function isBookable(start) {
@@ -1052,18 +1123,17 @@
     if (!account) return [];
     const dayStart = calendarTools().startOfDay(targetDate);
     const dayEnd = new Date(dayStart.getTime() + 86_400_000);
+    const active = isAccountWindowActive(account);
     const anchor = resetMilliseconds(fiveHourWindow(account));
-    if (anchor === null) return [];
-
-    const slots = [];
     const fiveHoursMs = 5 * 3_600_000;
     const current = now().getTime();
-
-    // Ongoing partial slot if date is today
     const isToday = dayStart.getTime() === calendarTools().startOfDay(now()).getTime();
+    const slots = [];
+
+    // 1. Immediate slot if date is today
     if (isToday) {
       const imm = reservationWindow(now(), account);
-      if (imm && !imm.complete && imm.end.getTime() > current + 5 * 60_000) {
+      if (imm && imm.end.getTime() > current + 5 * 60_000) {
         const isConflict = slotConflict(imm.start, imm.end, account.account_id);
         const period = getDayPeriodLabel(imm.start);
         const relativeDay = getDayRelativeName(imm.start);
@@ -1071,7 +1141,7 @@
         slots.push({
           start: imm.start,
           end: imm.end,
-          isPartial: true,
+          isPartial: !imm.complete,
           durationHours,
           isPast: false,
           isBusy: isConflict,
@@ -1083,8 +1153,9 @@
       }
     }
 
-    // 5-hour slots throughout target day
-    let t = anchor - Math.ceil((anchor - dayStart.getTime()) / fiveHoursMs) * fiveHoursMs;
+    // 2. Future 5-hour slots throughout target day
+    const baseAnchor = (active && anchor) ? anchor : (current + fiveHoursMs);
+    let t = baseAnchor - Math.ceil((baseAnchor - dayStart.getTime()) / fiveHoursMs) * fiveHoursMs;
     while (t < dayStart.getTime() - fiveHoursMs) {
       t += fiveHoursMs;
     }
@@ -1093,7 +1164,9 @@
       const slotStart = new Date(t);
       const slotEnd = new Date(t + fiveHoursMs);
 
-      if (slotStart.getTime() >= dayStart.getTime() && slotStart.getTime() < dayEnd.getTime()) {
+      const isNearNow = isToday && Math.abs(slotStart.getTime() - current) < 10 * 60_000;
+
+      if (!isNearNow && slotStart.getTime() >= dayStart.getTime() && slotStart.getTime() < dayEnd.getTime()) {
         const isPast = slotStart.getTime() < current - 60_000;
         const isConflict = slotConflict(slotStart, slotEnd, account.account_id);
         const isWithinMax = slotStart.getTime() <= state.bookingMax.getTime();

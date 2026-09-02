@@ -74,20 +74,28 @@ if (-not $SkipLocalTests) {
 }
 
 $environment = Read-DotEnv $resolvedEnvironmentPath
-$required = @('SUPABASE_URL', 'SUPABASE_PUBLISHABLE_KEY', 'SUPABASE_SECRET_KEY', 'RELAY_AGENT_TOKEN')
+$required = @('RELAY_AGENT_TOKEN')
 foreach ($name in $required) {
   if (-not $environment[$name]) { throw "Variavel ausente no .env: $name" }
 }
 
-$supabaseUri = $null
-if (-not [Uri]::TryCreate($environment['SUPABASE_URL'], [UriKind]::Absolute, [ref]$supabaseUri)) {
-  throw 'SUPABASE_URL invalida no arquivo de ambiente.'
+$usingPostgres = [bool]$environment['DATABASE_URL']
+if (-not $usingPostgres) {
+  foreach ($name in @('SUPABASE_URL', 'SUPABASE_PUBLISHABLE_KEY', 'SUPABASE_SECRET_KEY')) {
+    if (-not $environment[$name]) { throw "Variavel ausente no .env de transicao: $name" }
+  }
+  $supabaseUri = $null
+  if (-not [Uri]::TryCreate($environment['SUPABASE_URL'], [UriKind]::Absolute, [ref]$supabaseUri)) {
+    throw 'SUPABASE_URL invalida no arquivo de ambiente.'
+  }
+  $actualSupabaseProjectRef = $supabaseUri.Host.Split('.')[0]
+  if ($ExpectedSupabaseProjectRef -and $actualSupabaseProjectRef -ne $ExpectedSupabaseProjectRef) {
+    throw "Deploy abortado: o arquivo '$resolvedEnvironmentPath' aponta para o Supabase '$actualSupabaseProjectRef', mas este ambiente exige '$ExpectedSupabaseProjectRef'."
+  }
+  Write-Host "==> Supabase de transicao confirmado: $actualSupabaseProjectRef ($resolvedEnvironmentPath)"
+} else {
+  Write-Host "==> PostgreSQL local selecionado por DATABASE_URL ($resolvedEnvironmentPath)"
 }
-$actualSupabaseProjectRef = $supabaseUri.Host.Split('.')[0]
-if ($ExpectedSupabaseProjectRef -and $actualSupabaseProjectRef -ne $ExpectedSupabaseProjectRef) {
-  throw "Deploy abortado: o arquivo '$resolvedEnvironmentPath' aponta para o Supabase '$actualSupabaseProjectRef', mas este ambiente exige '$ExpectedSupabaseProjectRef'."
-}
-Write-Host "==> Supabase confirmado: $actualSupabaseProjectRef ($resolvedEnvironmentPath)"
 
 $sha256 = [Security.Cryptography.SHA256]::Create()
 try {
@@ -102,11 +110,15 @@ $relayValues = [ordered]@{
   PORT = '10000'
   SITE_DIR = '/opt/fecart/current/site'
   RELAY_AGENT_TOKEN_SHA256 = $relayTokenHash
-  SUPABASE_URL = $environment['SUPABASE_URL']
-  SUPABASE_PUBLISHABLE_KEY = $environment['SUPABASE_PUBLISHABLE_KEY']
   TRUST_PROXY = 'true'
   RATE_LIMIT_GLOBAL_MAX = '1200'
   ANTIGRAVITY_ENABLED = 'false'
+}
+if ($usingPostgres) {
+  $relayValues['DATABASE_URL'] = $environment['DATABASE_URL']
+} else {
+  $relayValues['SUPABASE_URL'] = $environment['SUPABASE_URL']
+  $relayValues['SUPABASE_PUBLISHABLE_KEY'] = $environment['SUPABASE_PUBLISHABLE_KEY']
 }
 $hostValues = [ordered]@{
   RELAY_URL = 'ws://127.0.0.1:10000/tunnel'
@@ -114,8 +126,6 @@ $hostValues = [ordered]@{
   RELAY_HOST_ID = 'aws-lightsail-main'
   CODEX_BIN = '/usr/bin/codex'
   APP_SERVER_PORT = '4500'
-  SUPABASE_URL = $environment['SUPABASE_URL']
-  SUPABASE_SECRET_KEY = $environment['SUPABASE_SECRET_KEY']
   CODEX_HOME = '/var/lib/fecart-host/primary-codex'
   REMOTE_CODEX_STATE_DIR = '/var/lib/fecart-host'
   CODEX_ACCOUNT_REGISTRY = '/var/lib/fecart-host/accounts.json'
@@ -132,6 +142,12 @@ $hostValues = [ordered]@{
   ACCESS_SYNC_INTERVAL_MS = '1000'
   RELAY_HEARTBEAT_INTERVAL_MS = '5000'
   ANTIGRAVITY_ENABLED = 'false'
+}
+if ($usingPostgres) {
+  $hostValues['DATABASE_URL'] = $environment['DATABASE_URL']
+} else {
+  $hostValues['SUPABASE_URL'] = $environment['SUPABASE_URL']
+  $hostValues['SUPABASE_SECRET_KEY'] = $environment['SUPABASE_SECRET_KEY']
 }
 
 $relayEnv = ($relayValues.GetEnumerator() | ForEach-Object { "$($_.Key)=$(Quote-SystemdValue ([string]$_.Value))" }) -join "`n"
@@ -155,6 +171,7 @@ try {
     --exclude='node_modules' `
     --exclude='dist' `
     --exclude='site' `
+    --exclude='backups' `
     --exclude='*.log' `
     -C $projectRoot .
   if ($LASTEXITCODE -ne 0) { throw 'Falha ao empacotar o projeto.' }

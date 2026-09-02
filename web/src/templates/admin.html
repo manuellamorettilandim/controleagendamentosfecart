@@ -103,6 +103,20 @@
                   <div class="settings-auto-copy"><strong>Autoaprovação</strong><small>Aprova automaticamente pedidos de uma janela completa de 5 horas.</small></div>
                   <label class="switch-control" for="settings-auto-approve-enabled"><input id="settings-auto-approve-enabled" type="checkbox"><span aria-hidden="true"></span><b id="settings-auto-label">Desativada</b></label>
                 </div>
+                <div class="settings-slider-card">
+                  <div class="settings-auto-copy">
+                    <strong>Limite semanal por sessão</strong>
+                    <small>Percentual máximo da cota semanal da conta alocado para cada sessão.</small>
+                  </div>
+                  <div class="settings-slider-control">
+                    <div class="settings-slider-header">
+                      <span class="settings-slider-muted">1%</span>
+                      <span id="settings-session-weekly-quota-badge" class="settings-slider-badge">10%</span>
+                      <span class="settings-slider-muted">100%</span>
+                    </div>
+                    <input id="settings-session-weekly-quota" name="session_weekly_quota_percent" type="range" min="1" max="100" step="1" value="10" class="settings-slider-range" aria-label="Limite semanal por sessão">
+                  </div>
+                </div>
               </div>
 
               <fieldset class="settings-models-fieldset">

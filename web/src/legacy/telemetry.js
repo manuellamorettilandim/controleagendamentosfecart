@@ -142,7 +142,7 @@
       const lastAccess = admin.last_sign_in_at;
       const createdAt = admin.created_at || admin.auth_created_at;
       return `<tr>
-        <td><div class="telemetry-person"><span>${escapeHtml(initials(login))}</span><div><strong>${escapeHtml(login)}</strong><small>${escapeHtml(admin.email || "Autenticação Supabase")}</small></div></div></td>
+        <td><div class="telemetry-person"><span>${escapeHtml(initials(login))}</span><div><strong>${escapeHtml(login)}</strong><small>${escapeHtml(admin.email || "Autenticação local")}</small></div></div></td>
         <td><span class="telemetry-role is-${admin.role === "owner" ? "owner" : "admin"}"><i class="ph ${admin.role === "owner" ? "ph-crown" : "ph-shield"}" aria-hidden="true"></i>${admin.role === "owner" ? "Owner" : "Admin"}</span></td>
         <td><span class="telemetry-status ${admin.enabled === false ? "is-disabled" : "is-active"}"><i></i>${admin.enabled === false ? "Desativado" : "Ativo"}</span></td>
         <td><strong class="telemetry-date">${escapeHtml(formatRelative(lastAccess))}</strong><small class="telemetry-date-detail">${escapeHtml(lastAccess ? formatDateTime(lastAccess) : "Nenhum login registrado")}</small></td>

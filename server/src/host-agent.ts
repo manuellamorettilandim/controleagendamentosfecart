@@ -39,6 +39,7 @@ import {
   type WireMessage,
 } from "./protocol.js";
 import { SupabaseServiceClient, type SupabaseAdminKeyType } from "./supabase.js";
+import { PostgresServiceClient } from "./postgres.js";
 import { fiveHourRateLimit, weeklyRateLimit } from "./quota-window.js";
 
 const DEFAULT_RELAY_HEARTBEAT_INTERVAL_MS = 5_000;
@@ -68,6 +69,7 @@ export interface HostConfig {
   supabaseUrl?: string;
   supabaseSecretKey?: string;
   supabaseServiceRoleKey?: string;
+  databaseUrl?: string;
   startAppServer: boolean;
   codexOAuthResponsesUrl?: string;
   sshAuthorizedKeysFile?: string;
@@ -346,6 +348,7 @@ export function hostConfigFromEnvironment(env: NodeJS.ProcessEnv = process.env):
     supabaseUrl: env.SUPABASE_URL?.trim() || undefined,
     supabaseSecretKey: env.SUPABASE_SECRET_KEY?.trim() || undefined,
     supabaseServiceRoleKey: env.SUPABASE_SERVICE_ROLE_KEY?.trim() || undefined,
+    databaseUrl: env.DATABASE_URL?.trim() || undefined,
     startAppServer: env.HOST_SKIP_APP_SERVER !== "1",
     codexOAuthResponsesUrl: env.CODEX_OAUTH_RESPONSES_URL?.trim() || undefined,
     sshAuthorizedKeysFile: env.CODEX_SSH_AUTHORIZED_KEYS_FILE?.trim()
@@ -366,7 +369,7 @@ export class HostAgent {
   private readonly oauthBroker: OAuthResponsesBroker;
   private readonly workers = new Map<string, AccountWorker>();
   private readonly localStreams = new Map<string, LocalStream>();
-  private readonly supabase: SupabaseServiceClient | null;
+  private readonly supabase: SupabaseServiceClient | PostgresServiceClient | null;
   private tunnel: WebSocket | null = null;
   private reconnectTimer: NodeJS.Timeout | null = null;
   private accessTimer: NodeJS.Timeout | null = null;
@@ -389,9 +392,11 @@ export class HostAgent {
     this.reconnectDelayMs = config.reconnectInitialMs;
     const adminKey = config.supabaseSecretKey || config.supabaseServiceRoleKey;
     const adminKeyType: SupabaseAdminKeyType = config.supabaseSecretKey ? "secret" : "service_role";
-    this.supabase = config.supabaseUrl && adminKey
-      ? new SupabaseServiceClient(config.supabaseUrl, adminKey, adminKeyType)
-      : null;
+    this.supabase = config.databaseUrl
+      ? new PostgresServiceClient(config.databaseUrl)
+      : config.supabaseUrl && adminKey
+        ? new SupabaseServiceClient(config.supabaseUrl, adminKey, adminKeyType)
+        : null;
   }
 
   public async start(): Promise<void> {
@@ -441,6 +446,7 @@ export class HostAgent {
     this.tunnel = null;
     for (const worker of this.workers.values()) await worker.stop();
     this.workers.clear();
+    if (this.supabase instanceof PostgresServiceClient) await this.supabase.close().catch(() => undefined);
   }
 
   private async startWorkers(): Promise<void> {
@@ -786,7 +792,7 @@ export class HostAgent {
         },
         onEnd: async (usage) => {
           const durationMs = Date.now() - startTime;
-          const window = device.reservationId ? fiveHourRateLimit(worker.snapshot) : weeklyRateLimit(worker.snapshot);
+          const window = weeklyRateLimit(worker.snapshot) ?? fiveHourRateLimit(worker.snapshot);
           const modelUsed = usage?.model ?? requestedModel ?? "gpt-5.6-sol";
           if (usage) {
             const observation: UsageObservation = {
@@ -1030,7 +1036,9 @@ export class HostAgent {
         const userId = requestString(payload, "userId");
         const reservationId = requestString(payload, "reservationId");
         const expiresAt = requestString(payload, "expiresAt");
-        const quotaBudgetPercent = 100;
+        const quotaBudgetPercent = typeof payload.quotaBudgetPercent === "number" && Number.isFinite(payload.quotaBudgetPercent) && payload.quotaBudgetPercent > 0
+          ? Math.max(1, Math.min(100, Math.round(payload.quotaBudgetPercent)))
+          : 10;
         const worker = await this.workerFor(accountId);
         if (!worker.ready || worker.snapshot.status !== "ready") {
           throw new Error("A conta escolhida para a reserva não está disponível.");
@@ -1039,6 +1047,8 @@ export class HostAgent {
         if (!accountWindow?.resetsAt) {
           throw new Error("A janela de quota de 5 horas ainda não está disponível para esta conta.");
         }
+        const weeklyWindow = weeklyRateLimit(worker.snapshot);
+        const baseUsedPercent = weeklyWindow?.usedPercent ?? accountWindow?.usedPercent ?? 0;
         const issued = await this.accessStore.issue(
           `Sessão ${reservationId.slice(0, 8)}`,
           Math.max(1_000, Date.parse(expiresAt) - Date.now()),
@@ -1046,10 +1056,10 @@ export class HostAgent {
           {
             accountId,
             expiresAt,
-            weeklyLimitPercent: 100,
+            weeklyLimitPercent: quotaBudgetPercent,
             userId,
             reservationId,
-            quotaBaseUsedPercent: accountWindow?.usedPercent ?? 0,
+            quotaBaseUsedPercent: baseUsedPercent,
             quotaBudgetPercent,
             allowedModels: requestOptionalStringArray(payload, "allowedModels"),
           },
@@ -1227,10 +1237,10 @@ export class HostAgent {
         return { accountId, label: removed.label, revokedDevices };
       }
       case "admin.list":
-        if (!this.supabase) throw new Error("Supabase central não está configurado.");
+        if (!this.supabase) throw new Error("Banco central não está configurado.");
         return { admins: await this.supabase.listAdmins() };
       case "audit.write": {
-        if (!this.supabase) throw new Error("Supabase central não está configurado.");
+        if (!this.supabase) throw new Error("Banco central não está configurado.");
         const action = requestString(payload, "action");
         const targetType = requestString(payload, "targetType");
         const targetId = requestOptionalString(payload, "targetId");
@@ -1242,13 +1252,13 @@ export class HostAgent {
       }
       case "admin.enable":
       case "admin.disable":
-        if (!this.supabase) throw new Error("Supabase central não está configurado.");
+        if (!this.supabase) throw new Error("Banco central não está configurado.");
         const targetUserId = requestString(payload, "userId");
         const changed = await this.supabase.setAdminEnabled(targetUserId, command === "admin.enable");
         await this.audit(actorId, command, "admin", targetUserId);
         return { admin: changed };
       case "admin.invite":
-        if (!this.supabase) throw new Error("Configure SUPABASE_URL e SUPABASE_SECRET_KEY no host central.");
+        if (!this.supabase) throw new Error("Configure DATABASE_URL no host central.");
         const invited = await this.supabase.inviteAdmin(requestString(payload, "email"), actorId);
         await this.audit(actorId, command, "admin", invited.userId, { email: invited.email });
         return invited;

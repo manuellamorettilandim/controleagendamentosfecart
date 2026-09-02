@@ -1,0 +1,19 @@
+{
+  "Rules": [
+    {
+      "ID": "fecart-six-hour-two-days",
+      "Status": "Enabled",
+      "Filter": { "Prefix": "fecart/postgres/six-hour/" },
+      "Expiration": { "Days": 2 },
+      "NoncurrentVersionExpiration": { "NoncurrentDays": 2 }
+    },
+    {
+      "ID": "fecart-daily-thirty-days",
+      "Status": "Enabled",
+      "Filter": { "Prefix": "fecart/postgres/daily/" },
+      "Expiration": { "Days": 30 },
+      "NoncurrentVersionExpiration": { "NoncurrentDays": 30 }
+    }
+  ]
+}
+

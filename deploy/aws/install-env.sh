@@ -22,7 +22,14 @@ if grep -q '^RELAY_AGENT_TOKEN=' "$RELAY_TMP"; then
   exit 1
 fi
 grep -q '^RELAY_AGENT_TOKEN=' "$HOST_TMP"
-grep -q '^SUPABASE_SECRET_KEY=' "$HOST_TMP"
+if ! grep -q '^DATABASE_URL=' "$HOST_TMP" && ! grep -q '^SUPABASE_SECRET_KEY=' "$HOST_TMP"; then
+  echo "DATABASE_URL ou SUPABASE_SECRET_KEY ausente no host." >&2
+  exit 1
+fi
+if grep -q '^DATABASE_URL=' "$HOST_TMP" && ! grep -q '^DATABASE_URL=' "$RELAY_TMP"; then
+  echo "DATABASE_URL precisa estar nos ambientes do relay e do host." >&2
+  exit 1
+fi
 
 install -o root -g fecart-relay -m 0640 "$RELAY_TMP" /etc/fecart/relay.env
 install -o root -g fecart-host -m 0640 "$HOST_TMP" /etc/fecart/host.env

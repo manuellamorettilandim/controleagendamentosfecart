@@ -1,0 +1,12 @@
+[Unit]
+Description=FECART PostgreSQL backup every 6 hours
+
+[Timer]
+OnCalendar=*-*-* 00,06,12,18:15:00 UTC
+Persistent=true
+RandomizedDelaySec=5m
+Unit=fecart-db-backup@six-hour.service
+
+[Install]
+WantedBy=timers.target
+

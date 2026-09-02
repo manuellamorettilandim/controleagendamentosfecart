@@ -1,10 +1,14 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { authGateway } from "./auth";
 
 describe("auth session storage", () => {
   beforeEach(() => {
     window.localStorage.clear();
     window.sessionStorage.clear();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it("persists and reads the normalized session shape", () => {
@@ -34,5 +38,24 @@ describe("auth session storage", () => {
       expires_at: null,
     });
     expect(window.localStorage.getItem("remote_codex_admin_session")).toContain("legacy-token");
+  });
+
+  it("uses same-origin endpoints for local PostgreSQL authentication", async () => {
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ provider: "local" }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        access_token: "local-access",
+        refresh_token: "local-refresh",
+        user: { id: "user-1" },
+        expires_at: 456,
+      }), { status: 200 }));
+    vi.stubGlobal("fetch", fetcher);
+
+    const config = await authGateway.loadConfig();
+    await authGateway.passwordLogin(config, "owner@example.com", "strong-password");
+
+    expect(config).toEqual({ provider: "local", supabaseUrl: undefined, publishableKey: undefined });
+    expect(fetcher.mock.calls[1][0]).toBe("/api/auth/token?grant_type=password");
+    expect(new Headers(fetcher.mock.calls[1][1].headers).has("apikey")).toBe(false);
   });
 });

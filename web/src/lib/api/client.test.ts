@@ -41,6 +41,7 @@ describe("ApiClient", () => {
     });
 
     await expect(api.user("/api/user/reservations", {}, true, {
+      provider: "supabase",
       supabaseUrl: "https://example.supabase.co",
       publishableKey: "public-key",
     })).resolves.toEqual({ reservations: [] });

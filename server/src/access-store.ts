@@ -254,7 +254,7 @@ function positiveDelta(current: number, previous: number): number {
 
 function quotaLimitReached(device: DeviceAccess, accountUsedPercent: number | null): boolean {
   if (device.quotaBaseUsedPercent !== null && device.quotaBudgetPercent !== null) {
-    const budget = device.reservationId ? 100 : device.quotaBudgetPercent;
+    const budget = device.quotaBudgetPercent;
     return device.usage.quotaConsumedPercent >= budget;
   }
   if (accountUsedPercent === null) return false;

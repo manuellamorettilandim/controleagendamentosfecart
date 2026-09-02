@@ -21,8 +21,9 @@ O produto combina agendamento exclusivo, credenciais efêmeras e um relay que fa
 
 - O relay e o site rodam no Render.
 - O `codex app-server`, os `CODEX_HOME` e os logins ChatGPT rodam no host central.
-- Supabase Auth autentica administradores e usuários comuns.
-- Supabase armazena perfis, turmas, reservas e snapshots sanitizados, nunca credenciais OpenAI ou tokens brutos do relay.
+- Estado atual: Supabase Auth autentica administradores e usuários comuns e o PostgreSQL gerenciado armazena perfis, turmas, reservas e snapshots sanitizados.
+- Estado alvo: autenticação e dados passam para o backend e para um PostgreSQL privado na mesma AWS Lightsail do aplicativo; o Supabase será removido do runtime somente depois de migração e restauração verificadas.
+- O banco local terá backup a cada 6 horas (8 cópias), backup diário (30 cópias) e réplica de cada dump em S3 privado, independente do disco da Lightsail.
 - Usuários podem iniciar o Codex CLI com o token temporário ou conectar o Codex App ao workspace remoto usando uma chave SSH temporária.
 
 ## Capabilities and Constraints
@@ -34,6 +35,7 @@ O produto combina agendamento exclusivo, credenciais efêmeras e um relay que fa
 - Cada grupo escolhe uma conta disponível ao solicitar o horário.
 - O app-server informa quota por conta, não por token. A janela de cinco horas controla a sessão do usuário; a janela semanal é preservada para análise administrativa.
 - O protótipo legado contém senhas de demonstração em texto simples e políticas abertas; elas servem apenas como fonte de migração e devem ser rotacionadas.
+- UUIDs, perfis, reservas, auditoria e hashes de senha existentes no Supabase devem ser preservados antes do corte; o Supabase permanece intacto até o aceite do novo banco.
 
 ## Brand Commitments
 

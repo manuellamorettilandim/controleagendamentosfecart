@@ -41,19 +41,53 @@ export function isFiveHourResetBoundary(resetAtSeconds: number, startsAtMs: numb
   return nearest !== null && Math.abs(nearest - startsAtMs) <= toleranceMs;
 }
 
-export function reservationWindowForStart(resetAtSeconds: number, startsAtMs: number, nowMs: number): ReservationWindow | null {
+export interface QuotaWindowState {
+  usedPercent?: number | null;
+  hasActiveReservation?: boolean;
+}
+
+export function isWindowActive(
+  resetAtSeconds: number | null | undefined,
+  nowMs: number,
+  state?: QuotaWindowState
+): boolean {
+  if (!resetAtSeconds) return false;
   const resetAtMs = resetAtSeconds * 1_000;
-  if (![resetAtMs, startsAtMs, nowMs].every(Number.isFinite) || resetAtMs <= 0) return null;
+  if (!Number.isFinite(resetAtMs) || resetAtMs <= nowMs) return false;
+  const usedPercent = Number(state?.usedPercent);
+  const hasUsage = Number.isFinite(usedPercent) && usedPercent > 0;
+  // If state is not passed or explicitly has usage/active reservation, consider active
+  return state === undefined ? true : Boolean(state.hasActiveReservation || hasUsage);
+}
+
+export function reservationWindowForStart(
+  resetAtSeconds: number | null | undefined,
+  startsAtMs: number,
+  nowMs: number,
+  state?: QuotaWindowState
+): ReservationWindow | null {
+  if (![startsAtMs, nowMs].every(Number.isFinite)) return null;
   if (startsAtMs < nowMs - IMMEDIATE_SESSION_TOLERANCE_MS) return null;
 
-  if (isFiveHourResetBoundary(resetAtSeconds, startsAtMs)) {
+  const startsImmediately = startsAtMs <= nowMs + IMMEDIATE_SESSION_TOLERANCE_MS;
+  const active = isWindowActive(resetAtSeconds, nowMs, state);
+
+  // When account is idle, immediate session gets a full 5-hour window starting now!
+  if (!active && startsImmediately) {
     return { startsAtMs, endsAtMs: startsAtMs + SESSION_DURATION_MS, complete: true };
   }
 
-  const startsImmediately = startsAtMs <= nowMs + IMMEDIATE_SESSION_TOLERANCE_MS;
-  const insideCurrentWindow = startsAtMs >= resetAtMs - SESSION_DURATION_MS && startsAtMs < resetAtMs;
-  if (startsImmediately && insideCurrentWindow && resetAtMs - startsAtMs >= MIN_IMMEDIATE_SESSION_MS) {
-    return { startsAtMs, endsAtMs: resetAtMs, complete: false };
+  const resetAtMs = (resetAtSeconds ?? 0) * 1_000;
+  if (resetAtMs > 0 && isFiveHourResetBoundary(resetAtSeconds!, startsAtMs)) {
+    return { startsAtMs, endsAtMs: startsAtMs + SESSION_DURATION_MS, complete: true };
   }
+
+  // When active, immediate start gets remainder of active window
+  if (active && startsImmediately && resetAtMs > startsAtMs) {
+    if (resetAtMs - startsAtMs >= MIN_IMMEDIATE_SESSION_MS) {
+      return { startsAtMs, endsAtMs: resetAtMs, complete: false };
+    }
+  }
+
   return null;
 }

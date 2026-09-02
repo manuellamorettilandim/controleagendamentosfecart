@@ -16,9 +16,19 @@ fi
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y ca-certificates curl gnupg tar caddy openssh-server
+apt-get install -y ca-certificates curl gnupg tar caddy openssh-server awscli
 
 install -d -m 0755 /etc/apt/keyrings
+if [[ ! -f /etc/apt/keyrings/postgresql.gpg ]]; then
+  curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+    | gpg --dearmor -o /etc/apt/keyrings/postgresql.gpg
+fi
+source /etc/os-release
+printf '%s\n' "deb [signed-by=/etc/apt/keyrings/postgresql.gpg] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" \
+  > /etc/apt/sources.list.d/postgresql.list
+apt-get update
+apt-get install -y postgresql-17 postgresql-client-17
+
 if [[ ! -f /etc/apt/keyrings/nodesource.gpg ]]; then
   curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
     | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
@@ -59,8 +69,28 @@ id -u fecart-relay >/dev/null 2>&1 \
   || useradd --system --home-dir /var/lib/fecart-relay --create-home --shell /usr/sbin/nologin fecart-relay
 id -u fecart-host >/dev/null 2>&1 \
   || useradd --system --home-dir /var/lib/fecart-host --create-home --shell /bin/bash fecart-host
+id -u fecart-backup >/dev/null 2>&1 \
+  || useradd --system --home-dir /var/lib/fecart-backup --create-home --shell /usr/sbin/nologin fecart-backup
 usermod --shell /bin/bash fecart-host
 passwd --lock fecart-host >/dev/null 2>&1 || true
+
+systemctl enable postgresql
+systemctl start postgresql
+
+sudo -u postgres psql --set ON_ERROR_STOP=1 <<'POSTGRES_ROLES'
+DO $do$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'fecart-relay') THEN
+    CREATE ROLE "fecart-relay" LOGIN BYPASSRLS;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'fecart-host') THEN
+    CREATE ROLE "fecart-host" LOGIN BYPASSRLS;
+  END IF;
+END
+$do$;
+SELECT 'CREATE DATABASE fecart OWNER postgres'
+WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'fecart')\gexec
+POSTGRES_ROLES
 
 install -d -o root -g root -m 0755 /opt/fecart/releases
 install -d -o root -g root -m 0755 /etc/fecart
@@ -72,6 +102,7 @@ install -d -o fecart-host -g fecart-host -m 0700 \
   /var/lib/fecart-host/app-server-tokens \
   /var/lib/fecart-host/workspaces
 install -d -o fecart-host -g fecart-host -m 0700 /var/lib/fecart-host/.ssh
+install -d -o fecart-backup -g fecart-backup -m 0700 /var/backups/fecart/postgres
 touch /var/lib/fecart-host/.ssh/authorized_keys
 chown fecart-host:fecart-host /var/lib/fecart-host/.ssh/authorized_keys
 chmod 0600 /var/lib/fecart-host/.ssh/authorized_keys
@@ -104,14 +135,24 @@ chown -R root:root "$RELEASE_DIR"
 chmod -R o-w "$RELEASE_DIR"
 ln -sfn "$RELEASE_DIR" /opt/fecart/current
 
+install -o root -g root -m 0644 \
+  "$RELEASE_DIR/deploy/aws/postgres/fecart-db-backup@.service" \
+  /etc/systemd/system/fecart-db-backup@.service
+install -o root -g root -m 0644 \
+  "$RELEASE_DIR/deploy/aws/postgres/fecart-db-backup-six-hour.timer" \
+  /etc/systemd/system/fecart-db-backup-six-hour.timer
+install -o root -g root -m 0644 \
+  "$RELEASE_DIR/deploy/aws/postgres/fecart-db-backup-daily.timer" \
+  /etc/systemd/system/fecart-db-backup-daily.timer
+
 install -o root -g root -m 0755 "$RELEASE_DIR/deploy/aws/install-env.sh" /usr/local/sbin/fecart-install-env
 sed -i 's/\r$//' /usr/local/sbin/fecart-install-env
 
 cat > /etc/systemd/system/fecart-relay.service <<'UNIT'
 [Unit]
 Description=FECART public relay and web interface
-After=network-online.target
-Wants=network-online.target
+After=network-online.target postgresql.service
+Wants=network-online.target postgresql.service
 
 [Service]
 Type=simple
@@ -136,8 +177,8 @@ UNIT
 cat > /etc/systemd/system/fecart-host.service <<'UNIT'
 [Unit]
 Description=FECART Codex central host agent
-After=network-online.target fecart-relay.service
-Wants=network-online.target
+After=network-online.target postgresql.service fecart-relay.service
+Wants=network-online.target postgresql.service
 Requires=fecart-relay.service
 
 [Service]
