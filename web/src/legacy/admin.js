@@ -1068,7 +1068,6 @@
         await sendReservationDecision("approve", schedule, note, {
           startsAt: startsAt.toISOString(),
           endsAt: endsAt.toISOString(),
-          quotaBudgetPercent: 100,
         });
         closeAllDialogs();
         await loadLiveData();
