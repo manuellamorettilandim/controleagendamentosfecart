@@ -1,6 +1,11 @@
 # Deploy AWS Lightsail
 
-Este deploy executa o site, o relay e o host-agent na mesma Lightsail, mantendo o Supabase externo.
+Este deploy executa o site, o relay e o host-agent na mesma Lightsail, mantendo
+o Supabase externo por enquanto. A migração planejada para PostgreSQL local e
+os backups S3 estão documentados em
+[`docs/DATABASE_MIGRATION.md`](../../docs/DATABASE_MIGRATION.md). O bootstrap já
+instala PostgreSQL 17 e as units de backup; restauração, credenciais S3,
+habilitação dos timers e corte continuam explícitos.
 
 ## Tamanho recomendado para o credito atual
 
@@ -41,6 +46,6 @@ sudo journalctl -u fecart-relay -u fecart-host -f
 sudo systemctl restart fecart-relay fecart-host
 ```
 
-Depois do primeiro deploy, abra `/admin` e autentique cada conta Codex por device-code. Os grupos, administradores, reservas e auditoria continuam no Supabase atual.
+Depois do primeiro deploy e do corte de banco, abra `/admin` e autentique cada conta Codex por device-code. Grupos, administradores, reservas e auditoria ficam no PostgreSQL local; antes do corte, continuam no Supabase de transição.
 
 No Lightsail, confirme que a regra TCP 22 está liberada. Cada sessão recebe uma chave Ed25519 diferente; o host mantém apenas a chave pública em `authorized_keys`. O comando forçado aceita somente a inicialização do Codex App e a chave deixa de ser autorizada quando a sessão é desabilitada, revogada ou expira.

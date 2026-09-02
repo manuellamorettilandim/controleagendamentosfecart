@@ -1,0 +1,16 @@
+[Unit]
+Description=FECART PostgreSQL backup (%i)
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=fecart-backup
+Group=fecart-backup
+EnvironmentFile=/etc/fecart/postgres-backup.env
+ExecStart=/usr/bin/bash /opt/fecart/current/deploy/aws/postgres/backup.sh %i
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/backups/fecart/postgres

@@ -1,5 +1,5 @@
 // Keep credentials and control-plane configuration out of Codex subprocesses.
-// The host process may hold Supabase and relay secrets, while the app-server
+// The host process may hold database and relay secrets, while the app-server
 // only needs a small set of operating-system variables plus its account data.
 const INHERITED_ENV_KEYS = [
   "PATH",

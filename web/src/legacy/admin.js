@@ -558,9 +558,11 @@
     setText("#review-group", schedule.group);
     setText("#review-account", accountLabel);
     setText("#review-period", period);
+    const isOngoingPending = (schedule.status === "pending" || schedule.approvalStatus === "pending") && startDate < new Date() && time.endDate > new Date();
+    const effectiveStartDate = isOngoingPending ? new Date() : startDate;
     const startInput = $("#review-start");
     const endInput = $("#review-end");
-    if (startInput) startInput.value = dateTimeInputValue(time.startDate);
+    if (startInput) startInput.value = dateTimeInputValue(effectiveStartDate);
     if (endInput) endInput.value = dateTimeInputValue(time.endDate);
     const reviewNote = $("#review-note");
     if (reviewNote) reviewNote.value = schedule.note || "";
@@ -699,10 +701,23 @@
     if (save) save.disabled = state.modelCatalog.length === 0;
   }
 
+  function syncWeeklyQuotaBadge() {
+    const slider = $("#settings-session-weekly-quota");
+    const badge = $("#settings-session-weekly-quota-badge");
+    if (slider && badge) {
+      badge.textContent = `${slider.value}%`;
+    }
+  }
+
   function renderSettings(settings) {
     const autoQuota = Math.max(0, Number(settings?.auto_approve_quota_percent) || 0);
     const autoToggle = $("#settings-auto-approve-enabled");
     if (autoToggle) autoToggle.checked = autoQuota > 0;
+    const weeklySlider = $("#settings-session-weekly-quota");
+    if (weeklySlider) {
+      weeklySlider.value = String(Math.max(1, Math.min(100, Number(settings?.session_weekly_quota_percent) || 10)));
+      syncWeeklyQuotaBadge();
+    }
     renderModelCatalog(settings);
     syncAutoApproveControls();
     setText("#settings-status", settings?.updated_at ? `Atualizado em ${formatDateTime(settings.updated_at)}` : "Políticas carregadas.");
@@ -721,11 +736,12 @@
 
   async function saveSettings() {
     const autoApproveEnabled = Boolean($("#settings-auto-approve-enabled")?.checked);
+    const sessionWeeklyQuotaPercent = Number($("#settings-session-weekly-quota")?.value || 10);
     const enabledModels = $$('[data-model-toggle]:checked').map((input) => input.value);
     if (enabledModels.length === 0) throw new Error("Mantenha ao menos um modelo disponível.");
     const result = await adminRequest("/api/admin/settings", {
       method: "POST",
-      body: JSON.stringify({ autoApproveEnabled, enabledModels }),
+      body: JSON.stringify({ autoApproveEnabled, sessionWeeklyQuotaPercent, enabledModels }),
     });
     renderSettings(result?.settings || {});
   }
@@ -819,8 +835,9 @@
     const end = start + (durationHours || 1);
     const linkedDevice = reservation.device_id ? deviceMap.get(reservation.device_id) : null;
     const deviceStatus = linkedDevice?.status || "";
-    const status = reservation.status === "cancelled"
-      ? "cancelled"
+    const isOverduePending = reservation.approval_status === "pending" && !Number.isNaN(endDate.getTime()) && endDate.getTime() <= Date.now();
+    const status = reservation.status === "cancelled" || reservation.approval_status === "expired" || isOverduePending
+      ? "expired"
       : reservation.approval_status === "pending"
         ? "pending"
           : reservation.device_id && ["active", "limited"].includes(deviceStatus)
@@ -866,6 +883,7 @@
       fillPercentSelect($("#settings-auto-approve"), Number(event.currentTarget.value), previous);
     });
     $("#settings-auto-approve-enabled")?.addEventListener("change", syncAutoApproveControls);
+    $("#settings-session-weekly-quota")?.addEventListener("input", syncWeeklyQuotaBadge);
     $("#settings-models")?.addEventListener("change", (event) => {
       const input = event.target.closest("[data-model-toggle]");
       if (input) input.closest("[data-model-card]")?.classList.toggle("is-enabled", input.checked);

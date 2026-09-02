@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
-import { SupabaseServiceClient, type SupabaseAdminKeyType } from "./supabase.js";
+import { centralServiceFromEnvironment } from "./central-service.js";
 import { loginEmailForUsername } from "./user-identity.js";
 
 interface LegacyUser {
@@ -30,15 +30,10 @@ async function main(): Promise<void> {
     console.log("Uso: npm.cmd run users -- import-legacy");
     return;
   }
-  const url = process.env.SUPABASE_URL?.trim();
-  const secretKey = process.env.SUPABASE_SECRET_KEY?.trim();
-  const legacyKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
-  const key = secretKey || legacyKey;
-  if (!url || !key) throw new Error("Configure SUPABASE_URL e SUPABASE_SECRET_KEY no host central.");
   const sourcePath = path.resolve("legacy", "fecart-prototype", "SUPABASE_SETUP.sql");
   const users = parseLegacyUsers(await fs.readFile(sourcePath, "utf8"));
   if (users.length === 0) throw new Error("Nenhum login comum foi encontrado no SQL legado.");
-  const client = new SupabaseServiceClient(url, key, secretKey ? "secret" : "service_role" as SupabaseAdminKeyType);
+  const client = centralServiceFromEnvironment();
   for (const user of users) {
     await client.upsertEndUser({
       username: user.username,
@@ -49,7 +44,7 @@ async function main(): Promise<void> {
     });
     console.log(`Usuário migrado: ${user.username} · ${user.groupName}`);
   }
-  console.log(`${users.length} usuários comuns migrados para o Supabase Auth.`);
+  console.log(`${users.length} usuários comuns migrados para o serviço de autenticação configurado.`);
 }
 
 try {

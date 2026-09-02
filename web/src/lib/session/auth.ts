@@ -6,8 +6,9 @@ export interface AuthSession {
 }
 
 export interface AuthConfig {
-  supabaseUrl: string;
-  publishableKey: string;
+  provider: "local" | "supabase";
+  supabaseUrl?: string;
+  publishableKey?: string;
 }
 
 export interface AuthGateway {
@@ -69,7 +70,7 @@ function persistSession(data: Partial<AuthSession>, previous: AuthSession | null
     user: data.user ?? previous?.user ?? null,
     expires_at: typeof data.expires_at === "number" ? data.expires_at : previous?.expires_at ?? null,
   };
-  if (!session.access_token) throw new Error("Supabase não retornou uma sessão válida.");
+  if (!session.access_token) throw new Error("O serviço de autenticação não retornou uma sessão válida.");
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
   return session;
 }
@@ -83,18 +84,20 @@ function clearSession(): void {
 async function loadConfig(): Promise<AuthConfig> {
   const response = await fetch("/api/admin/config", { cache: "no-store" });
   const data = (await response.json().catch(() => ({}))) as JsonRecord;
+  const provider = data.provider === "local" ? "local" : "supabase";
   const supabaseUrl = stringValue(data.supabaseUrl);
   const publishableKey = stringValue(data.publishableKey);
-  if (!response.ok || !supabaseUrl || !publishableKey) {
-    throw new Error(stringValue(data.error) || "Supabase Auth não está configurado no relay.");
+  if (!response.ok || (provider === "supabase" && (!supabaseUrl || !publishableKey))) {
+    throw new Error(stringValue(data.error) || "O serviço de autenticação não está configurado no relay.");
   }
-  return { supabaseUrl, publishableKey };
+  return { provider, supabaseUrl: supabaseUrl || undefined, publishableKey: publishableKey || undefined };
 }
 
 async function passwordLogin(config: AuthConfig, email: string, password: string): Promise<AuthSession> {
-  const response = await fetch(`${config.supabaseUrl}/auth/v1/token?grant_type=password`, {
+  const endpoint = config.provider === "local" ? "/api/auth/token?grant_type=password" : `${config.supabaseUrl}/auth/v1/token?grant_type=password`;
+  const response = await fetch(endpoint, {
     method: "POST",
-    headers: { apikey: config.publishableKey, "Content-Type": "application/json" },
+    headers: { ...(config.provider === "supabase" ? { apikey: config.publishableKey ?? "" } : {}), "Content-Type": "application/json" },
     body: JSON.stringify({ email, password }),
   });
   const data = (await response.json().catch(() => ({}))) as JsonRecord;
@@ -112,9 +115,10 @@ async function passwordLogin(config: AuthConfig, email: string, password: string
 async function refreshSession(config: AuthConfig): Promise<AuthSession> {
   const current = getSession();
   if (!current?.refresh_token) throw new Error("A sessão não possui refresh token.");
-  const response = await fetch(`${config.supabaseUrl}/auth/v1/token?grant_type=refresh_token`, {
+  const endpoint = config.provider === "local" ? "/api/auth/token?grant_type=refresh_token" : `${config.supabaseUrl}/auth/v1/token?grant_type=refresh_token`;
+  const response = await fetch(endpoint, {
     method: "POST",
-    headers: { apikey: config.publishableKey, "Content-Type": "application/json" },
+    headers: { ...(config.provider === "supabase" ? { apikey: config.publishableKey ?? "" } : {}), "Content-Type": "application/json" },
     body: JSON.stringify({ refresh_token: current.refresh_token }),
   });
   const data = (await response.json().catch(() => ({}))) as JsonRecord;
@@ -137,9 +141,10 @@ async function signOut(config: AuthConfig): Promise<void> {
   const current = getSession();
   try {
     if (current?.access_token) {
-      await fetch(`${config.supabaseUrl}/auth/v1/logout`, {
+      const endpoint = config.provider === "local" ? "/api/auth/logout" : `${config.supabaseUrl}/auth/v1/logout`;
+      await fetch(endpoint, {
         method: "POST",
-        headers: { apikey: config.publishableKey, Authorization: `Bearer ${current.access_token}` },
+        headers: { ...(config.provider === "supabase" ? { apikey: config.publishableKey ?? "" } : {}), Authorization: `Bearer ${current.access_token}` },
       });
     }
   } catch {

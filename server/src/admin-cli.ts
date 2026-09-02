@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 
-import { SupabaseServiceClient, type SupabaseAdminKeyType } from "./supabase.js";
+import { centralServiceFromEnvironment } from "./central-service.js";
 
 function usage(): void {
   console.log(`Uso no host central:
@@ -9,7 +9,7 @@ function usage(): void {
   npm.cmd run admin -- create --login professor --role owner
   npm.cmd run admin -- create --login raissa --role admin
 
-Este comando usa SUPABASE_SECRET_KEY somente na máquina central (SUPABASE_SERVICE_ROLE_KEY é aceito apenas como fallback legado).`);
+Este comando usa DATABASE_URL no PostgreSQL local. As variáveis do Supabase são aceitas apenas durante a transição.`);
 }
 
 function option(name: string): string | null {
@@ -28,13 +28,7 @@ async function main(): Promise<void> {
   const login = option("--login");
   const passwordOpt = option("--password");
   if (!email && !(command === "create" && login)) throw new Error("Informe --email ou, para create, --login.");
-  const url = process.env.SUPABASE_URL?.trim();
-  const secretKey = process.env.SUPABASE_SECRET_KEY?.trim();
-  const legacyKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
-  const key = secretKey || legacyKey;
-  if (!url || !key) throw new Error("Configure SUPABASE_URL e SUPABASE_SECRET_KEY no host central.");
-  const keyType: SupabaseAdminKeyType = secretKey ? "secret" : "service_role";
-  const client = new SupabaseServiceClient(url, key, keyType);
+  const client = centralServiceFromEnvironment();
 
   if (command === "bootstrap") {
     const owner = await client.bootstrapOwner(email!);
@@ -43,7 +37,7 @@ async function main(): Promise<void> {
   }
   if (command === "invite") {
     const invited = await client.inviteAdmin(email!, null);
-    console.log(`Convite enviado para: ${invited.email ?? email} (${invited.userId}).`);
+    console.log(`Administrador registrado: ${invited.email ?? email} (${invited.userId}). Defina a senha com o comando create antes do primeiro acesso.`);
     return;
   }
   if (command === "create") {

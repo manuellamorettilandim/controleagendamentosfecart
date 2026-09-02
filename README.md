@@ -16,13 +16,13 @@ O login unificado fica em `/login`: administradores entram com email e usuários
 
 Cada sessão recebe 100% da janela de cinco horas da conta, sem upgrade, downgrade ou divisão de quota. Cada pedido escolhe uma conta disponível e entra como `pending`; somente `owner` ou `admin` pode aprovar ou recusar. Ao entrar na janela aprovada, o dashboard emite o token real e bloqueia o acesso quando a quota curta é esgotada ou o ciclo termina.
 
-Depois de aplicar a migration `codex_user_scheduling`, importe os logins do protótipo para usuários reais do Supabase Auth:
+Depois de preparar o banco configurado, importe os logins do protótipo para o serviço de autenticação ativo:
 
 ```powershell
 npm.cmd run users -- import-legacy
 ```
 
-O comando importa cada equipe do SQL como um grupo real, ignora o login de teste e aliases duplicados e atualiza as credenciais no Supabase Auth. O SQL legado e suas políticas públicas não são reativados.
+O comando importa cada equipe do SQL como um grupo real, ignora o login de teste e aliases duplicados e atualiza as credenciais no PostgreSQL local ou no fallback de transição. O SQL legado e suas políticas públicas não são reativados.
 
 Este repositório contém um relay experimental para usar o `codex app-server` da máquina central a partir de outro computador sem copiar o login ChatGPT/OpenAI.
 
@@ -36,11 +36,20 @@ flowchart LR
 
 O relay recebe somente tokens de dispositivos e seus hashes em memória. O host central mantém `CODEX_HOME`, executa `codex login` e abre uma conexão de saída para o relay. Se esse túnel cai, o relay entra em modo bloqueado e encerra os clientes.
 
-O painel administrativo fica em [`/admin`](/admin) e exige uma sessão Supabase de owner/admin habilitado antes de renderizar a interface. Ele permite operar várias contas ChatGPT isoladas no host central, acompanhar limites retornados pelo app-server e controlar dispositivos. O botão **Adicionar conta** cria a conta no host e abre o OAuth real do Codex; depois do login, o painel consulta o app-server até a conta ficar pronta. O Supabase armazena somente metadados e snapshots; credenciais OpenAI nunca saem do host.
+O painel administrativo fica em [`/admin`](/admin) e exige uma sessão local de owner/admin habilitado antes de renderizar a interface. Ele permite operar várias contas ChatGPT isoladas no host central, acompanhar limites retornados pelo app-server e controlar dispositivos. O botão **Adicionar conta** cria a conta no host e abre o OAuth real do Codex; depois do login, o painel consulta o app-server até a conta ficar pronta. O PostgreSQL armazena somente usuários, metadados e snapshots; credenciais OpenAI nunca saem do host.
 
 ## Estado atual
 
 Esta é uma implementação pessoal/experimental. O transporte remoto do app-server é experimental segundo a [documentação oficial do OpenAI](https://learn.chatgpt.com/docs/app-server), e o Render Free pode dormir ou reiniciar. O teste de aceitação ainda precisa ser feito com uma conta autenticada e dois computadores em redes diferentes.
+
+### Migração de banco implementada, aguardando corte
+
+O novo runtime abandona o Supabase em favor de um PostgreSQL privado na mesma
+Lightsail do aplicativo, com backups a cada 6 horas (8 cópias), diários (30
+cópias) e envio de cada dump ao S3. A camada PostgreSQL, autenticação local,
+sessões, restauração e timers já estão implementados, mas a troca de produção
+ainda não está ativa. Veja o
+[plano de migração e proteção de dados](docs/DATABASE_MIGRATION.md).
 
 ## Desenvolvimento local
 
@@ -56,15 +65,15 @@ O frontend atual usa React com Vite em modo multipágina. As entradas são `web/
 
 Para desenvolver a interface com hot reload, execute `npm.cmd run dev:web`. A saída de produção continua sendo servida pelo relay com `SITE_DIR=site`.
 
-Para testar tudo em uma única máquina (relay, host-agent e os app-servers locais), configure o `.env` com o Supabase externo, `RELAY_AGENT_TOKEN` e o `codex` instalado/logado, depois execute:
+Para testar tudo em uma única máquina (relay, host-agent e os app-servers locais), configure o `.env` com `DATABASE_URL` ou, durante a transição, o Supabase externo; configure também `RELAY_AGENT_TOKEN` e o `codex` instalado/logado, depois execute:
 
 ```powershell
 npm.cmd run local
 ```
 
-O modo local separa automaticamente o ambiente do relay e do host: a secret do Supabase e o token bruto do túnel ficam somente no host. Antes de testar o fluxo de agendamento em um projeto Supabase existente, aplique todas as migrações pendentes de `supabase/migrations/`, incluindo `20260825210000_allow_immediate_partial_sessions.sql`.
+O modo local separa automaticamente o ambiente do relay e do host: o token bruto do túnel fica somente no host. Durante a transição, a secret do Supabase também é removida do processo do relay.
 
-Esse modo força o host a usar o relay local em `ws://127.0.0.1:10000/tunnel`, serve o site em `http://127.0.0.1:10000/` e mantém o Supabase como serviço externo. Encerre com `Ctrl+C`.
+Esse modo força o host a usar o relay local em `ws://127.0.0.1:10000/tunnel` e serve o site em `http://127.0.0.1:10000/`. Encerre com `Ctrl+C`.
 
 Para iniciar o local e o Tailscale Funnel juntos no Windows, use `start-local-tunnel.cmd` (ou `npm.cmd run local:tunnel`). O script espera o relay responder, configura `tailscale funnel --bg 10000`, captura a URL estável `*.ts.net` e abre o login nessa URL. O Tailscale precisa estar instalado, conectado à conta e com o Funnel habilitado; use `tailscale funnel off` para desativar a publicação. O dashboard gera o comando do Codex usando automaticamente o domínio da página atual.
 
@@ -88,19 +97,18 @@ $env:RELAY_AGENT_TOKEN = "SEGREDO_LONGO_DO_HOST"
 npm.cmd run host
 ```
 
-O script `host` carrega automaticamente o arquivo `.env` na raiz do projeto. Os nomes devem ser exatamente `RELAY_URL`, `RELAY_AGENT_TOKEN`, `SUPABASE_URL` e `SUPABASE_SECRET_KEY`; não é necessário repetir `$env:` no PowerShell.
+O script `host` carrega automaticamente o arquivo `.env` na raiz do projeto. No runtime novo, use `RELAY_URL`, `RELAY_AGENT_TOKEN` e `DATABASE_URL`; as variáveis `SUPABASE_URL` e `SUPABASE_SECRET_KEY` permanecem apenas como fallback de transição.
 
 Para gerar um novo segredo e o hash exigido pelo Render, no host central use `.\scripts\new-relay-agent-token.ps1`. O token bruto tem 43 caracteres base64url e fica somente no host; o valor SHA-256 hexadecimal tem 64 caracteres e vai em `RELAY_AGENT_TOKEN_SHA256` no Render. O script não grava arquivos.
 
-Para a primeira configuração administrativa, aplique a migration em `supabase/migrations/`, crie o usuário owner no Supabase Auth e rode na máquina central:
+Para a primeira configuração administrativa no PostgreSQL local, restaure o dump, aplique `database/migrations/` e rode na máquina central:
 
 ```powershell
-$env:SUPABASE_URL = "https://SEU_PROJETO.supabase.co"
-$env:SUPABASE_SECRET_KEY = "SB_SECRET_SOMENTE_NO_HOST"
+$env:DATABASE_URL = "postgresql:///fecart?host=/var/run/postgresql"
 npm.cmd run admin -- bootstrap --email owner@example.com
 ```
 
-Para criar um login individual com senha forte aleatória (exibida uma única vez), execute um comando por pessoa. `--login` permite entrar com um nome curto, sem expor o e-mail interno do Supabase Auth:
+Para criar um login individual com senha forte aleatória (exibida uma única vez), execute um comando por pessoa. `--login` permite entrar com um nome curto, sem expor o e-mail interno:
 
 ```powershell
 npm.cmd run admin -- create --login professor --role owner

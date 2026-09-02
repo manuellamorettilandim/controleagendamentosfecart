@@ -21,6 +21,7 @@ import {
   type WireMessage,
 } from "./protocol.js";
 import { SupabaseAuthClient, type SupabaseAdminIdentity } from "./supabase.js";
+import { PostgresAuthClient } from "./postgres.js";
 import {
   SlidingWindowRateLimiter,
   extractClientIp,
@@ -66,6 +67,8 @@ export interface RelayOptions {
   maxPayload?: number;
   supabaseUrl?: string;
   supabasePublishableKey?: string;
+  authClient?: SupabaseAuthClient | PostgresAuthClient | null;
+  supabaseService?: unknown;
   globalRateLimitMax?: number;
   globalRateLimitWindowMs?: number;
   apiRateLimitMax?: number;
@@ -432,7 +435,7 @@ export class RelayServer {
   private readonly accounts = new Map<string, AccountSnapshot>();
   private readonly lastAccountSnapshots = new Map<string, AccountSnapshot>();
   private readonly pendingControls = new Map<string, { resolve: (value: unknown) => void; reject: (error: Error) => void; timer: NodeJS.Timeout }>();
-  private readonly authClient: SupabaseAuthClient | null;
+  private readonly authClient: SupabaseAuthClient | PostgresAuthClient | null;
   private readonly globalLimiter: SlidingWindowRateLimiter;
   private readonly apiLimiter: SlidingWindowRateLimiter;
   private readonly reservationLimiter: SlidingWindowRateLimiter;
@@ -480,9 +483,12 @@ export class RelayServer {
     if (!/^[a-f0-9]{64}$/i.test(this.options.agentTokenHash)) {
       throw new Error("RELAY_AGENT_TOKEN_SHA256 deve ser um SHA-256 hexadecimal de 64 caracteres.");
     }
-    this.authClient = this.options.supabaseUrl && this.options.supabasePublishableKey
-      ? new SupabaseAuthClient(this.options.supabaseUrl, this.options.supabasePublishableKey)
-      : null;
+    this.authClient = options.authClient
+      ?? (process.env.DATABASE_URL?.trim()
+        ? new PostgresAuthClient(process.env.DATABASE_URL.trim())
+        : (this.options.supabaseUrl && this.options.supabasePublishableKey
+          ? new SupabaseAuthClient(this.options.supabaseUrl, this.options.supabasePublishableKey)
+          : null));
 
     this.globalLimiter = new SlidingWindowRateLimiter({
       maxRequests: this.options.globalRateLimitMax,
@@ -680,10 +686,101 @@ export class RelayServer {
         response.end("Method Not Allowed\n");
         return;
       }
+      const isLocal = Boolean((this.authClient as { isLocalAuth?: boolean } | null)?.isLocalAuth || this.authClient instanceof PostgresAuthClient);
       jsonResponse(response, this.authClient ? 200 : 503, {
-        supabaseUrl: this.options.supabaseUrl ?? null,
-        publishableKey: this.options.supabasePublishableKey ?? null,
+        provider: isLocal ? "local" : "supabase",
+        supabaseUrl: isLocal ? null : (this.options.supabaseUrl ?? null),
+        publishableKey: isLocal ? null : (this.options.supabasePublishableKey ?? null),
       });
+      return;
+    }
+
+    if (url.pathname === "/api/auth/token") {
+      if (request.method !== "POST") {
+        response.setHeader("Allow", "POST");
+        response.statusCode = 405;
+        response.end("Method Not Allowed\n");
+        return;
+      }
+      const isLocal = Boolean((this.authClient as { isLocalAuth?: boolean } | null)?.isLocalAuth || this.authClient instanceof PostgresAuthClient);
+      if (!isLocal || !this.authClient) {
+        jsonResponse(response, 400, { error: "unsupported_grant_type", error_description: "Autenticação local desativada." });
+        return;
+      }
+      const authCheck = this.authLimiter.check(clientIp);
+      if (!authCheck.allowed) {
+        applyRateLimitHeaders(response, authCheck);
+        jsonResponse(response, 429, { error: "too_many_requests", error_description: "IP temporariamente bloqueado por excesso de tentativas de autenticação.", retryAfter: authCheck.retryAfterSec });
+        return;
+      }
+      const grantType = url.searchParams.get("grant_type");
+      const body = await readJsonBody(request);
+      if (grantType === "password") {
+        const email = typeof body.email === "string" ? body.email : "";
+        const password = typeof body.password === "string" ? body.password : "";
+        try {
+          const session = await (this.authClient as unknown as PostgresAuthClient).passwordLogin(email, password);
+          if (!session) {
+            jsonResponse(response, 400, { error: "invalid_grant", error_description: "Credenciais inválidas." });
+            return;
+          }
+          jsonResponse(response, 200, {
+            access_token: session.access_token,
+            token_type: "bearer",
+            expires_in: 3600,
+            expires_at: session.expires_at,
+            refresh_token: session.refresh_token,
+            user: session.user,
+          });
+          return;
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Credenciais inválidas.";
+          jsonResponse(response, 400, { error: "invalid_grant", error_description: message });
+          return;
+        }
+      }
+      if (grantType === "refresh_token") {
+        const refreshToken = typeof body.refresh_token === "string" ? body.refresh_token : "";
+        try {
+          const session = await (this.authClient as unknown as PostgresAuthClient).refreshSession(refreshToken);
+          if (!session) {
+            jsonResponse(response, 400, { error: "invalid_grant", error_description: "Sessão expirada." });
+            return;
+          }
+          jsonResponse(response, 200, {
+            access_token: session.access_token,
+            token_type: "bearer",
+            expires_in: 3600,
+            expires_at: session.expires_at,
+            refresh_token: session.refresh_token,
+            user: session.user,
+          });
+          return;
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Não foi possível renovar a sessão.";
+          jsonResponse(response, 400, { error: "invalid_grant", error_description: message });
+          return;
+        }
+      }
+      jsonResponse(response, 400, { error: "unsupported_grant_type", error_description: "Grant type não suportado." });
+      return;
+    }
+
+    if (url.pathname === "/api/auth/logout") {
+      if (request.method !== "POST") {
+        response.setHeader("Allow", "POST");
+        response.statusCode = 405;
+        response.end("Method Not Allowed\n");
+        return;
+      }
+      const isLocal = Boolean((this.authClient as { isLocalAuth?: boolean } | null)?.isLocalAuth || this.authClient instanceof PostgresAuthClient);
+      if (isLocal && this.authClient) {
+        const token = bearerToken(request);
+        if (token) {
+          await (this.authClient as unknown as PostgresAuthClient).logout(token).catch(() => undefined);
+        }
+      }
+      jsonResponse(response, 200, { ok: true });
       return;
     }
 
@@ -927,6 +1024,12 @@ export class RelayServer {
         return;
       }
       if (method === "GET" && parts.length === 3 && parts[2] === "reservations") {
+        if (this.authClient instanceof PostgresAuthClient) {
+          await this.authClient.pool.query(
+            `update public.codex_reservations set approval_status = 'expired', status = 'cancelled', cancelled_at = ends_at
+             where approval_status = 'pending' and ends_at <= now()`
+          ).catch(() => undefined);
+        }
         const reservations = await this.authClient.queryAdmin<Record<string, unknown>>(token, "codex_reservations", {
           select: "id,user_id,account_id,starts_at,ends_at,status,approval_status,requested_quota_percent,reviewed_by,reviewed_at,review_note,device_id,quota_base_used_percent,quota_budget_percent,activated_at,cancelled_at,created_at",
           order: "starts_at.desc",
@@ -1138,17 +1241,21 @@ export class RelayServer {
       if (parts.length === 5 && parts[2] === "reservations" && parts[3] && ["approve", "reject"].includes(parts[4])) {
         const approvalStatus = parts[4] === "approve" ? "approved" : "rejected";
         const reviewNote = typeof body.note === "string" ? body.note.trim().slice(0, 500) : null;
-        const adjustedStart = typeof body.startsAt === "string" ? new Date(body.startsAt) : null;
+        let adjustedStart = typeof body.startsAt === "string" ? new Date(body.startsAt) : null;
         const adjustedEnd = typeof body.endsAt === "string" ? new Date(body.endsAt) : null;
         const approvedQuota = 100;
-        const durationMs = adjustedStart && adjustedEnd ? adjustedEnd.getTime() - adjustedStart.getTime() : Number.NaN;
+        let durationMs = adjustedStart && adjustedEnd ? adjustedEnd.getTime() - adjustedStart.getTime() : Number.NaN;
         if (approvalStatus === "approved") {
-          if (!adjustedStart || !adjustedEnd || Number.isNaN(durationMs) || durationMs <= 0 || durationMs > SESSION_DURATION_MS) {
-            jsonResponse(response, 400, { error: "O período aprovado precisa terminar no reset da conta e ter no máximo cinco horas." });
+          if (!adjustedStart || !adjustedEnd || adjustedEnd.getTime() <= Date.now()) {
+            jsonResponse(response, 400, { error: "Não é possível aprovar uma solicitação cujo horário já terminou." });
             return;
           }
-          if (adjustedEnd.getTime() <= Date.now()) {
-            jsonResponse(response, 400, { error: "Não é possível aprovar uma solicitação cujo horário já terminou." });
+          if (adjustedStart.getTime() < Date.now()) {
+            adjustedStart = new Date();
+          }
+          durationMs = adjustedEnd.getTime() - adjustedStart.getTime();
+          if (Number.isNaN(durationMs) || durationMs <= 0 || durationMs > SESSION_DURATION_MS) {
+            jsonResponse(response, 400, { error: "O período aprovado precisa terminar no reset da conta e ter no máximo cinco horas." });
             return;
           }
         }

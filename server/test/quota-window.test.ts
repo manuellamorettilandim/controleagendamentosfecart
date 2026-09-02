@@ -30,15 +30,25 @@ test("aligns sessions to the next reset-derived five-hour boundary", () => {
   assert.equal(isFiveHourResetBoundary(resetAt, resetMs + 60 * 60_000), false);
 });
 
-test("allows an immediate session to use only the remainder of the current window", () => {
+test("allows an immediate session to use only the remainder of the current window when active", () => {
   const resetMs = resetAt * 1_000;
   const nowMs = resetMs - 2 * 60 * 60_000;
-  const immediate = reservationWindowForStart(resetAt, nowMs - 30_000, nowMs);
+  const immediate = reservationWindowForStart(resetAt, nowMs - 30_000, nowMs, { usedPercent: 15 });
   assert.deepEqual(immediate, { startsAtMs: nowMs - 30_000, endsAtMs: resetMs, complete: false });
 
-  const complete = reservationWindowForStart(resetAt, resetMs, nowMs);
+  const complete = reservationWindowForStart(resetAt, resetMs, nowMs, { usedPercent: 15 });
   assert.deepEqual(complete, { startsAtMs: resetMs, endsAtMs: resetMs + SESSION_DURATION_MS, complete: true });
 
-  assert.equal(reservationWindowForStart(resetAt, nowMs + 10 * 60_000, nowMs), null);
-  assert.equal(reservationWindowForStart(resetAt, resetMs - 4 * 60_000, resetMs - 4 * 60_000), null);
+  assert.equal(reservationWindowForStart(resetAt, nowMs + 10 * 60_000, nowMs, { usedPercent: 15 }), null);
+  assert.equal(reservationWindowForStart(resetAt, resetMs - 4 * 60_000, resetMs - 4 * 60_000, { usedPercent: 15 }), null);
+});
+
+test("grants a full 5-hour session on immediate start when account is idle", () => {
+  const resetMs = resetAt * 1_000;
+  const nowMs = resetMs - 2 * 60 * 60_000;
+  const idleImmediate = reservationWindowForStart(resetAt, nowMs, nowMs, { usedPercent: 0, hasActiveReservation: false });
+  assert.deepEqual(idleImmediate, { startsAtMs: nowMs, endsAtMs: nowMs + SESSION_DURATION_MS, complete: true });
+
+  const expiredImmediate = reservationWindowForStart(nowMs / 1000 - 3600, nowMs, nowMs);
+  assert.deepEqual(expiredImmediate, { startsAtMs: nowMs, endsAtMs: nowMs + SESSION_DURATION_MS, complete: true });
 });

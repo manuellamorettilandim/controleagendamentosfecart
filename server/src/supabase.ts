@@ -103,6 +103,7 @@ async function parseResponse(response: Response): Promise<unknown> {
 }
 
 export class SupabaseAuthClient {
+  public readonly isLocalAuth = false;
   private readonly url: string;
   private readonly publishableKey: string;
 
