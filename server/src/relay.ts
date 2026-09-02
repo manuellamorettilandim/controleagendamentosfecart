@@ -1668,7 +1668,9 @@ export class RelayServer {
             body: {
               device_id: device?.deviceId ?? null,
               quota_base_used_percent: device?.quotaBaseUsedPercent ?? null,
-              quota_budget_percent: device?.quotaBudgetPercent ?? reservation.quota_budget_percent ?? reservation.requested_quota_percent,
+              ...(reservation.quota_budget_percent !== undefined && reservation.quota_budget_percent !== null
+                ? { quota_budget_percent: reservation.quota_budget_percent }
+                : { quota_budget_percent: device?.quotaBudgetPercent ?? 100 }),
               activated_at: new Date().toISOString(),
             },
             headers: { Prefer: "return=representation" },

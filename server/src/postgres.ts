@@ -203,8 +203,22 @@ export class PostgresAuthClient {
       const method = (options.method ?? "GET").toUpperCase();
       if (method === "GET") return { ok: true, status: 200, data: await this.select(table, scopedQuery) };
       if (method === "PATCH") {
-        const rows = await this.update(table, scopedQuery, asRecord(options.body));
-        return { ok: true, status: 200, data: prefersRepresentation(options) ? rows : null };
+        const client = await this.pool.connect();
+        try {
+          await client.query("begin");
+          await client.query(
+            "select set_config('request.jwt.claim.sub', $1, true), set_config('request.jwt.claim.role', $2, true)",
+            [identity.userId, admin ? "service_role" : "authenticated"],
+          );
+          const rows = await this.update(table, scopedQuery, asRecord(options.body), client);
+          await client.query("commit");
+          return { ok: true, status: 200, data: prefersRepresentation(options) ? rows : null };
+        } catch (error) {
+          await client.query("rollback").catch(() => undefined);
+          throw error;
+        } finally {
+          client.release();
+        }
       }
       return { ok: false, status: 405, data: { message: "method not allowed" } };
     } catch (error) {
@@ -292,14 +306,14 @@ export class PostgresAuthClient {
     return (await this.pool.query(sql, [...where.values, limit, offset])).rows;
   }
 
-  private async update(table: string, query: Record<string, string>, body: Record<string, unknown>): Promise<QueryResultRow[]> {
+  private async update(table: string, query: Record<string, string>, body: Record<string, unknown>, client: Pool | PoolClient = this.pool): Promise<QueryResultRow[]> {
     const entries = Object.entries(body);
     if (entries.length === 0) throw new Error("Atualização vazia.");
     const assignments = entries.map(([column], index) => `${identifier(column)} = $${index + 1}`);
     const where = this.whereClause(query, entries.length + 1);
     if (!where.sql) throw new Error("Atualização sem filtro recusada.");
     const sql = `update public.${identifier(table)} set ${assignments.join(", ")}${where.sql} returning *`;
-    return (await this.pool.query(sql, [...entries.map(([, value]) => databaseValue(value)), ...where.values])).rows;
+    return (await client.query(sql, [...entries.map(([, value]) => databaseValue(value)), ...where.values])).rows;
   }
 
   private async rpc(identity: SupabaseUserIdentity, admin: SupabaseAdminIdentity | null, name: string, body: unknown): Promise<{ ok: boolean; status: number; data: unknown }> {
