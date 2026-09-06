@@ -119,4 +119,37 @@ describe("Admin Legacy Controller", () => {
 
     expect(reviewModal.hasAttribute("open")).toBe(true);
   });
+  it("switches task views while keeping policies out of the overview", () => {
+    const policies = document.querySelector<HTMLElement>('[data-view-panel="policies"]')!;
+    expect(policies.hidden).toBe(true);
+    document.querySelector<HTMLButtonElement>('[data-admin-view="policies"]')!.click();
+    expect(policies.hidden).toBe(false);
+    expect(document.querySelector<HTMLElement>('.metrics-grid')!.hidden).toBe(true);
+    expect(document.getElementById('admin-view-title')!.textContent).toBe('Políticas de acesso');
+  });
+
+  it("rejects reversed report dates without calling the export endpoint", async () => {
+    document.querySelector<HTMLButtonElement>('[data-admin-view="reports"]')!.click();
+    (document.getElementById('admin-report-from') as HTMLInputElement).value = '2026-09-06';
+    (document.getElementById('admin-report-to') as HTMLInputElement).value = '2026-09-01';
+    const before = vi.mocked(window.fetch).mock.calls.length;
+    document.getElementById('admin-report-form')!.dispatchEvent(new Event('submit', { cancelable: true }));
+    expect(document.getElementById('admin-report-status')!.textContent).toContain('período válido');
+    expect(vi.mocked(window.fetch).mock.calls.length).toBe(before);
+  });
+
+  it("posts the selected report period with authorization and restores the button after failure", async () => {
+    (document.getElementById('admin-report-to') as HTMLInputElement).value = '2026-09-07';
+    vi.mocked(window.fetch).mockImplementation(async (input: any) => {
+      if (String(input).endsWith('/session')) return { ok: true, json: async () => ({ role: 'admin' }) } as any;
+      return { ok: false, json: async () => ({ error: 'Relatório indisponível' }) } as any;
+    });
+    document.getElementById('admin-report-form')!.dispatchEvent(new Event('submit', { cancelable: true }));
+    await vi.waitFor(() => expect(document.getElementById('admin-report-status')!.textContent).toBe('Relatório indisponível'));
+    const call = vi.mocked(window.fetch).mock.calls.find(([url]) => String(url).includes('/export/pdf'))!;
+    expect(call[1]!.headers).toMatchObject({ Authorization: 'Bearer mock-token' });
+    expect(JSON.parse(String(call[1]!.body))).toEqual({ from: '2026-09-06T03:00:00.000Z', to: '2026-09-08T02:59:59.999Z', timeZone: 'America/Sao_Paulo' });
+    expect((document.getElementById('admin-report-submit') as HTMLButtonElement).disabled).toBe(false);
+  });
+
 });

@@ -1,17 +1,19 @@
+<a class="admin-skip" href="#admin-workspace">Pular para o conteúdo</a>
 <div class="admin-shell">
       <aside class="admin-sidebar" data-admin-sidebar aria-label="Navegação administrativa"></aside>
 
-      <main class="admin-main">
+      <main class="admin-main" id="admin-workspace">
+<div class="admin-topbar"><span>Workspace <span class="topbar-divider">/</span> <strong>Administração</strong></span><button class="mobile-signout" type="button" aria-label="Sair da administração"><i class="ph ph-sign-out" aria-hidden="true"></i></button><a href="/dashboard">Área do usuário <i class="ph ph-arrow-up-right" aria-hidden="true"></i></a></div>
         <header class="admin-header">
           <div class="page-heading">
-            <p class="eyebrow">Fecart AI Share</p>
-            <h1>Painel administrativo</h1>
-            <p>Visão geral e administração da plataforma</p>
+            <p class="eyebrow">CENTRAL DE GESTÃO</p>
+            <h1 id="admin-view-title">Visão geral</h1>
+            <p id="admin-view-description">Acompanhe a operação. Priorize o que precisa de você.</p>
           </div>
-          <div class="admin-header-actions">
+          <div class="admin-header-actions"><button class="admin-primary" type="button" data-admin-view="reports"><i class="ph ph-download-simple" aria-hidden="true"></i>Gerar relatório</button>
             <label class="admin-search" for="admin-search">
               <i class="ph ph-magnifying-glass" aria-hidden="true"></i>
-              <input id="admin-search" type="search" placeholder="Buscar grupo, conta..." autocomplete="off">
+              <input id="admin-search" type="search" placeholder="Buscar solicitações..." autocomplete="off">
             </label>
             <button id="theme-toggle" class="admin-theme-toggle" type="button" aria-label="Ativar tema claro" aria-pressed="true" title="Ativar tema claro">
               <i class="ph ph-sun" aria-hidden="true"></i>
@@ -19,8 +21,9 @@
           </div>
         </header>
 
-        <div class="admin-content">
-          <section class="metrics-grid" aria-label="Resumo da plataforma">
+        <div class="admin-content" data-current-view="overview">
+<div class="admin-feedback" id="admin-load-status" role="status" hidden></div>
+          <section class="metrics-grid" data-view-panel="overview" aria-label="Resumo da plataforma">
             <article class="metric-card">
               <div class="metric-icon metric-icon-blue"><i class="ph ph-users-three" aria-hidden="true"></i></div>
               <div class="metric-copy"><span>Contas ativas</span><strong id="metric-active-accounts">—</strong><small>de <b id="metric-total-accounts">—</b></small></div>
@@ -28,7 +31,7 @@
             </article>
             <article class="metric-card">
               <div class="metric-icon metric-icon-blue"><i class="ph ph-gauge" aria-hidden="true"></i></div>
-              <div class="metric-copy"><span>Quota de 5 horas <em>(média)</em></span><strong id="metric-quota">—</strong><small id="metric-quota-detail">carregando dados reais</small></div>
+              <div class="metric-copy"><span>Cota disponível <em>· 5 horas</em></span><strong id="metric-quota">—</strong><small id="metric-quota-detail">Aguardando dados</small></div>
               <div class="metric-progress"><span id="metric-quota-progress" style="width: 0%"></span></div>
             </article>
             <article class="metric-card">
@@ -38,24 +41,15 @@
             </article>
             <article class="metric-card metric-card-warning">
               <div class="metric-icon metric-icon-amber"><i class="ph ph-clock" aria-hidden="true"></i></div>
-              <div class="metric-copy"><span>Aprovações pendentes</span><strong id="metric-pending">—</strong><small id="metric-pending-detail">carregando dados reais</small></div>
+              <div class="metric-copy"><span>Aprovações pendentes</span><strong id="metric-pending">—</strong><small id="metric-pending-detail">Aguardando dados</small></div>
               <div class="metric-progress metric-progress-warning"><span id="metric-pending-progress" style="width: 0%"></span></div>
             </article>
           </section>
 
-          <section class="overview-grid" aria-label="Contas gerenciadas">
-            <article class="panel managed-accounts-panel">
-              <header class="panel-header">
-                <div class="panel-title"><h2>Contas gerenciadas</h2><button class="info-button" type="button" aria-label="Sobre contas gerenciadas" title="Cada conta possui sua própria capacidade"><i class="ph ph-info" aria-hidden="true"></i></button></div>
-              </header>
-              <div id="managed-accounts" class="managed-accounts-grid"></div>
-            </article>
-          </section>
-
           <section class="workspace-grid" aria-label="Agenda e aprovações administrativas">
-            <article class="panel agenda-panel">
+            <article class="panel agenda-panel" data-view-panel="agenda" hidden>
               <header class="agenda-header">
-                <div class="panel-title agenda-title"><h2>Agenda por conta <span>(visão administrativa)</span></h2><button class="info-button" type="button" aria-label="Sobre a agenda administrativa" title="Clique em um horário existente para gerenciar"><i class="ph ph-info" aria-hidden="true"></i></button></div>
+                <div class="panel-title agenda-title"><h2>Agenda por conta</h2><button class="info-button" type="button" aria-label="Sobre a agenda administrativa" title="Clique em um horário existente para gerenciar"><i class="ph ph-info" aria-hidden="true"></i></button></div>
                 <div id="account-tabs" class="account-tabs" role="tablist" aria-label="Contas da agenda"></div>
               </header>
 
@@ -67,7 +61,7 @@
                 </div>
                 <strong id="agenda-range" class="agenda-range">—</strong>
                 <div class="agenda-view-actions">
-                  <button class="small-icon-button" type="button" aria-label="Escolher data" title="Escolher data"><i class="ph ph-calendar-blank" aria-hidden="true"></i></button>
+                  
                   <div id="agenda-view-switch" class="segmented-control" role="group" aria-label="Visualização da agenda">
                     <button class="is-active" type="button" data-agenda-view="week">Semana</button>
                     <button type="button" data-agenda-view="day">Dia</button>
@@ -80,18 +74,43 @@
               <footer class="agenda-footer"><i class="ph ph-info" aria-hidden="true"></i><span>Clique em um agendamento para editar, aprovar, recusar ou ajustar.</span></footer>
             </article>
 
-            <article class="panel approvals-panel" aria-labelledby="approvals-title">
+            <article class="panel approvals-panel" data-view-panel="overview approvals" aria-labelledby="approvals-title">
               <header class="panel-header approvals-header">
                 <div class="panel-title"><span class="approvals-heading-icon"><i class="ph ph-clock-countdown" aria-hidden="true"></i></span><div><h2 id="approvals-title">Fila de aprovações</h2><p class="panel-subtitle">Solicitações aguardando decisão</p></div></div>
-                <button id="view-all-approvals" class="text-button" type="button">Ver todas (<span id="approval-count">7</span>)</button>
+                <button id="view-all-approvals" class="text-button" type="button">Ver todas (<span id="approval-count">—</span>)</button>
               </header>
               <div class="approval-list-wrap">
                 <div id="approval-body" class="approval-list" role="list" aria-live="polite"></div>
               </div>
             </article>
+            <aside class="admin-quick-panel" data-view-panel="overview">
+              <div class="quick-heading"><i class="ph ph-lightning" aria-hidden="true"></i><h2>Acesso rápido</h2></div>
+              <button type="button" data-admin-view="agenda"><span class="quick-icon"><i class="ph ph-calendar-blank" aria-hidden="true"></i></span><span><strong>Consultar agenda</strong><small>Horários e sessões por conta</small></span><i class="ph ph-arrow-up-right" aria-hidden="true"></i></button>
+              <a href="/groups"><span class="quick-icon"><i class="ph ph-users-three" aria-hidden="true"></i></span><span><strong>Gerenciar grupos</strong><small>Usuários e permissões</small></span><i class="ph ph-arrow-up-right" aria-hidden="true"></i></a>
+              <button type="button" data-admin-view="policies"><span class="quick-icon"><i class="ph ph-shield-check" aria-hidden="true"></i></span><span><strong>Políticas de acesso</strong><small>Limites e modelos disponíveis</small></span><i class="ph ph-arrow-up-right" aria-hidden="true"></i></button>
+              <div class="quick-note"><i class="ph ph-info" aria-hidden="true"></i><p>As solicitações só liberam acesso após aprovação, conforme as políticas definidas.</p></div>
+            </aside>
           </section>
 
-          <section class="panel general-settings-panel" aria-labelledby="general-settings-title">
+          <section class="overview-grid" data-view-panel="overview accounts" aria-label="Contas gerenciadas">
+            <article class="panel managed-accounts-panel">
+              <header class="panel-header">
+                <div class="panel-title"><h2>Contas gerenciadas</h2><button class="info-button" type="button" aria-label="Sobre contas gerenciadas" title="Cada conta possui sua própria capacidade"><i class="ph ph-info" aria-hidden="true"></i></button></div>
+              </header>
+              <div id="managed-accounts" class="managed-accounts-grid"></div>
+            </article>
+          </section>
+
+          <section class="panel admin-reports" data-view-panel="reports" hidden aria-labelledby="reports-title">
+            <header class="panel-header"><div><h2 id="reports-title">Relatório de utilização</h2><p class="panel-subtitle">Consolide consumo, sessões e participação dos grupos.</p></div><span class="report-symbol"><i class="ph ph-files" aria-hidden="true"></i></span></header>
+            <form id="admin-report-form">
+              <div class="report-dates"><label>Data inicial<input type="date" id="admin-report-from" required></label><label>Data final<input type="date" id="admin-report-to" required></label><label>Formato<select id="admin-report-format"><option value="pdf">PDF · Documento</option><option value="xlsx">Excel · Planilha</option><option value="csv">CSV · Dados</option></select></label></div>
+              <div class="report-includes"><h3>O que está incluído</h3><p><i class="ph ph-check" aria-hidden="true"></i>Consumo de cotas e tokens por grupo</p><p><i class="ph ph-check" aria-hidden="true"></i>Reservas, sessões e utilização da capacidade</p><p><i class="ph ph-check" aria-hidden="true"></i>Distribuição de uso por modelo</p></div>
+              <footer class="settings-actions"><p id="admin-report-status" role="status">Período considerado no fuso de Brasília.</p><button class="admin-primary" type="submit" id="admin-report-submit"><i class="ph ph-download-simple" aria-hidden="true"></i>Baixar relatório</button></footer>
+            </form>
+            <a class="report-details" href="/telemetry">Abrir estatísticas detalhadas e auditoria <i class="ph ph-arrow-up-right" aria-hidden="true"></i></a>
+          </section>
+          <section class="panel general-settings-panel" data-view-panel="policies" hidden aria-labelledby="general-settings-title">
             <header class="settings-panel-header">
               <div class="settings-heading-icon"><i class="ph ph-sliders-horizontal" aria-hidden="true"></i></div>
               <div><h2 id="general-settings-title">Políticas de acesso</h2><p>Regras globais aplicadas a todos os grupos e contas.</p></div>

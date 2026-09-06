@@ -4,6 +4,7 @@ import template from "../templates/admin.html?raw";
 import { loadAdminFeature } from "../features/admin/loadAdmin";
 import "@phosphor-icons/web/regular";
 import "../styles/admin.css";
+import "../styles/admin-workspace.css";
 
 const loadController = loadAdminFeature;
 

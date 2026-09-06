@@ -6,8 +6,15 @@
 
   const activeSection = document.body.dataset.adminSection || "overview";
   const navItems = [
-    { id: "overview", icon: "ph-house", label: "Geral" },
-    { id: "telemetry", icon: "ph-pulse", label: "Telemetria" },
+    { id: "overview", icon: "ph-squares-four", label: "Visão geral" },
+    ...(document.body.classList.contains("admin-page") ? [
+      { id: "approvals", icon: "ph-check-circle", label: "Aprovações" },
+      { id: "agenda", icon: "ph-calendar-blank", label: "Agenda" },
+      { id: "accounts", icon: "ph-wallet", label: "Contas" },
+      { id: "policies", icon: "ph-shield-check", label: "Políticas de acesso" },
+      { id: "reports", icon: "ph-file-text", label: "Relatórios" },
+    ] : []),
+    { id: "telemetry", icon: "ph-pulse", label: "Estatísticas" },
     { id: "groups", icon: "ph-users-three", label: "Grupos" },
   ];
 
@@ -22,9 +29,9 @@
       </button>
     </div>
 
-    <nav class="sidebar-nav" aria-label="Áreas do painel">
+    <p class="sidebar-caption">ADMINISTRAÇÃO</p><nav class="sidebar-nav" aria-label="Áreas do painel">
       ${navItems.map(({ id, icon, label }) => `
-        <button class="sidebar-link${activeSection === id ? " is-active" : ""}" type="button" data-section="${id}"${activeSection === id ? ' aria-current="page"' : ""}>
+        <button class="sidebar-link${activeSection === id ? " is-active" : ""}" type="button" data-section="${id}" title="${label}"${activeSection === id ? ' aria-current="page"' : ""}>
           <i class="ph ${icon}" aria-hidden="true"></i><span>${label}</span>
         </button>
       `).join("")}
@@ -52,10 +59,10 @@
     collapseButton?.setAttribute("title", collapsed ? "Expandir menu" : "Recolher menu");
     const icon = collapseButton?.querySelector(".ph");
     if (icon) icon.className = `ph ${collapsed ? "ph-caret-right" : "ph-caret-left"}`;
-    if (persist) window.localStorage.setItem(collapseKey, String(collapsed));
+    if (persist) { try { window.localStorage.setItem(collapseKey, String(collapsed)); } catch { /* preference storage is optional */ } }
   }
 
-  setCollapsed(window.localStorage.getItem(collapseKey) === "true", false);
+  try { setCollapsed(window.localStorage.getItem(collapseKey) === "true", false); } catch { setCollapsed(false, false); }
   collapseButton?.addEventListener("click", () => setCollapsed(!shell?.classList.contains("is-collapsed")));
 
   function setIdentity(identity = {}) {

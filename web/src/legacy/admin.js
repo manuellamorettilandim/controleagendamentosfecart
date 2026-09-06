@@ -122,7 +122,7 @@
     schedules: [],
     approvals: [],
     activeAccountId: "",
-    view: "week",
+    view: window.matchMedia?.("(max-width: 640px)").matches ? "list" : "week",
     weekStart: startOfWeek(initialNow),
     focusedDayIndex: weekdayIndex(initialNow),
     selectedScheduleId: null,
@@ -147,7 +147,7 @@
   }
 
   function formatQuota(value) {
-    const number = Number(value);
+    const number = value == null ? NaN : Number(value);
     return Number.isFinite(number) ? `${Math.round(number)}%` : "—";
   }
 
@@ -211,7 +211,7 @@
     const active = state.accounts.filter((account) => account.status === "ready").length;
     const total = state.accounts.length;
     const pending = state.approvals.filter((approval) => approval.status === "pending").length;
-    const measuredQuotas = state.accounts.map((account) => Number(account.quota)).filter(Number.isFinite);
+    const measuredQuotas = state.accounts.map((account) => account.quota == null ? NaN : Number(account.quota)).filter(Number.isFinite);
     const remaining = measuredQuotas.length
       ? Math.round(measuredQuotas.reduce((sum, quota) => sum + quota, 0) / measuredQuotas.length)
       : null;
@@ -235,6 +235,8 @@
     if (todayProgress) todayProgress.style.width = `${Math.min(100, (todaySchedules.length / 24) * 100)}%`;
     if (pendingProgress) pendingProgress.style.width = `${Math.min(100, (pending / 12) * 100)}%`;
     setText("#approval-count", state.live ? pending : "—");
+    const badge = $('[data-section="approvals"] .nav-count');
+    if (badge) badge.textContent = state.live ? pending : "—";
   }
 
   function renderManagedAccounts() {
@@ -242,7 +244,7 @@
     if (!target) return;
     target.innerHTML = state.accounts.map((account) => `
       <div class="managed-account-card" data-account-card="${escapeHtml(account.id)}" role="button" tabindex="0" aria-label="Abrir agenda da ${escapeHtml(account.label)}">
-        <span class="account-card-header"><span class="account-card-name"><i class="status-dot" aria-hidden="true"></i>${escapeHtml(account.label)}</span>
+        <span class="account-card-header"><span class="account-card-name"><i class="status-dot" aria-hidden="true" style="background:${account.status === "ready" ? "var(--admin-green)" : "var(--admin-amber)"}"></i>${escapeHtml(account.label)}</span>
           <span class="account-menu-wrap">
             <button class="account-menu-trigger" type="button" data-account-menu="${escapeHtml(account.id)}" aria-label="Ações de ${escapeHtml(account.label)}" aria-haspopup="menu" aria-expanded="false"><i class="ph ph-dots-three-vertical" aria-hidden="true"></i></button>
             <div class="account-menu" role="menu" data-account-menu-panel="${escapeHtml(account.id)}" hidden>
@@ -281,7 +283,7 @@
       if (!query) return true;
       return [approval.group, approval.account, approval.requestedAt].some((value) => String(value).toLocaleLowerCase("pt-BR").includes(query));
     });
-    const rows = state.showAllApprovals ? filtered : filtered.slice(0, 4);
+    const rows = state.showAllApprovals ? filtered : filtered.slice(0, 3);
     target.innerHTML = rows.length ? rows.map((approval) => `
       <article class="approval-item" role="listitem" tabindex="0" data-approval-id="${escapeHtml(approval.id)}">
         <div class="approval-item-copy">
@@ -790,6 +792,8 @@
           status: "pending",
         }));
       state.live = true;
+      const feedback = $("#admin-load-status");
+      if (feedback) feedback.hidden = true;
       renderAll();
     } catch (error) {
       state.accounts = [];
@@ -797,6 +801,8 @@
       state.approvals = [];
       state.activeAccountId = "";
       state.live = false;
+      const feedback = $("#admin-load-status");
+      if (feedback) { feedback.hidden = false; feedback.textContent = "Não foi possível atualizar os dados. Recarregue a página para tentar novamente."; }
       renderAll();
       showToast(error instanceof Error ? error.message : "Não foi possível carregar os dados reais.", "error");
     }
@@ -875,7 +881,87 @@
     return `${minutes}m`;
   }
 
+  const adminViews = {
+    overview: ["Visão geral", "Acompanhe a operação. Priorize o que precisa de você."],
+    approvals: ["Aprovações", "Revise as solicitações e decida com todas as informações."],
+    agenda: ["Agenda", "Consulte e gerencie as sessões de cada conta."],
+    accounts: ["Contas", "Acompanhe a capacidade e gerencie as contas conectadas."],
+    policies: ["Políticas de acesso", "Defina os limites e os modelos disponíveis para os grupos."],
+    reports: ["Relatórios", "Transforme os dados de utilização em documentos."],
+  };
+
+  function setAdminView(view, updateHash = true) {
+    if (!adminViews[view]) view = "overview";
+    const content = $(".admin-content");
+    if (!content) return;
+    content.dataset.currentView = view;
+    $$('[data-view-panel]').forEach((panel) => { panel.hidden = !panel.dataset.viewPanel.split(" ").includes(view); });
+    const workspace = $(".workspace-grid");
+    if (workspace) workspace.hidden = !["overview", "approvals", "agenda"].includes(view);
+    $$('[data-section]').forEach((button) => {
+      button.classList.toggle("is-active", button.dataset.section === view);
+      if (button.dataset.section === view) button.setAttribute("aria-current", "page");
+      else button.removeAttribute("aria-current");
+    });
+    setText("#admin-view-title", adminViews[view][0]);
+    setText("#admin-view-description", adminViews[view][1]);
+    const search = $(".admin-search");
+    if (search) search.style.display = view === "approvals" ? "flex" : "none";
+    state.showAllApprovals = view === "approvals";
+    renderApprovals();
+    if (updateHash) history.replaceState(null, "", `#${view}`);
+  }
+
+  async function downloadAdminReport(event) {
+    event.preventDefault();
+    const from = $("#admin-report-from").value;
+    const to = $("#admin-report-to").value;
+    const format = $("#admin-report-format").value;
+    if (!from || !to || from > to) {
+      setText("#admin-report-status", "Informe um período válido: a data inicial deve ser anterior ou igual à final.");
+      return;
+    }
+    const button = $("#admin-report-submit");
+    button.disabled = true;
+    setText("#admin-report-status", "Gerando relatório…");
+    try {
+      const identity = await ensureAdminAccess();
+      if (!identity) throw new Error("Sessão expirada. Faça login novamente.");
+      const response = await fetch(`/api/admin/reports/usage/export/${format}`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${getAuthToken()}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ from: new Date(`${from}T00:00:00-03:00`).toISOString(), to: new Date(`${to}T23:59:59.999-03:00`).toISOString(), timeZone: "America/Sao_Paulo" }),
+      });
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({}));
+        throw new Error(result.error || "Não foi possível gerar o relatório. Tente novamente.");
+      }
+      const url = URL.createObjectURL(await response.blob());
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `fecart-utilizacao-${from}-${to}.${format}`;
+      document.body.appendChild(link);
+      link.click(); link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setText("#admin-report-status", "Relatório gerado. Download iniciado.");
+    } catch (error) {
+      setText("#admin-report-status", error instanceof Error ? error.message : "Falha ao gerar relatório.");
+    } finally { button.disabled = false; }
+  }
+
   function bindEvents() {
+    $(".mobile-signout")?.addEventListener("click", () => $("[data-admin-logout]")?.click());
+    const approvalNav = $('[data-section="approvals"]');
+    if (approvalNav) approvalNav.insertAdjacentHTML("beforeend", '<b class="nav-count">—</b>');
+    $$('[data-admin-view]').forEach((button) => button.addEventListener("click", () => setAdminView(button.dataset.adminView)));
+    window.addEventListener("hashchange", () => setAdminView(location.hash.slice(1), false));
+    const reportFrom = $("#admin-report-from");
+    const reportTo = $("#admin-report-to");
+    if (reportFrom) reportFrom.value = dateKey(addDays(new Date(), -29));
+    if (reportTo) reportTo.value = dateKey(new Date());
+    $("#admin-report-form")?.addEventListener("submit", downloadAdminReport);
+    setAdminView(location.hash.slice(1) || "overview", false);
+
     $("#settings-max-quota")?.addEventListener("change", (event) => {
       const previous = Number($("#settings-auto-approve")?.value || 1);
       fillPercentSelect($("#settings-auto-approve"), Number(event.currentTarget.value), previous);
@@ -944,6 +1030,7 @@
       state.view = "week";
       renderAccountTabs();
       renderAgenda();
+      setAdminView("agenda");
     });
 
     $("#managed-accounts")?.addEventListener("click", (event) => {
@@ -972,6 +1059,7 @@
       state.activeAccountId = card.dataset.accountCard;
       renderAccountTabs();
       renderAgenda();
+      setAdminView("agenda");
       showToast(`Agenda da ${accountById(state.activeAccountId)?.label || "conta"} selecionada.`);
     });
 
@@ -989,6 +1077,7 @@
       state.activeAccountId = card.dataset.accountCard;
       renderAccountTabs();
       renderAgenda();
+      setAdminView("agenda");
       showToast(`Agenda da ${accountById(state.activeAccountId)?.label || "conta"} selecionada.`);
     });
 
@@ -1177,7 +1266,7 @@
     });
 
     $$('[data-section]').forEach((button) => button.addEventListener("click", () => {
-      if (button.dataset.section === "overview") return;
+      if (adminViews[button.dataset.section]) { setAdminView(button.dataset.section); return; }
       if (button.dataset.section === "groups") {
         window.location.replace("/groups");
         return;

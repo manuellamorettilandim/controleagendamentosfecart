@@ -22,7 +22,8 @@
     "dev:web": "vite",
     "seed:dev": "npm run build && node --env-file=.env scripts/seed-dev-data.mjs",
     "test:web": "vitest run",
-    "dev:host": "tsx server/src/host-agent.ts"
+    "dev:host": "tsx server/src/host-agent.ts",
+    "dev": "vite"
   },
   "dependencies": {
     "@phosphor-icons/web": "^2.1.2",

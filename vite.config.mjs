@@ -9,6 +9,7 @@ const webRoot = path.join(projectRoot, "web");
 export default defineConfig({
   root: webRoot,
   base: "/",
+  server: { host: "0.0.0.0", allowedHosts: ["terminal.local"] },
   plugins: [react()],
   build: {
     outDir: path.resolve(projectRoot, process.env.VITE_OUT_DIR || "site"),
