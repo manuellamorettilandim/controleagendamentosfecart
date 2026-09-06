@@ -205,6 +205,7 @@ async function main() {
       weekly_limit_percent numeric not null default 100 check (weekly_limit_percent >= 0 and weekly_limit_percent <= 100),
       quota_base_used_percent integer check (quota_base_used_percent is null or (quota_base_used_percent >= 0 and quota_base_used_percent <= 100)),
       quota_budget_percent integer check (quota_budget_percent is null or (quota_budget_percent >= 1 and quota_budget_percent <= 100)),
+      quota_consumed_percent numeric not null default 0 check (quota_consumed_percent >= 0),
       created_at timestamptz not null,
       expires_at timestamptz not null,
       revoked_at timestamptz,
@@ -226,6 +227,16 @@ async function main() {
       usage_last_seen_at timestamptz,
       activated_at timestamptz
     );
+
+    alter table public.codex_device_snapshots
+      add column if not exists quota_consumed_percent numeric not null default 0;
+
+    alter table public.codex_device_snapshots
+      drop constraint if exists codex_device_snapshots_quota_consumed_percent_check;
+
+    alter table public.codex_device_snapshots
+      add constraint codex_device_snapshots_quota_consumed_percent_check
+      check (quota_consumed_percent >= 0);
 
     create table if not exists public.codex_admin_audit (
       id uuid primary key default gen_random_uuid(),
@@ -375,13 +386,23 @@ async function main() {
     end;
     $$;
 
+    create or replace function codex_private.is_fixed_slot(p_starts_at timestamptz, p_ends_at timestamptz) returns boolean language sql stable security definer as $$
+      select (
+        (extract(hour from p_starts_at at time zone 'America/Sao_Paulo') = 8 and extract(minute from p_starts_at at time zone 'America/Sao_Paulo') = 0 and p_ends_at - p_starts_at = interval '5 hours') or
+        (extract(hour from p_starts_at at time zone 'America/Sao_Paulo') = 9 and extract(minute from p_starts_at at time zone 'America/Sao_Paulo') = 0 and p_ends_at - p_starts_at = interval '5 hours') or
+        (extract(hour from p_starts_at at time zone 'America/Sao_Paulo') = 14 and extract(minute from p_starts_at at time zone 'America/Sao_Paulo') = 0 and p_ends_at - p_starts_at = interval '5 hours') or
+        (extract(hour from p_starts_at at time zone 'America/Sao_Paulo') = 19 and extract(minute from p_starts_at at time zone 'America/Sao_Paulo') = 0 and p_ends_at - p_starts_at = interval '5 hours')
+      );
+    $$;
+
     create or replace function codex_private.valid_five_hour_session(p_account_id text, p_starts_at timestamptz, p_ends_at timestamptz) returns boolean language plpgsql stable security definer set search_path = '' as $$
     declare reset_at timestamptz := codex_private.five_hour_reset(p_account_id); active boolean := codex_private.is_account_window_active(p_account_id); starts_now boolean := p_starts_at between now() - interval '1 minute' and now() + interval '1 minute';
     begin
       if p_starts_at is null or p_ends_at is null or p_ends_at <= p_starts_at then return false; end if;
+      if codex_private.is_fixed_slot(p_starts_at, p_ends_at) then return true; end if;
       if not active and starts_now and p_ends_at - p_starts_at = interval '5 hours' then return true; end if;
       if p_ends_at - p_starts_at = interval '5 hours' and codex_private.is_five_hour_boundary(p_account_id, p_starts_at) then return true; end if;
-      if active and starts_now and reset_at is not null and p_ends_at = reset_at and p_starts_at >= reset_at - interval '5 hours' and p_starts_at < reset_at and p_ends_at - p_starts_at >= interval '5 minutes' then return true; end if;
+      if active and starts_now and reset_at is not null and abs(extract(epoch from (p_ends_at - reset_at))) <= 60 and p_starts_at >= reset_at - interval '5 hours' and p_starts_at < reset_at and p_ends_at - p_starts_at >= interval '5 minutes' then return true; end if;
       return false;
     end;
     $$;
@@ -462,7 +483,7 @@ async function main() {
     returns setof public.codex_reservations language plpgsql security definer set search_path = public, codex_private as $$
     declare
       reviewer uuid := (select auth.uid()); reservation public.codex_reservations%rowtype; settings public.codex_app_settings%rowtype;
-      capacity record; desired_budget integer; granted_budget integer; final_note text;
+      capacity record; desired_budget integer; granted_budget integer; final_note text; requested_window_unchanged boolean;
     begin
       if (reviewer is null or not exists (select 1 from public.codex_admins where user_id = reviewer and enabled = true)) and coalesce(auth.role(), '') not in ('service_role', 'supabase_admin') then
         raise exception 'Acesso administrativo necessário.' using errcode = '42501';
@@ -471,13 +492,14 @@ async function main() {
       if reservation.id is null or reservation.status <> 'scheduled' or reservation.approval_status <> 'pending' then
         raise exception 'A solicitação já foi revisada ou não está mais disponível.' using errcode = 'P0001';
       end if;
-      if p_ends_at <= now() then
+      if p_starts_at is null or p_ends_at is null or p_ends_at <= now() then
         raise exception 'Não é possível aprovar uma solicitação cujo horário já terminou.' using errcode = '22023';
       end if;
-      if p_starts_at < now() and p_ends_at > now() then
-        p_starts_at := now();
+      requested_window_unchanged := abs(extract(epoch from (p_starts_at - reservation.starts_at))) <= 1 and abs(extract(epoch from (p_ends_at - reservation.ends_at))) <= 1;
+      if requested_window_unchanged then
+        p_starts_at := reservation.starts_at; p_ends_at := reservation.ends_at;
       end if;
-      if not codex_private.valid_five_hour_session(reservation.account_id, p_starts_at, p_ends_at) then
+      if not requested_window_unchanged and not codex_private.valid_five_hour_session(reservation.account_id, p_starts_at, p_ends_at) then
         raise exception 'O período deve ocupar um ciclo completo ou terminar no reset atual.' using errcode = '22023';
       end if;
       if not exists (select 1 from public.codex_account_snapshots where account_id = reservation.account_id and status = 'ready') then
@@ -523,12 +545,15 @@ async function main() {
       ends_at_val timestamptz; default_budget integer;
     begin
       if requester is null then raise exception 'Autenticação necessária.' using errcode = '42501'; end if;
-      if p_duration_hours <> 5 or p_requested_quota_percent <> 100 then raise exception 'Cada sessão usa a quota disponível de uma janela de cinco horas.' using errcode = '22023'; end if;
+      if p_duration_hours <> 5 then raise exception 'Cada sessão deve ter duração de 5 horas.' using errcode = '22023'; end if;
       if p_starts_at < now() - interval '1 minute' then raise exception 'Não é possível agendar um horário passado.' using errcode = '22023'; end if;
-      if not active and starts_now then ends_at_val := p_starts_at + interval '5 hours';
+      ends_at_val := p_starts_at + pg_catalog.make_interval(hours => p_duration_hours);
+      if codex_private.is_fixed_slot(p_starts_at, ends_at_val) then
+        -- valid fixed slot!
+      elsif not active and starts_now then ends_at_val := p_starts_at + interval '5 hours';
       elsif codex_private.is_five_hour_boundary(p_account_id, p_starts_at) then ends_at_val := p_starts_at + interval '5 hours';
       elsif active and starts_now and reset_at is not null and p_starts_at < reset_at and reset_at - p_starts_at >= interval '5 minutes' then ends_at_val := reset_at;
-      else raise exception 'Escolha agora ou o início de um novo ciclo de 5 horas.' using errcode = '22023'; end if;
+      else raise exception 'Escolha uma das 4 sessões fixas (08:00, 09:00, 14:00 ou 19:00) ou início imediato.' using errcode = '22023'; end if;
       if not exists (select 1 from public.profiles where user_id = requester and enabled = true and coalesce(scheduling_enabled, true) = true) then
         raise exception 'Os agendamentos deste grupo estão bloqueados pelo administrador.' using errcode = '42501';
       end if;
@@ -548,10 +573,16 @@ async function main() {
         returning *;
     end;
     $$;
-  \`);
+  `);
 
-  console.log(\`[migrate] Aplicando privilégios e permissões...\`);
-  await dbClient.query(\`
+  const fixedScheduleSql = await readFile(
+    new URL("../../supabase/migrations/20260905173000_use_fixed_site_sessions.sql", import.meta.url),
+    "utf8",
+  );
+  await dbClient.query(fixedScheduleSql);
+
+  console.log(`[migrate] Aplicando privilégios e permissões...`);
+  await dbClient.query(`
     grant usage on schema public, codex_private, auth to fecart_app, "fecart-relay", "fecart-host", postgres;
     grant select, insert, update, delete on all tables in schema public to fecart_app, "fecart-relay", "fecart-host", postgres;
     grant usage, select on all sequences in schema public to fecart_app, "fecart-relay", "fecart-host", postgres;
@@ -559,7 +590,7 @@ async function main() {
     alter default privileges in schema public grant select, insert, update, delete on tables to fecart_app;
     alter default privileges in schema public grant usage, select on sequences to fecart_app;
     alter default privileges in schema public grant execute on functions to fecart_app;
-  \`);
+  `);
 
   console.log(`[migrate] Importando dados de ${backupDir}...`);
 
@@ -723,6 +754,9 @@ async function main() {
   // 7. Importar codex_reservations
   const reservations = await loadJson("table-codex_reservations.json");
   console.log(`[migrate] Importando ${reservations.length} reservas...`);
+  // O backup contém reservas antigas que precedem as regras atuais de janela.
+  // As regras voltam a valer imediatamente após a importação histórica.
+  await dbClient.query("alter table public.codex_reservations disable trigger user");
   for (const res of reservations) {
     await dbClient.query(
       `
@@ -764,6 +798,7 @@ async function main() {
       ]
     );
   }
+  await dbClient.query("alter table public.codex_reservations enable trigger user");
 
   // 8. Importar codex_busy_slots
   const busySlots = await loadJson("table-codex_busy_slots.json");

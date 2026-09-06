@@ -792,7 +792,9 @@ export class HostAgent {
         },
         onEnd: async (usage) => {
           const durationMs = Date.now() - startTime;
-          const window = weeklyRateLimit(worker.snapshot) ?? fiveHourRateLimit(worker.snapshot);
+          const window = device.reservationId
+            ? (fiveHourRateLimit(worker.snapshot) ?? weeklyRateLimit(worker.snapshot))
+            : (weeklyRateLimit(worker.snapshot) ?? fiveHourRateLimit(worker.snapshot));
           const modelUsed = usage?.model ?? requestedModel ?? "gpt-5.6-sol";
           if (usage) {
             const observation: UsageObservation = {
@@ -1043,12 +1045,12 @@ export class HostAgent {
         if (!worker.ready || worker.snapshot.status !== "ready") {
           throw new Error("A conta escolhida para a reserva não está disponível.");
         }
+        // The reservation expiry is the site's fixed-session boundary. The
+        // provider reset is retained for telemetry, but never gates issuing
+        // access because the provider window slides independently.
         const accountWindow = fiveHourRateLimit(worker.snapshot);
-        if (!accountWindow?.resetsAt) {
-          throw new Error("A janela de quota de 5 horas ainda não está disponível para esta conta.");
-        }
         const weeklyWindow = weeklyRateLimit(worker.snapshot);
-        const baseUsedPercent = weeklyWindow?.usedPercent ?? accountWindow?.usedPercent ?? 0;
+        const baseUsedPercent = accountWindow?.usedPercent ?? weeklyWindow?.usedPercent ?? 0;
         const issued = await this.accessStore.issue(
           `Sessão ${reservationId.slice(0, 8)}`,
           Math.max(1_000, Date.parse(expiresAt) - Date.now()),

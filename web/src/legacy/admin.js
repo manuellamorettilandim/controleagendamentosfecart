@@ -43,7 +43,7 @@
 
   function dateTimeInputValue(value) {
     const date = cloneDate(value);
-    return `${dateKey(date)}T${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+    return `${dateKey(date)}T${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}:${String(date.getSeconds()).padStart(2, "0")}`;
   }
 
   function formatDate(value) {
@@ -558,11 +558,9 @@
     setText("#review-group", schedule.group);
     setText("#review-account", accountLabel);
     setText("#review-period", period);
-    const isOngoingPending = (schedule.status === "pending" || schedule.approvalStatus === "pending") && startDate < new Date() && time.endDate > new Date();
-    const effectiveStartDate = isOngoingPending ? new Date() : startDate;
     const startInput = $("#review-start");
     const endInput = $("#review-end");
-    if (startInput) startInput.value = dateTimeInputValue(effectiveStartDate);
+    if (startInput) startInput.value = dateTimeInputValue(startDate);
     if (endInput) endInput.value = dateTimeInputValue(time.endDate);
     const reviewNote = $("#review-note");
     if (reviewNote) reviewNote.value = schedule.note || "";

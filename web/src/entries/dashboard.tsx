@@ -1,12 +1,11 @@
 import { createRoot } from "react-dom/client";
-import { LegacyPage } from "../app/LegacyPage";
-import template from "../templates/dashboard.html?raw";
-import { loadDashboardFeature } from "../features/dashboard/loadDashboard";
+import { DashboardApp } from "../app/DashboardApp";
 import "@phosphor-icons/web/regular";
-import "../styles/dashboard.css";
+import "../styles/tokens.css";
+import "../styles/design-system.css";
+import "../styles/guides.css";
 
-const loadController = loadDashboardFeature;
-
-createRoot(document.getElementById("root")!).render(
-  <LegacyPage template={template} loadController={loadController} />,
-);
+const rootElement = document.getElementById("root");
+if (rootElement) {
+  createRoot(rootElement).render(<DashboardApp />);
+}

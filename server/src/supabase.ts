@@ -201,6 +201,7 @@ export interface DeviceSnapshotRow {
   reservation_id: string | null;
   quota_base_used_percent: number | null;
   quota_budget_percent: number | null;
+  quota_consumed_percent: number;
   created_at: string;
   expires_at: string;
   revoked_at: string | null;
@@ -408,6 +409,7 @@ export class SupabaseServiceClient {
       reservation_id: device.reservationId ?? null,
       quota_base_used_percent: device.quotaBaseUsedPercent ?? null,
       quota_budget_percent: device.quotaBudgetPercent ?? null,
+      quota_consumed_percent: device.usage?.quotaConsumedPercent ?? 0,
       created_at: device.createdAt,
       expires_at: device.expiresAt,
       revoked_at: device.revokedAt,

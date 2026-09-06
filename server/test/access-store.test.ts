@@ -59,7 +59,6 @@ test("AccessStore issues concurrent device tokens and persists only hashes", asy
     await fs.rm(directory, { recursive: true, force: true });
   }
 });
-
 test("AccessStore persists sanitized reservation ownership metadata", async () => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "remote-codex-session-"));
   try {
@@ -81,7 +80,6 @@ test("AccessStore persists sanitized reservation ownership metadata", async () =
     await fs.rm(directory, { recursive: true, force: true });
   }
 });
-
 test("AccessStore allows multiple device credentials for the same group reservation", async () => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "remote-codex-group-session-"));
   try {
@@ -108,7 +106,6 @@ test("AccessStore allows multiple device credentials for the same group reservat
     await fs.rm(directory, { recursive: true, force: true });
   }
 });
-
 test("AccessStore enforces the session weekly quota budget", async () => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "remote-codex-quota-"));
   try {
@@ -217,6 +214,44 @@ test("AccessStore binds one token per account, records observed usage, and keeps
     const other = await store.issue("other account", 3_600_000, new Date("2026-08-12T13:00:00.000Z"), { accountId: "other" });
     assert.equal(await store.revokeForAccount("other", new Date("2026-08-12T13:01:00.000Z")), 1);
     assert.equal((await store.list()).find((device) => device.deviceId === other.device.deviceId)?.revokedAt, "2026-08-12T13:01:00.000Z");
+  } finally {
+    await fs.rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("AccessStore isolates 5-hour session progress from weekly window switches", async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "remote-codex-window-iso-"));
+  try {
+    const store = new AccessStore(path.join(directory, "access.json"));
+    const issued = await store.issue("session test", 3_600_000, new Date("2026-08-13T12:00:00.000Z"), {
+      accountId: "primary",
+      reservationId: "res-iso-1",
+      quotaBaseUsedPercent: 20,
+      quotaBudgetPercent: 100,
+    });
+
+    // 5-hour window update (20 -> 20.5)
+    await store.updateAccountLimit("primary", 20.5, 300, 1_800_018_000, new Date("2026-08-13T12:05:00.000Z"), "reservations");
+    let device = (await store.list()).find((d) => d.deviceId === issued.device.deviceId);
+    assert.equal(device?.usage.quotaConsumedPercent, 0.5);
+
+    // Weekly window update (e.g. weekly rate limit is 5%) - should not corrupt 5h session progress
+    await store.recordUsage(issued.device.deviceId, {
+      threadId: "turn-weekly",
+      total: { totalTokens: 50, inputTokens: 40, cachedInputTokens: 0, outputTokens: 10, reasoningOutputTokens: 0 },
+      last: null,
+      accountUsedPercent: 5,
+      accountWindowDurationMins: 10_080,
+      accountResetsAt: 1_800_600_000,
+    });
+    device = (await store.list()).find((d) => d.deviceId === issued.device.deviceId);
+    assert.equal(device?.usage.quotaConsumedPercent, 0.5);
+
+    // Next 5-hour window update (20.5 -> 21)
+    await store.updateAccountLimit("primary", 21, 300, 1_800_018_000, new Date("2026-08-13T12:10:00.000Z"), "reservations");
+    device = (await store.list()).find((d) => d.deviceId === issued.device.deviceId);
+    assert.equal(device?.usage.quotaConsumedPercent, 1);
+    assert.equal(device?.usage.usageLimitReachedAt, null);
   } finally {
     await fs.rm(directory, { recursive: true, force: true });
   }

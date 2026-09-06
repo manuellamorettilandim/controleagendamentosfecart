@@ -192,7 +192,7 @@ export class PostgresAuthClient {
 
     const scopedQuery = { ...query };
     if (!admin) {
-      if (["profiles", "codex_user_profiles", "codex_reservations", "codex_device_snapshots"].includes(table)) {
+      if (["profiles", "codex_user_profiles", "codex_reservations", "codex_device_snapshots", "codex_usage_events"].includes(table)) {
         scopedQuery.user_id = `eq.${identity.userId}`;
       } else if (!["codex_account_snapshots", "codex_busy_slots", "codex_app_settings"].includes(table)) {
         return { ok: false, status: 403, data: { message: "forbidden relation" } };
@@ -455,14 +455,42 @@ export class PostgresServiceClient {
     })), "account_id");
   }
 
+  private async existingSnapshotReferences(devices: RelayDevice[]): Promise<{ userIds: Set<string>; reservationIds: Set<string> }> {
+    const userIds = [...new Set(devices.map((device) => device.userId?.trim()).filter((value): value is string => Boolean(value)))];
+    const reservationIds = [...new Set(devices.map((device) => device.reservationId?.trim()).filter((value): value is string => Boolean(value)))];
+    const [users, reservations] = await Promise.all([
+      userIds.length > 0
+        ? this.auth.pool.query<{ user_id: string }>(
+          "select user_id::text as user_id from public.profiles where user_id::text = any($1::text[])",
+          [userIds],
+        )
+        : Promise.resolve({ rows: [] as Array<{ user_id: string }> }),
+      reservationIds.length > 0
+        ? this.auth.pool.query<{ id: string }>(
+          "select id::text as id from public.codex_reservations where id::text = any($1::text[])",
+          [reservationIds],
+        )
+        : Promise.resolve({ rows: [] as Array<{ id: string }> }),
+    ]);
+    return {
+      userIds: new Set(users.rows.map((row) => row.user_id)),
+      reservationIds: new Set(reservations.rows.map((row) => row.id)),
+    };
+  }
+
   public async upsertDeviceSnapshots(devices: RelayDevice[]): Promise<void> {
     const now = new Date().toISOString();
+    const existing = await this.existingSnapshotReferences(devices);
     for (const device of devices) {
+      const userId = device.userId?.trim() && existing.userIds.has(device.userId.trim()) ? device.userId.trim() : null;
+      const reservationId = device.reservationId?.trim() && existing.reservationIds.has(device.reservationId.trim()) ? device.reservationId.trim() : null;
       const row = {
         device_id: device.deviceId, label: device.label, account_id: device.accountId ?? null,
-        weekly_limit_percent: device.weeklyLimitPercent ?? 100, user_id: device.userId ?? null,
-        reservation_id: device.reservationId ?? null, quota_base_used_percent: device.quotaBaseUsedPercent ?? null,
-        quota_budget_percent: device.quotaBudgetPercent ?? null, created_at: device.createdAt,
+        weekly_limit_percent: device.weeklyLimitPercent ?? 100, user_id: userId,
+        reservation_id: reservationId, quota_base_used_percent: device.quotaBaseUsedPercent ?? null,
+        quota_budget_percent: device.quotaBudgetPercent ?? null,
+        quota_consumed_percent: device.usage?.quotaConsumedPercent ?? 0,
+        created_at: device.createdAt,
         expires_at: device.expiresAt, revoked_at: device.revokedAt, disabled_at: device.disabledAt,
         last_seen_at: device.lastSeenAt,
         status: device.revokedAt ? "revoked" : device.disabledAt ? "disabled" : Date.parse(device.expiresAt) <= Date.now() ? "expired" : device.usage?.usageLimitReachedAt ? "limited" : "active",

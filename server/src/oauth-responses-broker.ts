@@ -179,6 +179,12 @@ export function resolveUpstreamUrl(baseConfigUrl?: string, requestPath = "/respo
     throw new Error("URL de upstream Responses deve usar HTTPS.");
   }
 
+  // Handle /alpha/search for standalone web search
+  if (requestPath.includes("/alpha/search")) {
+    parsed.pathname = parsed.pathname.replace(/\/responses(?:\/compact)?\/?$/, "/alpha/search");
+    return parsed.toString();
+  }
+
   // Handle /responses vs /responses/compact
   if (requestPath.endsWith("/compact")) {
     if (!parsed.pathname.endsWith("/compact")) {

@@ -12,6 +12,7 @@ site-next/
 *.token.txt
 *.secret
 coverage/
+tmp/
 supabase/.temp/
 backups/
 .codex-remote-attachments/

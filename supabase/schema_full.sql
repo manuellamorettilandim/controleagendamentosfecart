@@ -77,6 +77,7 @@ create table if not exists public.codex_device_snapshots (
   weekly_limit_percent numeric not null default 100 check (weekly_limit_percent >= 0 and weekly_limit_percent <= 100),
   quota_base_used_percent integer check (quota_base_used_percent is null or (quota_base_used_percent >= 0 and quota_base_used_percent <= 100)),
   quota_budget_percent integer check (quota_budget_percent is null or (quota_budget_percent >= 1 and quota_budget_percent <= 100)),
+  quota_consumed_percent numeric not null default 0 check (quota_consumed_percent >= 0),
   created_at timestamptz not null,
   expires_at timestamptz not null,
   revoked_at timestamptz,
@@ -108,6 +109,7 @@ alter table public.codex_device_snapshots add column if not exists account_windo
 alter table public.codex_device_snapshots add column if not exists account_resets_at timestamptz;
 alter table public.codex_device_snapshots add column if not exists usage_limit_reached_at timestamptz;
 alter table public.codex_device_snapshots add column if not exists usage_last_seen_at timestamptz;
+alter table public.codex_device_snapshots add column if not exists quota_consumed_percent numeric not null default 0;
 
 create table if not exists public.codex_admin_audit (
   id uuid primary key default gen_random_uuid(),
@@ -223,6 +225,47 @@ begin
 end;
 $$;
 
+create or replace function codex_private.is_fixed_slot(p_starts_at timestamptz, p_ends_at timestamptz)
+returns boolean
+language sql
+stable
+security definer
+as $$
+  select (
+    (extract(hour from p_starts_at at time zone 'America/Sao_Paulo') = 8 and extract(minute from p_starts_at at time zone 'America/Sao_Paulo') = 0 and p_ends_at - p_starts_at = interval '5 hours') or
+    (extract(hour from p_starts_at at time zone 'America/Sao_Paulo') = 9 and extract(minute from p_starts_at at time zone 'America/Sao_Paulo') = 0 and p_ends_at - p_starts_at = interval '5 hours') or
+    (extract(hour from p_starts_at at time zone 'America/Sao_Paulo') = 14 and extract(minute from p_starts_at at time zone 'America/Sao_Paulo') = 0 and p_ends_at - p_starts_at = interval '5 hours') or
+    (extract(hour from p_starts_at at time zone 'America/Sao_Paulo') = 19 and extract(minute from p_starts_at at time zone 'America/Sao_Paulo') = 0 and p_ends_at - p_starts_at = interval '5 hours')
+  );
+$$;
+
+create or replace function codex_private.fixed_slot_end(p_starts_at timestamptz)
+returns timestamptz
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  with local_value as (
+    select p_starts_at at time zone 'America/Sao_Paulo' as local_at
+  )
+  select case
+    when extract(hour from local_at) = 8
+      then ((pg_catalog.date_trunc('day', local_at) + interval '13 hours') at time zone 'America/Sao_Paulo')
+    when extract(hour from local_at) >= 9
+      and extract(hour from local_at) < 14
+      then ((pg_catalog.date_trunc('day', local_at) + interval '14 hours') at time zone 'America/Sao_Paulo')
+    when extract(hour from local_at) >= 14
+      and extract(hour from local_at) < 19
+      then ((pg_catalog.date_trunc('day', local_at) + interval '19 hours') at time zone 'America/Sao_Paulo')
+    when extract(hour from local_at) >= 19
+      and extract(hour from local_at) < 24
+      then ((pg_catalog.date_trunc('day', local_at) + interval '1 day') at time zone 'America/Sao_Paulo')
+    else null
+  end
+  from local_value;
+$$;
+
 create or replace function codex_private.valid_five_hour_session(p_account_id text, p_starts_at timestamptz, p_ends_at timestamptz)
 returns boolean
 language plpgsql
@@ -231,16 +274,18 @@ security definer
 set search_path = public, codex_private
 as $$
 declare
-  reset_at timestamptz := codex_private.five_hour_reset(p_account_id);
+  fixed_slot_end_at timestamptz := codex_private.fixed_slot_end(p_starts_at);
+  starts_now boolean := p_starts_at between now() - interval '1 minute' and now() + interval '1 minute';
 begin
-  if reset_at is null or p_starts_at is null or p_ends_at is null or p_ends_at <= p_starts_at then return false; end if;
-  if p_ends_at - p_starts_at = interval '5 hours' then
-    return codex_private.is_five_hour_boundary(p_account_id, p_starts_at);
+  if p_starts_at is null or p_ends_at is null or p_ends_at <= p_starts_at then return false; end if;
+  if codex_private.is_fixed_slot(p_starts_at, p_ends_at) then return true; end if;
+  if starts_now
+     and fixed_slot_end_at is not null
+     and abs(extract(epoch from (p_ends_at - fixed_slot_end_at))) <= 60
+     and p_ends_at - p_starts_at >= interval '5 minutes' then
+    return true;
   end if;
-  return p_ends_at = reset_at
-    and p_starts_at >= reset_at - interval '5 hours'
-    and p_starts_at < reset_at
-    and p_ends_at - p_starts_at >= interval '5 minutes';
+  return false;
 end;
 $$;
 
@@ -264,7 +309,10 @@ $$;
 
 revoke all on function codex_private.five_hour_reset(text) from public, anon, authenticated;
 revoke all on function codex_private.is_five_hour_boundary(text, timestamptz) from public, anon, authenticated;
+revoke all on function codex_private.is_fixed_slot(timestamptz, timestamptz) from public, anon, authenticated;
+revoke all on function codex_private.fixed_slot_end(timestamptz) from public, anon, authenticated;
 revoke all on function codex_private.valid_five_hour_session(text, timestamptz, timestamptz) from public, anon, authenticated;
+grant execute on function codex_private.fixed_slot_end(timestamptz) to service_role;
 revoke all on function codex_private.account_is_privately_busy(text, uuid) from public, anon;
 grant execute on function codex_private.account_is_privately_busy(text, uuid) to authenticated, service_role;
 

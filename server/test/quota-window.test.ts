@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { AccountSnapshot } from "../src/protocol.js";
-import { fiveHourRateLimit, isFiveHourResetBoundary, nextFiveHourReset, reservationWindowForStart, SESSION_DURATION_MS, weeklyRateLimit } from "../src/quota-window.js";
+import { fiveHourRateLimit, fixedDailySlotForStart, isFiveHourResetBoundary, isFixedDailySlot, nextFiveHourReset, reservationWindowForStart, SESSION_DURATION_MS, weeklyRateLimit } from "../src/quota-window.js";
 
 const resetAt = Date.parse("2026-08-25T15:17:00.000Z") / 1_000;
 const snapshot = {
@@ -51,4 +51,30 @@ test("grants a full 5-hour session on immediate start when account is idle", () 
 
   const expiredImmediate = reservationWindowForStart(nowMs / 1000 - 3600, nowMs, nowMs);
   assert.deepEqual(expiredImmediate, { startsAtMs: nowMs, endsAtMs: nowMs + SESSION_DURATION_MS, complete: true });
+});
+
+test("validates fixed daily slots for America/Sao_Paulo", () => {
+  // 08:00 UTC-3 is 11:00 UTC (duration 5h)
+  assert.equal(isFixedDailySlot(new Date("2026-09-05T11:00:00Z"), 5), true);
+  // 08:00 with wrong duration
+  assert.equal(isFixedDailySlot(new Date("2026-09-05T11:00:00Z"), 1), false);
+
+  // 09:00 UTC-3 is 12:00 UTC (duration 5h)
+  assert.equal(isFixedDailySlot(new Date("2026-09-05T12:00:00Z"), 5), true);
+  // 14:00 UTC-3 is 17:00 UTC (duration 5h)
+  assert.equal(isFixedDailySlot(new Date("2026-09-05T17:00:00Z"), 5), true);
+  // 19:00 UTC-3 is 22:00 UTC (duration 5h)
+  assert.equal(isFixedDailySlot(new Date("2026-09-05T22:00:00Z"), 5), true);
+
+  // Non-fixed hour (e.g. 10:00)
+  assert.equal(isFixedDailySlot(new Date("2026-09-05T13:00:00Z"), 5), false);
+  // Non-zero minute (e.g. 14:25)
+  assert.equal(isFixedDailySlot(new Date("2026-09-05T17:25:00Z"), 5), false);
+});
+
+test("maps every instant to the product fixed slot independently of provider reset data", () => {
+  assert.deepEqual(fixedDailySlotForStart(Date.parse("2026-09-05T20:30:00Z")), { startHour: 14, endHour: 19, durationHours: 5 });
+  assert.deepEqual(fixedDailySlotForStart(Date.parse("2026-09-05T23:30:00Z")), { startHour: 19, endHour: 24, durationHours: 5 });
+  assert.deepEqual(fixedDailySlotForStart(Date.parse("2026-09-05T11:30:00Z")), { startHour: 8, endHour: 13, durationHours: 5 });
+  assert.equal(fixedDailySlotForStart(Date.parse("2026-09-05T10:30:00Z")), null);
 });

@@ -1,4 +1,4 @@
-import type { AuthConfig, AuthGateway } from "../session/auth";
+import { authGateway, type AuthConfig, type AuthGateway } from "../session/auth";
 
 export type { AuthConfig, AuthGateway, AuthSession } from "../session/auth";
 
@@ -14,8 +14,10 @@ interface ApiClientDependencies {
 }
 
 function defaultAuth(): Partial<AuthGateway> {
-  if (typeof window === "undefined") return {};
-  return window.RemoteCodexAuth || {};
+  if (typeof window !== "undefined" && window.RemoteCodexAuth) {
+    return window.RemoteCodexAuth;
+  }
+  return authGateway;
 }
 
 async function readJson(response: Response): Promise<any> {

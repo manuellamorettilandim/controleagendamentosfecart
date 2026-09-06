@@ -11,6 +11,41 @@ export interface ReservationWindow {
   complete: boolean;
 }
 
+export interface FixedDailySlotWindow {
+  startHour: number;
+  endHour: number;
+  durationHours: number;
+}
+
+/**
+ * Returns the product-defined slot containing an instant in Sao Paulo time.
+ * This deliberately does not consult provider quota/reset metadata.
+ */
+export function fixedDailySlotForStart(
+  startsAtMs: number,
+  timeZone = "America/Sao_Paulo"
+): FixedDailySlotWindow | null {
+  if (!Number.isFinite(startsAtMs)) return null;
+
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hourCycle: "h23",
+    hour: "numeric",
+    minute: "numeric",
+  }).formatToParts(new Date(startsAtMs));
+
+  let hour = -1;
+  for (const part of parts) {
+    if (part.type === "hour") hour = Number.parseInt(part.value, 10);
+  }
+
+  if (hour === 8) return { startHour: 8, endHour: 13, durationHours: 5 };
+  if (hour >= 9 && hour < 14) return { startHour: 9, endHour: 14, durationHours: 5 };
+  if (hour >= 14 && hour < 19) return { startHour: 14, endHour: 19, durationHours: 5 };
+  if (hour >= 19 && hour < 24) return { startHour: 19, endHour: 24, durationHours: 5 };
+  return null;
+}
+
 function windows(snapshot: Pick<AccountSnapshot, "rateLimits"> | null | undefined): RateLimitWindow[] {
   if (!snapshot) return [];
   return Object.values(snapshot.rateLimits)
@@ -90,4 +125,36 @@ export function reservationWindowForStart(
   }
 
   return null;
+}
+
+export function isFixedDailySlot(
+  startsAt: Date | number,
+  durationHours?: number,
+  timeZone = "America/Sao_Paulo"
+): boolean {
+  const date = typeof startsAt === "number" ? new Date(startsAt) : startsAt;
+  if (Number.isNaN(date.getTime())) return false;
+
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hourCycle: "h23",
+    hour: "numeric",
+    minute: "numeric",
+  }).formatToParts(date);
+
+  let hour = -1;
+  let minute = -1;
+  for (const part of parts) {
+    if (part.type === "hour") hour = Number.parseInt(part.value, 10);
+    if (part.type === "minute") minute = Number.parseInt(part.value, 10);
+  }
+
+  if (minute !== 0) return false;
+
+  if (hour === 8) return durationHours === undefined || durationHours === 5;
+  if (hour === 9 || hour === 14 || hour === 19) {
+    return durationHours === undefined || durationHours === 5;
+  }
+
+  return false;
 }

@@ -93,8 +93,10 @@ test("Relay routes POST /api/codex/v1/responses to HostAgent and streams SSE bac
 
   // Mock upstream ChatGPT responses endpoint
   let upstreamHeaders: http.IncomingHttpHeaders | null = null;
+  const upstreamPaths: string[] = [];
   const mockUpstream = http.createServer((req, res) => {
     upstreamHeaders = req.headers;
+    upstreamPaths.push(req.url || "");
     res.writeHead(200, { "Content-Type": "text/event-stream; charset=utf-8" });
     res.write("event: response.created\ndata: {\"response\": {\"id\": \"resp_e2e_1\"}}\n\n");
     res.write("event: response.completed\ndata: {\"response\": {\"id\": \"resp_e2e_1\", \"model\": \"gpt-5.6-sol\", \"usage\": {\"total_tokens\": 75, \"input_tokens\": 50, \"output_tokens\": 25}}}\n\n");
@@ -167,7 +169,21 @@ test("Relay routes POST /api/codex/v1/responses to HostAgent and streams SSE bac
     assert.equal(updatedDevice?.usage?.observedInputTokens, 50);
     assert.equal(updatedDevice?.usage?.observedOutputTokens, 25);
 
-    // 2. Send request with forbidden model
+    // 2. Standalone web search uses /alpha/search and must be tunneled to the same upstream.
+    const searchResponse = await fetch(`http://127.0.0.1:${relayAddress.port}/api/codex/v1/alpha/search`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${issued.token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ query: "Astra AI" }),
+    });
+
+    assert.equal(searchResponse.status, 200);
+    assert.equal((await searchResponse.text()).includes("resp_e2e_1"), true);
+    assert.equal(upstreamPaths.some((requestPath) => requestPath?.endsWith("/backend-api/codex/alpha/search")), true);
+
+    // 3. Send request with forbidden model
     const forbiddenResponse = await fetch(`http://127.0.0.1:${relayAddress.port}/api/codex/v1/responses`, {
       method: "POST",
       headers: {

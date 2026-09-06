@@ -30,7 +30,7 @@ import {
 } from "./rate-limiter.js";
 import { aggregateUsageReport, type RawDatabaseData } from "./report-aggregator.js";
 import { exportReportToPdf, exportReportToXlsx, exportReportToCsv, buildReportFilename } from "./report-exporter.js";
-import { fiveHourRateLimit, reservationWindowForStart, SESSION_DURATION_MS, weeklyRateLimit } from "./quota-window.js";
+import { fiveHourRateLimit, fixedDailySlotForStart, isFixedDailySlot, SESSION_DURATION_MS, weeklyRateLimit } from "./quota-window.js";
 
 const DEFAULT_PORT = 10_000;
 const DEFAULT_HOST = "0.0.0.0";
@@ -413,6 +413,7 @@ function deviceSnapshotFromRow(row: Record<string, unknown>): Record<string, unk
       observedCachedInputTokens: numberOr(row.observed_cached_input_tokens, 0),
       observedOutputTokens: numberOr(row.observed_output_tokens, 0),
       observedReasoningTokens: numberOr(row.observed_reasoning_tokens, 0),
+      quotaConsumedPercent: numberOr(row.quota_consumed_percent, 0),
       lastUsageAt: row.usage_last_seen_at ?? null,
       accountUsedPercent: numberOr(row.account_used_percent, null),
       accountWindowDurationMins: numberOr(row.account_window_duration_mins, null),
@@ -787,8 +788,10 @@ export class RelayServer {
     if (
       url.pathname === "/api/codex/v1/responses" ||
       url.pathname === "/api/codex/v1/responses/compact" ||
+      url.pathname === "/api/codex/v1/alpha/search" ||
       url.pathname === "/responses" ||
-      url.pathname === "/responses/compact"
+      url.pathname === "/responses/compact" ||
+      url.pathname === "/alpha/search"
     ) {
       await this.handleProviderResponsesApi(request, response, url.pathname, clientIp);
       return;
@@ -1255,7 +1258,7 @@ export class RelayServer {
           }
           durationMs = adjustedEnd.getTime() - adjustedStart.getTime();
           if (Number.isNaN(durationMs) || durationMs <= 0 || durationMs > SESSION_DURATION_MS) {
-            jsonResponse(response, 400, { error: "O período aprovado precisa terminar no reset da conta e ter no máximo cinco horas." });
+            jsonResponse(response, 400, { error: "O período aprovado precisa terminar no limite do horário fixo e ter no máximo cinco horas." });
             return;
           }
         }
@@ -1432,7 +1435,7 @@ export class RelayServer {
         // Include the current week's past sessions so the user calendar matches admin history.
         rangeStart.setDate(rangeStart.getDate() - 7);
         const rangeEnd = new Date(rangeStart.getTime() + 21 * 24 * 60 * 60_000);
-        const [reservationsResult, accountResult, devicesResult, busyResult, settingsResult] = await Promise.all([
+        const [reservationsResult, accountResult, devicesResult, busyResult, settingsResult, usageEventsResult] = await Promise.all([
           this.authClient.rest(token, "codex_reservations", {
             select: "id,account_id,starts_at,ends_at,status,approval_status,requested_quota_percent,reviewed_at,review_note,device_id,quota_base_used_percent,quota_budget_percent,activated_at,cancelled_at,created_at",
             order: "starts_at.asc",
@@ -1444,7 +1447,7 @@ export class RelayServer {
             order: "label.asc",
           }),
           this.authClient.rest(token, "codex_device_snapshots", {
-            select: "device_id,reservation_id,status,expires_at,last_seen_at,observed_tokens,observed_input_tokens,observed_cached_input_tokens,observed_output_tokens,observed_reasoning_tokens,usage_last_seen_at,account_used_percent,account_window_duration_mins,account_resets_at,quota_base_used_percent,quota_budget_percent,usage_limit_reached_at",
+            select: "device_id,label,account_id,reservation_id,status,created_at,expires_at,last_seen_at,observed_tokens,observed_input_tokens,observed_cached_input_tokens,observed_output_tokens,observed_reasoning_tokens,usage_last_seen_at,account_used_percent,account_window_duration_mins,account_resets_at,quota_base_used_percent,quota_budget_percent,quota_consumed_percent,usage_limit_reached_at",
             user_id: `eq.${identity.userId}`,
             order: "created_at.desc",
             limit: "30",
@@ -1460,6 +1463,12 @@ export class RelayServer {
             singleton: "eq.true",
             limit: "1",
           }),
+          this.authClient.rest(token, "codex_usage_events", {
+            select: "id,device_id,account_id,reservation_id,event_type,thread_id,turn_id,model_id,status,thread_total_tokens,thread_input_tokens,thread_cached_input_tokens,thread_output_tokens,thread_reasoning_tokens,account_used_percent,account_window_duration_mins,account_resets_at,observed_at",
+            user_id: `eq.${identity.userId}`,
+            order: "observed_at.desc",
+            limit: "1000",
+          }).catch(() => ({ ok: false, data: [] })),
         ]);
 
         let accountsList = accountResult.ok && Array.isArray(accountResult.data) ? accountResult.data as Record<string, unknown>[] : [];
@@ -1502,6 +1511,7 @@ export class RelayServer {
           accounts: userAccounts,
           account: userAccounts[0] ?? null,
           devices: devicesResult.ok && Array.isArray(devicesResult.data) ? devicesResult.data : [],
+          usageEvents: usageEventsResult.ok && Array.isArray(usageEventsResult.data) ? usageEventsResult.data : [],
           busySlots,
           settings: settingsResult.ok && Array.isArray(settingsResult.data) ? settingsResult.data[0] ?? null : null,
         });
@@ -1522,13 +1532,17 @@ export class RelayServer {
         }
 
         const startsAt = typeof body.startsAt === "string" ? new Date(body.startsAt) : new Date(Number.NaN);
-        const durationHours = 5;
-        const requestedQuotaPercent = 100;
-        const accountId = typeof body.accountId === "string" ? body.accountId.trim() : "";
         if (Number.isNaN(startsAt.getTime())) {
           jsonResponse(response, 400, { error: "Escolha um horário válido." });
           return;
         }
+
+        const fixedSlot = fixedDailySlotForStart(startsAt.getTime());
+        const defaultDuration = fixedSlot?.durationHours ?? 5;
+        const durationHours = typeof body.durationHours === "number" ? body.durationHours : defaultDuration;
+        const requestedQuotaPercent = 100;
+        const accountId = typeof body.accountId === "string" ? body.accountId.trim() : "";
+
         if (profile.scheduling_enabled !== true) {
           jsonResponse(response, 403, { error: "Os agendamentos deste grupo estão bloqueados pelo administrador." });
           return;
@@ -1538,21 +1552,38 @@ export class RelayServer {
           return;
         }
         const account = this.accounts.get(accountId);
-        const fiveHourWindow = fiveHourRateLimit(account);
-        if (!account || account.status !== "ready" || !fiveHourWindow?.resetsAt) {
-          jsonResponse(response, 409, { error: "A conta ainda não informou o próximo reset da janela de 5 horas." });
+        if (!account || account.status !== "ready") {
+          jsonResponse(response, 409, { error: "Essa conta não está pronta para receber agendamentos." });
           return;
         }
-        const requestedWindow = reservationWindowForStart(fiveHourWindow.resetsAt, startsAt.getTime(), Date.now());
+
+        const nowMs = Date.now();
+        const isFixed = isFixedDailySlot(startsAt, durationHours);
+        const isImmediate = Math.abs(startsAt.getTime() - nowMs) <= 60_000;
+        const currentFixedSlot = isImmediate ? fixedSlot : null;
+        const requestedWindow = isFixed
+          ? { startsAtMs: startsAt.getTime(), endsAtMs: startsAt.getTime() + durationHours * 3600_000, complete: true }
+          : currentFixedSlot && durationHours === currentFixedSlot.durationHours
+            ? { startsAtMs: startsAt.getTime(), endsAtMs: startsAt.getTime() + durationHours * 3600_000, complete: false }
+            : null;
+
         if (!requestedWindow) {
-          jsonResponse(response, 400, { error: "Escolha agora para usar o restante da janela atual ou selecione o início de um novo ciclo de 5 horas." });
+          jsonResponse(response, 400, { error: "Escolha uma das 4 sessões fixas (08:00, 09:00, 14:00 ou 19:00) ou início imediato." });
           return;
         }
+
+        if (startsAt.getTime() < nowMs - 60_000) {
+          jsonResponse(response, 400, { error: "Não é possível agendar um horário que já passou." });
+          return;
+        }
+
+        const effectiveStartsAt = startsAt;
+
         const inserted = await this.authClient.rest(token, "rpc/codex_request_reservation", {}, {
           method: "POST",
           body: {
             p_account_id: accountId,
-            p_starts_at: startsAt.toISOString(),
+            p_starts_at: effectiveStartsAt.toISOString(),
             p_duration_hours: durationHours,
             p_requested_quota_percent: requestedQuotaPercent,
           },
@@ -1736,7 +1767,7 @@ export class RelayServer {
     }
 
     const rows = await this.authClient?.queryAdmin<Record<string, unknown>>(token, "codex_device_snapshots", {
-      select: "device_id,label,account_id,weekly_limit_percent,user_id,reservation_id,quota_base_used_percent,quota_budget_percent,created_at,expires_at,revoked_at,disabled_at,last_seen_at,status,fingerprint,usage_window_resets_at,observed_tokens,observed_input_tokens,observed_cached_input_tokens,observed_output_tokens,observed_reasoning_tokens,account_used_percent,account_window_duration_mins,account_resets_at,usage_limit_reached_at,usage_last_seen_at,stale_at",
+      select: "device_id,label,account_id,weekly_limit_percent,user_id,reservation_id,quota_base_used_percent,quota_budget_percent,quota_consumed_percent,created_at,expires_at,revoked_at,disabled_at,last_seen_at,status,fingerprint,usage_window_resets_at,observed_tokens,observed_input_tokens,observed_cached_input_tokens,observed_output_tokens,observed_reasoning_tokens,account_used_percent,account_window_duration_mins,account_resets_at,usage_limit_reached_at,usage_last_seen_at,stale_at",
       order: "created_at.desc",
     }) ?? [];
     return {

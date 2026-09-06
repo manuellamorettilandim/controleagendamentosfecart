@@ -71,6 +71,8 @@ Para testar tudo em uma única máquina (relay, host-agent e os app-servers loca
 npm.cmd run local
 ```
 
+Quando `DATABASE_URL` aponta para `127.0.0.1:5433`, o launcher inicia automaticamente o PostgreSQL local em `tmp/local-postgres` se ele estiver parado e o encerra junto com o runtime. Se o banco já estiver ativo, ele é reutilizado e não é encerrado pelo launcher. Use `LOCAL_PG_AUTO_START=0` para desativar esse comportamento.
+
 O modo local separa automaticamente o ambiente do relay e do host: o token bruto do túnel fica somente no host. Durante a transição, a secret do Supabase também é removida do processo do relay.
 
 Esse modo força o host a usar o relay local em `ws://127.0.0.1:10000/tunnel` e serve o site em `http://127.0.0.1:10000/`. Encerre com `Ctrl+C`.

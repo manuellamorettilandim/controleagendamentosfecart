@@ -43,8 +43,8 @@ describe("Admin Legacy Controller", () => {
         }
         if (path === "/api/admin/reservations") {
           const now = new Date();
-          const startsAt = new Date(now.getTime() + 3600000);
-          const endsAt = new Date(now.getTime() + 18000000);
+          const startsAt = new Date(now.getTime() - 30 * 60_000);
+          const endsAt = new Date(startsAt.getTime() + 5 * 60 * 60_000);
           return {
             reservations: [
               {
@@ -98,6 +98,14 @@ describe("Admin Legacy Controller", () => {
     expect(reviewModal.hasAttribute("open")).toBe(true);
     expect(document.getElementById("review-group")?.textContent).toBe("Equipe Alpha");
     expect(document.getElementById("review-account")?.textContent).toBe("Conta 1");
+    expect((document.getElementById("review-start") as HTMLInputElement).value).toMatch(/T\d{2}:\d{2}:\d{2}(?:\.\d{3})?$/);
+    expect((document.getElementById("review-end") as HTMLInputElement).value).toMatch(/T\d{2}:\d{2}:\d{2}(?:\.\d{3})?$/);
+    expect((document.getElementById("review-start") as HTMLInputElement).step).toBe("1");
+    expect((document.getElementById("review-end") as HTMLInputElement).step).toBe("1");
+    const lockedStart = new Date((document.getElementById("review-start") as HTMLInputElement).value);
+    const lockedEnd = new Date((document.getElementById("review-end") as HTMLInputElement).value);
+    expect(lockedStart.getTime()).toBeLessThan(Date.now());
+    expect(lockedEnd.getTime() - lockedStart.getTime()).toBe(5 * 60 * 60_000);
   });
 
   it("opens review modal when clicking schedule card in agenda", () => {

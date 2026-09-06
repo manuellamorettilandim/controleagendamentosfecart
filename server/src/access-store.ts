@@ -269,20 +269,22 @@ function updateQuotaProgress(
   usage: DeviceUsageState,
   accountUsedPercent: number | null,
   resetIso: string | null,
+  windowDurationMins?: number | null,
 ): void {
   if (accountUsedPercent === null) return;
   const current = Math.max(0, Math.min(100, accountUsedPercent));
   const previous = usage.lastAccountUsedPercent ?? usage.accountUsedPercent ?? device.quotaBaseUsedPercent;
-  const windowChanged = Boolean(resetIso && usage.windowResetsAt && resetIso !== usage.windowResetsAt);
+  const sameWindow = !windowDurationMins || !usage.accountWindowDurationMins || windowDurationMins === usage.accountWindowDurationMins;
+  const windowChanged = Boolean(sameWindow && resetIso && usage.windowResetsAt && resetIso !== usage.windowResetsAt);
 
   let delta = 0;
   if (windowChanged && previous !== null && current < previous) {
     // A true window reset occurred (the reported percentage dropped and reset timestamp changed).
     // Usage observed in the new window is added to the prior window's consumption.
     delta = current;
-  } else if (previous !== null && current >= previous) {
+  } else if (sameWindow && previous !== null && current >= previous) {
     delta = current - previous;
-  } else if (previous === null && device.quotaBaseUsedPercent !== null) {
+  } else if (sameWindow && previous === null && device.quotaBaseUsedPercent !== null) {
     delta = Math.max(0, current - device.quotaBaseUsedPercent);
   }
 
@@ -348,7 +350,7 @@ function validateDevice(value: unknown): DeviceAccess {
   if (finiteNumber(storedUsage?.quotaConsumedPercent) === null) {
     const current = usage.accountUsedPercent;
     if (current !== null && quotaBaseUsedPercent !== null) {
-      usage.quotaConsumedPercent = Math.max(0, current >= quotaBaseUsedPercent ? current - quotaBaseUsedPercent : current);
+      usage.quotaConsumedPercent = Math.max(0, current >= quotaBaseUsedPercent ? current - quotaBaseUsedPercent : 0);
       usage.lastAccountUsedPercent = current;
     }
   }
@@ -700,7 +702,7 @@ export class AccessStore {
 
       const usage = device.usage ?? emptyUsage();
       const resetIso = resetIsoFromUnixSeconds(observation.accountResetsAt);
-      updateQuotaProgress(device, usage, observation.accountUsedPercent, resetIso);
+      updateQuotaProgress(device, usage, observation.accountUsedPercent, resetIso, observation.accountWindowDurationMins);
       if (resetIso) usage.windowResetsAt = resetIso;
 
       const previousTotal = usage.threadTotals[observation.threadId];
@@ -773,7 +775,7 @@ export class AccessStore {
         if (scope === "manual" && device.reservationId) continue;
         const usage = device.usage ?? emptyUsage();
         const before = JSON.stringify(usage);
-        updateQuotaProgress(device, usage, accountUsedPercent, resetIso);
+        updateQuotaProgress(device, usage, accountUsedPercent, resetIso, accountWindowDurationMins);
         if (resetIso) usage.windowResetsAt = resetIso;
         usage.accountUsedPercent = accountUsedPercent;
         usage.accountWindowDurationMins = accountWindowDurationMins;

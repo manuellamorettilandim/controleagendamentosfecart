@@ -6,6 +6,16 @@
     <meta name="color-scheme" content="dark light">
     <meta name="description" content="Visão geral do seu acesso Fecart AI Share.">
     <title>Visão geral | Fecart AI Share</title>
+    <script>
+      try {
+        const t = localStorage.getItem("fecart-theme");
+        if (t === "light" || t === "dark") {
+          document.documentElement.dataset.theme = t;
+        } else {
+          document.documentElement.dataset.theme = "light";
+        }
+      } catch (e) {}
+    </script>
   </head>
   <body class="dashboard-page">
     <div id="root"></div>

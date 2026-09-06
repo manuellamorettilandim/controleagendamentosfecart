@@ -67,6 +67,9 @@ test("resolveUpstreamUrl resolves endpoints and validates protocol", () => {
   const compactUrl = resolveUpstreamUrl(undefined, "/api/codex/v1/responses/compact");
   assert.equal(compactUrl, "https://chatgpt.com/backend-api/codex/responses/compact");
 
+  const searchUrl = resolveUpstreamUrl(undefined, "/api/codex/v1/alpha/search");
+  assert.equal(searchUrl, "https://chatgpt.com/backend-api/codex/alpha/search");
+
   const localTest = resolveUpstreamUrl("http://127.0.0.1:9999/backend-api/codex/responses", "/responses");
   assert.equal(localTest, "http://127.0.0.1:9999/backend-api/codex/responses");
 

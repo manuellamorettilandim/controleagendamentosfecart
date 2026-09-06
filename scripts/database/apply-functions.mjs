@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { Client } from "pg";
 
 const PG_HOST = process.env.LOCAL_PG_HOST || "127.0.0.1";
@@ -213,6 +214,20 @@ begin
 end;
 $$;
 
+create or replace function codex_private.is_fixed_slot(p_starts_at timestamptz, p_ends_at timestamptz)
+returns boolean
+language sql
+stable
+security definer
+as $$
+  select (
+    (extract(hour from p_starts_at at time zone 'America/Sao_Paulo') = 8 and extract(minute from p_starts_at at time zone 'America/Sao_Paulo') = 0 and p_ends_at - p_starts_at = interval '5 hours') or
+    (extract(hour from p_starts_at at time zone 'America/Sao_Paulo') = 9 and extract(minute from p_starts_at at time zone 'America/Sao_Paulo') = 0 and p_ends_at - p_starts_at = interval '5 hours') or
+    (extract(hour from p_starts_at at time zone 'America/Sao_Paulo') = 14 and extract(minute from p_starts_at at time zone 'America/Sao_Paulo') = 0 and p_ends_at - p_starts_at = interval '5 hours') or
+    (extract(hour from p_starts_at at time zone 'America/Sao_Paulo') = 19 and extract(minute from p_starts_at at time zone 'America/Sao_Paulo') = 0 and p_ends_at - p_starts_at = interval '5 hours')
+  );
+$$;
+
 create or replace function codex_private.valid_five_hour_session(
   p_account_id text,
   p_starts_at timestamptz,
@@ -233,6 +248,11 @@ begin
     return false;
   end if;
 
+  -- 0. The 4 fixed daily sessions defined by the project
+  if codex_private.is_fixed_slot(p_starts_at, p_ends_at) then
+    return true;
+  end if;
+
   -- 1. Full 5-hour session starting now on an idle account
   if not active and starts_now and p_ends_at - p_starts_at = interval '5 hours' then
     return true;
@@ -244,7 +264,8 @@ begin
   end if;
 
   -- 3. Remaining partial session within an active window
-  if active and starts_now and reset_at is not null and p_ends_at = reset_at
+  if active and starts_now and reset_at is not null
+     and pg_catalog.abs(extract(epoch from (p_ends_at - reset_at))) <= 60
      and p_starts_at >= reset_at - interval '5 hours' and p_starts_at < reset_at
      and p_ends_at - p_starts_at >= interval '5 minutes' then
     return true;
@@ -562,14 +583,18 @@ begin
   if requester is null then
     raise exception 'Autenticação necessária.' using errcode = '42501';
   end if;
-  if p_duration_hours <> 5 or p_requested_quota_percent <> 100 then
-    raise exception 'Cada sessão usa a quota disponível de uma janela de cinco horas.' using errcode = '22023';
+  if p_duration_hours <> 5 then
+    raise exception 'Cada sessão deve ter duração de 5 horas.' using errcode = '22023';
   end if;
   if p_starts_at < now() - interval '1 minute' then
     raise exception 'Não é possível agendar um horário passado.' using errcode = '22023';
   end if;
 
-  if not active and starts_now then
+  ends_at_val := p_starts_at + pg_catalog.make_interval(hours => p_duration_hours);
+
+  if codex_private.is_fixed_slot(p_starts_at, ends_at_val) then
+    -- valid fixed slot!
+  elsif not active and starts_now then
     ends_at_val := p_starts_at + interval '5 hours';
   elsif codex_private.is_five_hour_boundary(p_account_id, p_starts_at) then
     ends_at_val := p_starts_at + interval '5 hours';
@@ -579,7 +604,7 @@ begin
       and reset_at - p_starts_at >= interval '5 minutes' then
     ends_at_val := reset_at;
   else
-    raise exception 'Escolha agora ou o início de um novo ciclo de 5 horas.' using errcode = '22023';
+    raise exception 'Escolha uma das 4 sessões fixas (08:00, 09:00, 14:00 ou 19:00) ou início imediato.' using errcode = '22023';
   end if;
 
   if not exists (
@@ -661,6 +686,11 @@ async function main() {
 
   console.log("[apply-functions] Executando DDL das funções e triggers...");
   await client.query(sql);
+  const fixedScheduleSql = await readFile(
+    new URL("../../supabase/migrations/20260905173000_use_fixed_site_sessions.sql", import.meta.url),
+    "utf8",
+  );
+  await client.query(fixedScheduleSql);
 
   console.log("[apply-functions] Verificando funções criadas:");
   const res = await client.query(
