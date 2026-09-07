@@ -71,6 +71,7 @@
         number: String(date.getDate()),
         isoDate: dateKey(date),
         today: dateKey(date) === today,
+        rawDate: date,
       };
     });
   }
@@ -122,7 +123,7 @@
     schedules: [],
     approvals: [],
     activeAccountId: "",
-    view: window.matchMedia?.("(max-width: 640px)").matches ? "list" : "week",
+    view: window.matchMedia?.("(max-width: 640px)").matches ? "day" : "week",
     weekStart: startOfWeek(initialNow),
     focusedDayIndex: weekdayIndex(initialNow),
     selectedScheduleId: null,
@@ -169,6 +170,7 @@
       adjusted: "Aprovado com ajuste",
       active: "Sessão ativa",
       cancelled: "Cancelado",
+      rejected: "Recusado",
       disabled: "Token desabilitado",
       revoked: "Token revogado",
       expired: "Sessão expirada",
@@ -176,7 +178,7 @@
   }
 
   function statusClass(status) {
-    if (["revoked", "expired"].includes(status)) return "disabled";
+    if (["revoked", "expired", "rejected"].includes(status)) return "disabled";
     return ["pending", "approved", "adjusted", "active", "cancelled", "disabled"].includes(status) ? status : "pending";
   }
 
@@ -308,68 +310,116 @@
     `).join("");
   }
 
+  const FIXED_DAILY_SLOTS = [
+    { id: 0, startHour: 8, endHour: 13, timeLabel: "08:00 – 13:00", durationHours: 5 },
+    { id: 1, startHour: 9, endHour: 14, timeLabel: "09:00 – 14:00", durationHours: 5 },
+    { id: 2, startHour: 14, endHour: 19, timeLabel: "14:00 – 19:00", durationHours: 5 },
+    { id: 3, startHour: 19, endHour: 24, timeLabel: "19:00 – 00:00", durationHours: 5 },
+  ];
+
+  function scheduleSlotIndex(schedule) {
+    const sStart = scheduleStartDate(schedule);
+    const hour = sStart.getHours() + sStart.getMinutes() / 60;
+    let minDiff = Number.POSITIVE_INFINITY;
+    let closestIndex = 0;
+    for (let i = 0; i < FIXED_DAILY_SLOTS.length; i++) {
+      const diff = Math.abs(hour - FIXED_DAILY_SLOTS[i].startHour);
+      if (diff < minDiff) {
+        minDiff = diff;
+        closestIndex = i;
+      }
+    }
+    return closestIndex;
+  }
+
+  function isSlotInPast(dayDate, slotDef, now = new Date()) {
+    const end = new Date(dayDate.getFullYear(), dayDate.getMonth(), dayDate.getDate(), slotDef.endHour === 24 ? 0 : slotDef.endHour, 0, 0, 0);
+    if (slotDef.endHour === 24) end.setDate(end.getDate() + 1);
+    return end.getTime() <= now.getTime();
+  }
+
+  function isSlotCurrent(dayDate, slotDef, now = new Date()) {
+    const start = new Date(dayDate.getFullYear(), dayDate.getMonth(), dayDate.getDate(), slotDef.startHour, 0, 0, 0);
+    const end = new Date(dayDate.getFullYear(), dayDate.getMonth(), dayDate.getDate(), slotDef.endHour === 24 ? 0 : slotDef.endHour, 0, 0, 0);
+    if (slotDef.endHour === 24) end.setDate(end.getDate() + 1);
+    return start.getTime() <= now.getTime() && end.getTime() > now.getTime();
+  }
+
   function agendaRangeLabel() {
+    const monthLabel = (value) => value.charAt(0).toUpperCase() + value.slice(1);
+    if (state.view === "day") {
+      const dayDate = addDays(state.weekStart, state.focusedDayIndex);
+      const monthStr = monthLabel(MONTH_FORMATTER.format(dayDate));
+      return `${WEEKDAY_NAMES[state.focusedDayIndex]}, ${dayDate.getDate()} de ${monthStr} de ${dayDate.getFullYear()}`;
+    }
     const start = state.weekStart;
     const end = addDays(start, 6);
     const startMonth = MONTH_FORMATTER.format(start);
     const endMonth = MONTH_FORMATTER.format(end);
-    const monthLabel = (value) => value.charAt(0).toUpperCase() + value.slice(1);
     if (start.getFullYear() === end.getFullYear() && start.getMonth() === end.getMonth()) {
       return `${start.getDate()} – ${end.getDate()} de ${monthLabel(startMonth)}, ${start.getFullYear()}`;
     }
     return `${start.getDate()} de ${monthLabel(startMonth)} – ${end.getDate()} de ${monthLabel(endMonth)}, ${end.getFullYear()}`;
   }
 
-  function agendaHourRange(schedules) {
-    let min = Number.POSITIVE_INFINITY;
-    let max = Number.NEGATIVE_INFINITY;
-    schedules.forEach((schedule) => {
-      const { start, end } = scheduleTimeRange(schedule);
-      if (Number.isFinite(start)) min = Math.min(min, start);
-      if (Number.isFinite(end)) max = Math.max(max, end);
-    });
-    if (!Number.isFinite(min) || !Number.isFinite(max)) return { start: 8, end: 18 };
-    return {
-      start: Math.max(0, Math.min(8, Math.floor(min))),
-      end: Math.max(18, Math.min(24, Math.ceil(max))),
-    };
+  function overlappingSchedules(slotDef, dayDate, schedules) {
+    const start = new Date(dayDate); start.setHours(slotDef.startHour, 0, 0, 0);
+    const end = new Date(dayDate); end.setHours(slotDef.endHour, 0, 0, 0);
+    return schedules.filter(schedule => ["pending", "adjusted", "approved", "active"].includes(schedule.status)
+      && scheduleStartDate(schedule) < end && scheduleEndDate(schedule) > start);
+  }
+
+  function renderAgendaDays(schedules) {
+    return `<div class="planner-days" aria-label="Dias da semana">${agendaDays().map((day, index) => {
+      const rows = schedules.filter(schedule => scheduleDayIndex(schedule) === index);
+      const pending = rows.filter(schedule => schedule.status === "pending").length;
+      const free = FIXED_DAILY_SLOTS.filter(slot => !isSlotInPast(day.rawDate, slot) && !overlappingSchedules(slot, day.rawDate, schedules).length).length;
+      return `<button type="button" class="planner-day${state.view === "day" && index === state.focusedDayIndex ? " is-selected" : ""}" data-select-day="${index}" aria-pressed="${state.view === "day" && index === state.focusedDayIndex}">
+        <span>${day.short}${day.today ? '<small>Hoje</small>' : ''}</span><strong>${day.number}</strong>
+        <span class="planner-capacity" aria-label="${free} horários disponíveis">${FIXED_DAILY_SLOTS.map(slot => {
+          const conflicts = overlappingSchedules(slot, day.rawDate, schedules);
+          const kind = conflicts.some(item => item.status === 'pending') ? 'pending' : conflicts.length ? 'occupied' : isSlotInPast(day.rawDate, slot) ? 'past' : 'free';
+          return `<i class="${kind}" title="${slot.timeLabel}: ${{pending:'Pendente',occupied:'Ocupado',past:'Encerrado',free:'Disponível'}[kind]}"></i>`;
+        }).join('')}</span>
+        <small>${pending ? `${pending} pendente${pending > 1 ? 's' : ''}` : `${free} disponíveis`}</small>
+      </button>`;
+    }).join('')}</div>`;
+  }
+
+  function renderAgendaRows(schedules) {
+    const rows = schedules.filter(schedule => state.view !== "day" || scheduleDayIndex(schedule) === state.focusedDayIndex)
+      .sort((a, b) => scheduleStartDate(a) - scheduleStartDate(b));
+    const pending = rows.filter(schedule => schedule.status === "pending").length;
+    const focusedDay = addDays(state.weekStart, state.focusedDayIndex);
+    const free = FIXED_DAILY_SLOTS.filter(slot => !isSlotInPast(focusedDay, slot) && !overlappingSchedules(slot, focusedDay, schedules).length);
+    return `<div class="planner-results">
+      <div class="planner-results-heading"><div><h3>${state.view === "day" ? `Sessões de ${formatDate(focusedDay)}` : 'Solicitações da semana'}</h3><p>${rows.length} solicitaç${rows.length === 1 ? 'ão' : 'ões'}${pending ? ` · ${pending} aguardando decisão` : ''}</p></div><span class="planner-usage-label"><i class="ph ph-chart-bar" aria-hidden="true"></i> Uso registrado em tokens</span></div>
+      <div class="planner-table-heading" aria-hidden="true"><span>Data e horário</span><span>Solicitante / conta</span><span>Situação</span><span>Uso</span><span>Ações</span></div>
+      ${rows.length ? rows.map(schedule => {
+        const time = scheduleTimeRange(schedule);
+        const isPending = schedule.status === 'pending';
+        const usage = schedule.usageTokens == null ? 'Sem medição' : Number(schedule.usageTokens).toLocaleString('pt-BR');
+        return `<article class="planner-row ${isPending ? 'needs-review' : ''}" data-request-id="${escapeHtml(schedule.id)}">
+          <div class="planner-row-main"><div class="planner-time"><strong>${formatClock(schedule.startsAt)} – ${formatClock(schedule.endsAt)}</strong><small>${formatDate(time.startDate)} · ${formatDuration(time.start, time.end)}</small></div>
+          <div class="planner-person"><strong>${escapeHtml(schedule.group)}</strong><small>${escapeHtml(accountById(schedule.accountId)?.label || 'Conta')}</small></div>
+          <span class="planner-status ${statusClass(schedule.status)}">${escapeHtml(statusText(schedule.status))}</span>
+          <span class="planner-usage">${usage}${schedule.usageTokens == null ? '' : '<small>tokens</small>'}</span>
+          <div class="planner-actions">${isPending ? `<button class="planner-approve" type="button" data-quick-action="approve" data-schedule-id="${escapeHtml(schedule.id)}"><i class="ph ph-check" aria-hidden="true"></i> Aprovar</button>` : ['active','approved','revoked'].includes(schedule.status) ? `<button type="button" data-manage-schedule="${escapeHtml(schedule.id)}">${schedule.status === 'active' ? 'Encerrar acesso' : schedule.status === 'approved' ? 'Cancelar sessão' : 'Ver acesso'}</button>` : '<span>—</span>'}</div></div>
+          ${isPending ? `<details class="planner-review"><summary>Ajustar horário ou recusar <i class="ph ph-caret-down" aria-hidden="true"></i></summary>
+            <form data-inline-review="${escapeHtml(schedule.id)}"><div class="planner-review-fields"><label>Início<input name="startsAt" type="datetime-local" step="1" value="${dateTimeInputValue(time.startDate)}" required></label><label>Fim<input name="endsAt" type="datetime-local" step="1" value="${dateTimeInputValue(time.endDate)}" required></label><label class="planner-note">Observação<textarea name="note" maxlength="200" rows="2" placeholder="Registre o motivo da decisão">${escapeHtml(schedule.note)}</textarea></label></div><div class="planner-review-actions"><button type="submit" name="decision" value="approve" class="planner-approve">Aprovar com ajustes</button><button type="submit" name="decision" value="reject" class="planner-reject">Recusar solicitação</button></div><p class="planner-inline-status" role="status"></p></form>
+          </details>` : schedule.note ? `<p class="planner-decision-note">${escapeHtml(schedule.note)}</p>` : ''}
+        </article>`;
+      }).join('') : '<div class="planner-empty"><i class="ph ph-calendar-check" aria-hidden="true"></i><strong>Nenhuma solicitação neste período</strong><p>Os horários livres continuam disponíveis para reserva.</p></div>'}
+      ${state.view === 'day' ? `<div class="planner-free"><strong>Horários disponíveis</strong><div>${free.length ? free.map(slot => `<span>${slot.timeLabel}</span>`).join('') : '<span>Nenhum horário livre neste dia</span>'}</div></div>` : ''}
+    </div>`;
   }
 
   function renderWeekAgenda(schedules) {
-    const range = agendaHourRange(schedules);
-    const rowCount = range.end - range.start;
-    const rowsStyle = `grid-template-rows:repeat(${rowCount}, ${ADMIN_AGENDA_SLOT_HEIGHT}px)`;
-    const days = agendaDays();
-    const visibleDayIndexes = state.view === "day" ? [state.focusedDayIndex] : days.map((_day, index) => index);
-    const visibleDays = visibleDayIndexes.map((index) => days[index]);
-    const headerClass = state.view === "day" ? "calendar-week-head is-day" : "calendar-week-head";
-    const columnsClass = state.view === "day" ? "day-columns is-day" : "day-columns";
-    const header = `<div class="${headerClass}"><div></div>${visibleDays.map((day) => `<div class="${day.today ? "today-day" : ""}"><strong>${day.short}</strong><span class="day-number">${day.number}</span></div>`).join("")}</div>`;
-    const timeColumn = `<div class="time-column" style="${rowsStyle}">${Array.from({ length: rowCount }, (_, index) => `<div class="time-label">${formatTime(range.start + index)}</div>`).join("")}</div>`;
-    const columns = visibleDayIndexes.map((dayIndex) => {
-      const daySchedules = schedules.filter((schedule) => scheduleDayIndex(schedule) === dayIndex);
-      return `<div class="day-track${days[dayIndex]?.today ? " today-track" : ""}" style="min-height:${rowCount * ADMIN_AGENDA_SLOT_HEIGHT}px">${Array.from({ length: rowCount }, () => `<div class="hour-line"></div>`).join("")}${daySchedules.map((schedule) => renderScheduleCard(schedule, range)).join("")}</div>`;
-    }).join("");
-    return `${header}<div class="calendar-body">${timeColumn}<div class="${columnsClass}">${columns}</div></div>`;
-  }
-
-  function renderScheduleCard(schedule, range) {
-    const { start, end, duration } = scheduleTimeRange(schedule);
-    const top = Math.max(3, (start - range.start) * ADMIN_AGENDA_SLOT_HEIGHT + 4);
-    const height = Math.max(42, duration * ADMIN_AGENDA_SLOT_HEIGHT - 6);
-    const compactClass = duration < 1.5 ? " is-compact" : "";
-    return `<button class="schedule-card ${statusClass(schedule.status)}${compactClass}" type="button" data-schedule-id="${escapeHtml(schedule.id)}" style="top:${top}px;height:${height}px" aria-label="${escapeHtml(schedule.group)}, ${formatTime(start)} até ${formatTime(end)}, ${escapeHtml(statusText(schedule.status))}"><span class="schedule-time">${formatTime(start)} – ${formatTime(end)}</span><strong>${escapeHtml(schedule.group)}</strong><span class="schedule-status">${escapeHtml(statusText(schedule.status))}</span></button>`;
+    return `${renderAgendaDays(schedules)}<div class="planner-legend"><span><i class="free"></i>Disponível</span><span><i class="occupied"></i>Ocupado</span><span><i class="pending"></i>Pendente</span><small>4 janelas de 5h por dia</small></div>${renderAgendaRows(schedules)}`;
   }
 
   function renderListAgenda(schedules) {
-    const rows = schedules.slice().sort((left, right) => scheduleStartDate(left).getTime() - scheduleStartDate(right).getTime());
-    if (!rows.length) return `<div class="agenda-list-view"><p class="agenda-empty">Nenhum agendamento nesta conta.</p></div>`;
-    const days = agendaDays();
-    return `<div class="agenda-list-view">${rows.map((schedule) => {
-      const day = days[scheduleDayIndex(schedule)] || {};
-      const time = scheduleTimeRange(schedule);
-      return `<button class="agenda-list-row" type="button" data-schedule-id="${escapeHtml(schedule.id)}"><span class="agenda-list-time">${day.short || "DIA"} ${day.date || ""}<br>${formatTime(time.start)} – ${formatTime(time.end)}</span><span class="agenda-list-copy"><strong>${escapeHtml(schedule.group)}</strong><span>${escapeHtml(accountById(schedule.accountId)?.label || "Conta")} · ${escapeHtml(statusText(schedule.status))}</span></span><span class="status-badge ${statusClass(schedule.status)}">${escapeHtml(statusText(schedule.status))}</span></button>`;
-    }).join("")}</div>`;
+    return renderWeekAgenda(schedules);
   }
 
   function renderAgenda() {
@@ -377,6 +427,8 @@
     if (!target) return;
     const schedules = schedulesInWeek(schedulesForAccount());
     setText("#agenda-range", agendaRangeLabel());
+    $("#agenda-prev")?.setAttribute("aria-label", state.view === "day" ? "Dia anterior" : "Semana anterior");
+    $("#agenda-next")?.setAttribute("aria-label", state.view === "day" ? "Próximo dia" : "Próxima semana");
     target.innerHTML = state.view === "list"
       ? renderListAgenda(schedules)
       : renderWeekAgenda(schedules);
@@ -779,7 +831,7 @@
       if (!state.accounts.some((account) => account.id === state.activeAccountId)) {
         state.activeAccountId = state.accounts[0]?.id || "";
       }
-      const userMap = new Map(users.map((user) => [user.user_id, user.username || user.group_name || "Grupo"]));
+      const userMap = new Map(users.map((user) => [user.user_id, user.username || user.email || `Usuário ${user.user_id}`]));
       const deviceMap = new Map(devices.map((device) => [device.deviceId || device.device_id, device]));
       state.schedules = reservations.map((reservation, index) => normalizeReservation(reservation, userMap, deviceMap, index));
       state.approvals = state.schedules.filter((schedule) => schedule.status === "pending").map((schedule) => ({
@@ -840,7 +892,9 @@
     const linkedDevice = reservation.device_id ? deviceMap.get(reservation.device_id) : null;
     const deviceStatus = linkedDevice?.status || "";
     const isOverduePending = reservation.approval_status === "pending" && !Number.isNaN(endDate.getTime()) && endDate.getTime() <= Date.now();
-    const status = reservation.status === "cancelled" || reservation.approval_status === "expired" || isOverduePending
+    const status = reservation.approval_status === "rejected" ? "rejected"
+      : reservation.status === "cancelled" ? "cancelled"
+      : reservation.approval_status === "expired" || isOverduePending
       ? "expired"
       : reservation.approval_status === "pending"
         ? "pending"
@@ -856,7 +910,8 @@
     const requestedDate = new Date(reservation.created_at || reservation.starts_at);
     return {
       id: reservation.id,
-      group: userMap.get(reservation.user_id) || "Grupo",
+      group: userMap.get(reservation.user_id) || reservation.username || `Usuário ${reservation.user_id || "não identificado"}`,
+      usageTokens: linkedDevice?.observed_tokens ?? linkedDevice?.observedTokens ?? null,
       accountId: reservation.account_id,
       day,
       dateKey: Number.isNaN(startDate.getTime()) ? "" : dateKey(startDate),
@@ -1000,12 +1055,28 @@
     });
 
     $("#agenda-prev")?.addEventListener("click", () => {
-      state.weekStart = addDays(state.weekStart, -7);
+      if (state.view === "day") {
+        state.focusedDayIndex -= 1;
+        if (state.focusedDayIndex < 0) {
+          state.focusedDayIndex = 6;
+          state.weekStart = addDays(state.weekStart, -7);
+        }
+      } else {
+        state.weekStart = addDays(state.weekStart, -7);
+      }
       renderAgenda();
     });
 
     $("#agenda-next")?.addEventListener("click", () => {
-      state.weekStart = addDays(state.weekStart, 7);
+      if (state.view === "day") {
+        state.focusedDayIndex += 1;
+        if (state.focusedDayIndex > 6) {
+          state.focusedDayIndex = 0;
+          state.weekStart = addDays(state.weekStart, 7);
+        }
+      } else {
+        state.weekStart = addDays(state.weekStart, 7);
+      }
       renderAgenda();
     });
 
@@ -1114,6 +1185,74 @@
       }
     });
 
+    async function handleQuickAction(action, scheduleId, triggerButton) {
+      const schedule = state.schedules.find((item) => item.id === scheduleId);
+      if (!schedule || schedule.status !== "pending") return;
+      state.selectedScheduleId = schedule.id;
+
+      if (action === "approve") {
+        if (triggerButton) triggerButton.disabled = true;
+        const time = scheduleTimeRange(schedule);
+        let startsAt = time.startDate;
+        let endsAt = time.endDate;
+        if (startsAt.getTime() < Date.now()) {
+          startsAt = new Date();
+        }
+        if (endsAt <= startsAt) {
+          if (triggerButton) triggerButton.disabled = false;
+          showToast("Este horário já terminou. Atualize a agenda.", "error");
+          return;
+        }
+        try {
+          if (state.live) {
+            await sendReservationDecision("approve", schedule, "Aprovado via agenda", {
+              startsAt: startsAt.toISOString(),
+              endsAt: endsAt.toISOString(),
+            });
+            await loadLiveData();
+          } else {
+            updateSchedule("approved", `Solicitação de ${schedule.group} aprovada.`);
+          }
+          showToast(`Solicitação de ${schedule.group} aprovada.`);
+        } catch (error) {
+          showToast(error instanceof Error ? error.message : "Não foi possível aprovar a solicitação.", "error");
+        } finally {
+          if (triggerButton) triggerButton.disabled = false;
+        }
+      } else if (action === "reject") {
+        populateScheduleDetails(schedule);
+        openDialog("review-modal");
+        const noteInput = $("#review-note");
+        if (noteInput) {
+          noteInput.focus();
+        }
+      }
+    }
+
+    function handleAgendaBoardClick(event) {
+      const quickActionBtn = event.target.closest("[data-quick-action]");
+      if (quickActionBtn) {
+        event.stopPropagation();
+        event.preventDefault();
+        const action = quickActionBtn.dataset.quickAction;
+        const scheduleId = quickActionBtn.dataset.scheduleId;
+        void handleQuickAction(action, scheduleId, quickActionBtn);
+        return;
+      }
+
+      const dayChip = event.target.closest("[data-select-day]");
+      if (dayChip) {
+        event.stopPropagation();
+        state.focusedDayIndex = Number(dayChip.dataset.selectDay);
+        state.view = "day";
+        renderAgenda();
+        return;
+      }
+
+      const manage = event.target.closest("[data-manage-schedule]");
+      if (manage) openSchedule(manage.dataset.manageSchedule);
+    }
+
     function openFromTarget(event) {
       const scheduleTarget = event.target.closest("[data-schedule-id]");
       const approvalTarget = event.target.closest("[data-approval-id], [data-approval-action]");
@@ -1124,7 +1263,37 @@
       if (scheduleTarget?.dataset.scheduleId) openSchedule(scheduleTarget.dataset.scheduleId);
     }
 
-    $("#admin-agenda-board")?.addEventListener("click", openFromTarget);
+    $("#admin-agenda-board")?.addEventListener("click", handleAgendaBoardClick);
+    $("#admin-agenda-board")?.addEventListener("submit", async (event) => {
+      const form = event.target.closest("[data-inline-review]");
+      if (!form) return;
+      event.preventDefault();
+      const schedule = state.schedules.find(item => item.id === form.dataset.inlineReview);
+      if (!schedule || schedule.status !== "pending") return;
+      const action = event.submitter?.value;
+      if (!["approve", "reject"].includes(action)) return;
+      const feedback = form.querySelector('[role="status"]');
+      const data = new FormData(form);
+      const startsAt = new Date(String(data.get("startsAt")));
+      const endsAt = new Date(String(data.get("endsAt")));
+      const note = String(data.get("note") || "").trim();
+      if (action === "approve" && (!Number.isFinite(startsAt.getTime()) || !Number.isFinite(endsAt.getTime()) || endsAt <= startsAt)) {
+        feedback.textContent = "O fim deve ser posterior ao início.";
+        return;
+      }
+      const buttons = [...form.querySelectorAll('button')];
+      buttons.forEach(button => button.disabled = true);
+      feedback.textContent = "Salvando decisão…";
+      try {
+        await sendReservationDecision(action, schedule, note || (action === "reject" ? "Solicitação recusada pelo administrador." : "Aprovado via agenda"), action === "approve" ? { startsAt: startsAt.toISOString(), endsAt: endsAt.toISOString() } : {});
+        await loadLiveData();
+        showToast(action === "approve" ? "Solicitação aprovada." : "Solicitação recusada.");
+      } catch (error) {
+        feedback.textContent = error instanceof Error ? error.message : "Não foi possível salvar. Tente novamente.";
+        buttons.forEach(button => button.disabled = false);
+      }
+    });
+
     $("#approval-body")?.addEventListener("click", openFromTarget);
     $("#approval-body")?.addEventListener("keydown", (event) => {
       if (event.key === "Enter" || event.key === " ") openFromTarget(event);

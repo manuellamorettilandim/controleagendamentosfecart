@@ -2,34 +2,6 @@
   overflow-x: hidden;
 }
 
-.groups-page .admin-sidebar {
-  width: var(--admin-sidebar-width);
-}
-
-.groups-page .admin-main {
-  position: relative;
-  margin-left: var(--admin-sidebar-width);
-}
-
-.groups-header {
-  min-height: 76px;
-  padding: 14px 32px 14px 28px;
-  border-bottom: 1px solid var(--admin-line);
-  background: var(--admin-bg);
-}
-
-.groups-header .page-heading h1 {
-  font-size: 22px;
-  font-weight: 600;
-  letter-spacing: -0.035em;
-}
-
-.groups-header .page-heading > p:last-child {
-  margin-top: 3px;
-  color: var(--admin-muted);
-  font-size: 13px;
-}
-
 .groups-header-actions {
   gap: 12px;
 }

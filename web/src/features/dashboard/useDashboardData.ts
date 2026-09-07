@@ -344,7 +344,10 @@ export function useDashboardData() {
 
     const pad = (n: number) => String(n).padStart(2, "0");
     const monthNames = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
-    const weekLabel = `${pad(monday.getDate())} – ${pad(sunday.getDate())} de ${monthNames[sunday.getMonth()]} de ${sunday.getFullYear()}`;
+    const startLabel = monday.getMonth() === sunday.getMonth() && monday.getFullYear() === sunday.getFullYear()
+      ? pad(monday.getDate())
+      : `${pad(monday.getDate())} de ${monthNames[monday.getMonth()]}${monday.getFullYear() !== sunday.getFullYear() ? ` de ${monday.getFullYear()}` : ""}`;
+    const weekLabel = `${startLabel} – ${pad(sunday.getDate())} de ${monthNames[sunday.getMonth()]} de ${sunday.getFullYear()}`;
 
     const dayNamesShort = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
     const nowMs = clockMs;

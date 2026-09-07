@@ -92,7 +92,7 @@ async function ensureLocalPostgres(root) {
   const expectedPort = Number(process.env.LOCAL_PG_PORT || 5_433);
   if (!target || !isLoopback(target.host) || target.port !== expectedPort) return null;
 
-  if (await canConnect(target.host, target.port)) {
+  if (await canConnect(target.host, target.port) && await canQueryDatabase(process.env.DATABASE_URL)) {
     console.log(`[local-db] PostgreSQL já está disponível em ${target.host}:${target.port}.`);
     return null;
   }
@@ -137,7 +137,7 @@ async function ensureLocalPostgres(root) {
 
   const deadline = Date.now() + 30_000;
   while (Date.now() < deadline) {
-    if (await canConnect(target.host, target.port)) {
+    if (await canConnect(target.host, target.port) && await canQueryDatabase(process.env.DATABASE_URL)) {
       console.log(`[local-db] PostgreSQL pronto em ${target.host}:${target.port}.`);
       child.once("exit", (code, signal) => {
         if (!stopping) {
@@ -166,24 +166,35 @@ async function ensureLocalPostgresSchema() {
   const expectedPort = Number(process.env.LOCAL_PG_PORT || 5_433);
   if (!target || !isLoopback(target.host) || target.port !== expectedPort) return;
 
-  const client = new Client({ connectionString: process.env.DATABASE_URL });
-  try {
-    await client.connect();
-    await client.query(`
-      alter table public.codex_device_snapshots
-        add column if not exists quota_consumed_percent numeric not null default 0;
+  const deadline = Date.now() + 15_000;
+  while (Date.now() < deadline) {
+    const client = new Client({ connectionString: process.env.DATABASE_URL });
+    try {
+      await client.connect();
+      await client.query(`
+        alter table public.codex_device_snapshots
+          add column if not exists quota_consumed_percent numeric not null default 0;
 
-      alter table public.codex_device_snapshots
-        drop constraint if exists codex_device_snapshots_quota_consumed_percent_check;
+        alter table public.codex_device_snapshots
+          drop constraint if exists codex_device_snapshots_quota_consumed_percent_check;
 
-      alter table public.codex_device_snapshots
-        add constraint codex_device_snapshots_quota_consumed_percent_check
-        check (quota_consumed_percent >= 0);
-    `);
-    console.log("[local-db] Schema local verificado (quota_consumed_percent disponível).");
-  } finally {
-    await client.end().catch(() => undefined);
+        alter table public.codex_device_snapshots
+          add constraint codex_device_snapshots_quota_consumed_percent_check
+          check (quota_consumed_percent >= 0);
+      `);
+      console.log("[local-db] Schema local verificado (quota_consumed_percent disponível).");
+      return;
+    } catch (error) {
+      if (error && typeof error === "object" && (error.code === "57P03" || error.code === "ECONNREFUSED")) {
+        await delay(250);
+        continue;
+      }
+      throw error;
+    } finally {
+      await client.end().catch(() => undefined);
+    }
   }
+  throw new Error("[local-db] Timeout aguardando o PostgreSQL aceitar queries para verificação de schema.");
 }
 
 async function stopLocalPostgres(runtime) {
@@ -223,6 +234,20 @@ function canConnect(hostname, port) {
     socket.once("connect", () => finish(true));
     socket.once("error", () => finish(false));
   });
+}
+
+async function canQueryDatabase(connectionString) {
+  if (!connectionString) return false;
+  const client = new Client({ connectionString });
+  try {
+    await client.connect();
+    await client.query("select 1;");
+    return true;
+  } catch {
+    return false;
+  } finally {
+    await client.end().catch(() => undefined);
+  }
 }
 
 async function removeStalePostmasterPid(dataDir) {

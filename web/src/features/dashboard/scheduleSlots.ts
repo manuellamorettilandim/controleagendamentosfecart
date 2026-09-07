@@ -138,6 +138,7 @@ export function generateSlotsForDate(
       isPartial: false,
       durationHours: def.durationHours,
       reservationId: overlap.reservationId,
+      approvalStatus: reservations.find((r) => r.id === overlap.reservationId)?.approval_status,
     };
   });
 }

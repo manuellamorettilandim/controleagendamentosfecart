@@ -38,7 +38,7 @@ printf '%s\n' 'deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.node
 apt-get update
 apt-get install -y nodejs
 
-npm install --global @openai/codex@0.147.0
+npm install --global @openai/codex@0.153.4
 
 install -d -o root -g root -m 0755 /etc/codex
 cat > /etc/codex/requirements.toml <<'REQUIREMENTS'

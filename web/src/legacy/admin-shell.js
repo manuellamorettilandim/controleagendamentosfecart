@@ -7,13 +7,11 @@
   const activeSection = document.body.dataset.adminSection || "overview";
   const navItems = [
     { id: "overview", icon: "ph-squares-four", label: "Visão geral" },
-    ...(document.body.classList.contains("admin-page") ? [
-      { id: "approvals", icon: "ph-check-circle", label: "Aprovações" },
-      { id: "agenda", icon: "ph-calendar-blank", label: "Agenda" },
-      { id: "accounts", icon: "ph-wallet", label: "Contas" },
-      { id: "policies", icon: "ph-shield-check", label: "Políticas de acesso" },
-      { id: "reports", icon: "ph-file-text", label: "Relatórios" },
-    ] : []),
+    { id: "approvals", icon: "ph-check-circle", label: "Aprovações" },
+    { id: "agenda", icon: "ph-calendar-blank", label: "Agenda" },
+    { id: "accounts", icon: "ph-wallet", label: "Contas" },
+    { id: "policies", icon: "ph-shield-check", label: "Políticas de acesso" },
+    { id: "reports", icon: "ph-file-text", label: "Relatórios" },
     { id: "telemetry", icon: "ph-pulse", label: "Estatísticas" },
     { id: "groups", icon: "ph-users-three", label: "Grupos" },
   ];

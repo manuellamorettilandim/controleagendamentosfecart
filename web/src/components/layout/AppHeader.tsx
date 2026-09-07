@@ -42,6 +42,7 @@ export function AppHeader({
       }}
     >
       <div
+        className="app-header-inner"
         style={{
           maxWidth: "var(--container-max-width)",
           margin: "0 auto",
@@ -180,6 +181,12 @@ export function AppHeader({
 
         {/* Right Actions */}
         <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+          {["admin", "owner", "Admin", "Admin / Owner"].includes(role || "") && (
+            <a className="admin-return-link" href="/admin" title="Voltar ao painel administrativo">
+              <i className="ph ph-shield-check" aria-hidden="true" />
+              <span>Voltar ao admin</span>
+            </a>
+          )}
           {/* Theme Toggle */}
           <button
             type="button"

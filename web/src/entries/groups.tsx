@@ -4,6 +4,7 @@ import template from "../templates/groups.html?raw";
 import { loadGroupsFeature } from "../features/groups/loadGroups";
 import "@phosphor-icons/web/regular";
 import "../styles/admin.css";
+import "../styles/admin-workspace.css";
 import "../styles/groups.css";
 
 const loadController = loadGroupsFeature;

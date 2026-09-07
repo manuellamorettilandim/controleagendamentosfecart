@@ -7,6 +7,7 @@ import { AccessStore } from "./access-store.js";
 import { AccountStore } from "./account-store.js";
 import type { DeviceUsageCounters } from "./access-store.js";
 import { codexChildEnvironment } from "./codex-child-env.js";
+import { resolveCodexBinary, resolveCodexSpawn } from "./codex-bin.js";
 
 function safeId(value: string | undefined, label: string): string {
   if (!value || !/^[a-zA-Z0-9._-]+$/.test(value)) throw new Error(`${label} inválido.`);
@@ -35,7 +36,7 @@ function sessionPaths(env: NodeJS.ProcessEnv = process.env): {
     accountRegistry: path.resolve(env.CODEX_ACCOUNT_REGISTRY || path.join(stateRoot, "accounts.json")),
     accountsDirectory: path.resolve(env.CODEX_ACCOUNTS_DIR || path.join(stateRoot, "accounts")),
     workspaceRoot: path.resolve(env.CODEX_SSH_WORKSPACE_ROOT || path.join(stateRoot, "workspaces")),
-    codexBin: env.CODEX_BIN?.trim() || (process.platform === "linux" ? "/usr/bin/codex" : "codex"),
+    codexBin: resolveCodexBinary(env.CODEX_BIN?.trim()),
   };
 }
 
@@ -55,7 +56,8 @@ async function main(): Promise<void> {
     return;
   }
   if (/codex\s+--version/u.test(original)) {
-    const version = spawn(config.codexBin, ["--version"], { stdio: "inherit", shell: false });
+    const { bin, useShell } = resolveCodexSpawn(config.codexBin);
+    const version = spawn(bin, ["--version"], { stdio: "inherit", shell: useShell });
     process.exitCode = await new Promise<number>((resolve) => version.once("exit", (code) => resolve(code ?? 1)));
     return;
   }
@@ -68,7 +70,8 @@ async function main(): Promise<void> {
   await fs.mkdir(workspace, { recursive: true, mode: 0o700 });
   await accessStore.touch(deviceId);
 
-  const child = spawn(config.codexBin, ["app-server", "--listen", "stdio://"], {
+  const { bin, useShell } = resolveCodexSpawn(config.codexBin);
+  const child = spawn(bin, ["app-server", "--listen", "stdio://"], {
     cwd: workspace,
     env: codexChildEnvironment({
       CODEX_HOME: account.codeHome,
@@ -76,7 +79,7 @@ async function main(): Promise<void> {
       FECART_RESERVATION_ID: device.reservationId || "",
     }),
     stdio: ["inherit", "pipe", "inherit"],
-    shell: false,
+    shell: useShell,
   });
   let outputBuffer = "";
   child.stdout.on("data", (chunk: Buffer) => {

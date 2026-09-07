@@ -487,9 +487,19 @@
     $("#report-export-csv")?.addEventListener("click", () => exportReportDownload("csv"));
 
     $$('[data-section]').forEach((button) => button.addEventListener("click", () => {
-      if (button.dataset.section === "overview") window.location.replace("/admin");
-      if (button.dataset.section === "groups") window.location.replace("/groups");
+      const section = button.dataset.section;
+      if (section === "telemetry") return;
+      if (section === "groups") {
+        window.location.replace("/groups");
+        return;
+      }
+      if (section === "overview") {
+        window.location.replace("/admin");
+        return;
+      }
+      window.location.replace(`/admin#${section}`);
     }));
+    $(".mobile-signout")?.addEventListener("click", logout);
     $("[data-admin-logout]")?.addEventListener("click", logout);
   }
 

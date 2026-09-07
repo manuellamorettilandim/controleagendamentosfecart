@@ -14,6 +14,7 @@ export interface DaySlotData {
   isPartial?: boolean;
   durationHours?: number;
   reservationId?: string;
+  approvalStatus?: string;
 }
 
 export interface ScheduleDayProps {

@@ -718,13 +718,18 @@
 
     $$('[data-section]').forEach((button) => button.addEventListener("click", () => {
       const section = button.dataset.section;
+      if (section === "groups") return;
+      if (section === "telemetry") {
+        window.location.replace("/telemetry");
+        return;
+      }
       if (section === "overview") {
         window.location.replace("/admin");
         return;
       }
-      if (section === "groups") return;
-      if (section === "telemetry") window.location.replace("/telemetry");
+      window.location.replace(`/admin#${section}`);
     }));
+    $(".mobile-signout")?.addEventListener("click", logout);
 
     $("[data-admin-logout]")?.addEventListener("click", logout);
 

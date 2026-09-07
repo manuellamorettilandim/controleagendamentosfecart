@@ -4,6 +4,7 @@ import template from "../templates/telemetry.html?raw";
 import { loadTelemetryFeature } from "../features/telemetry/loadTelemetry";
 import "@phosphor-icons/web/regular";
 import "../styles/admin.css";
+import "../styles/admin-workspace.css";
 import "../styles/telemetry.css";
 
 createRoot(document.getElementById("root")!).render(

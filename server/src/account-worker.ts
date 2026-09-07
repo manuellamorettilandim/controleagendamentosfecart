@@ -15,6 +15,7 @@ import {
 } from "./protocol.js";
 import { createOpaqueToken } from "./crypto.js";
 import { codexChildEnvironment } from "./codex-child-env.js";
+import { resolveCodexSpawn } from "./codex-bin.js";
 
 const CONTROL_TIMEOUT_MS = 20_000;
 
@@ -414,8 +415,8 @@ export class AccountWorker {
       "--ws-token-file",
       this.tokenFilePath(),
     ];
-    const useShell = process.platform === "win32" && /\.(cmd|bat)$/i.test(this.config.codexBin);
-    this.process = spawn(this.config.codexBin, args, {
+    const { bin, useShell } = resolveCodexSpawn(this.config.codexBin);
+    this.process = spawn(bin, args, {
       cwd: this.account.codeHome,
       env: codexChildEnvironment({
         CODEX_HOME: this.account.codeHome,
@@ -424,6 +425,13 @@ export class AccountWorker {
       }),
       stdio: "inherit",
       shell: useShell,
+    });
+    this.process.on("error", (error) => {
+      this.localReady = false;
+      this.process = null;
+      this.lastSnapshot = this.emptySnapshot("offline", `Failed to start codex app-server: ${error.message}`);
+      this.events.onSnapshotChanged?.(this.lastSnapshot);
+      console.error(`[host] account ${this.account.accountId} app-server error:`, error);
     });
     this.process.once("exit", (code, signal) => {
       this.localReady = false;

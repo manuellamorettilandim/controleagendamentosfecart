@@ -57,6 +57,9 @@ describe("Admin Legacy Controller", () => {
                 status: "scheduled",
                 created_at: now.toISOString(),
               },
+              { id: "res-rejected-1", user_id: "user-1", account_id: "account-1",
+                starts_at: startsAt.toISOString(), ends_at: endsAt.toISOString(),
+                approval_status: "rejected", status: "cancelled", created_at: now.toISOString() },
             ],
           };
         }
@@ -108,16 +111,47 @@ describe("Admin Legacy Controller", () => {
     expect(lockedEnd.getTime() - lockedStart.getTime()).toBe(5 * 60 * 60_000);
   });
 
-  it("opens review modal when clicking schedule card in agenda", () => {
-    const reviewModal = document.getElementById("review-modal") as HTMLDialogElement;
+  it("shows the requester and an inline review form without opening a modal", () => {
+    const row = document.querySelector<HTMLElement>('[data-request-id="res-pending-1"]');
+    expect(row).not.toBeNull();
+    expect(row?.textContent).toContain("Equipe Alpha");
+    expect(row?.textContent).toContain("Pendente");
+    expect(row?.querySelector('[data-quick-action="approve"]')).not.toBeNull();
+    const reviewModal = document.getElementById("review-modal")!;
     reviewModal.removeAttribute("open");
+    row?.querySelector("summary")?.click();
+    expect(reviewModal.hasAttribute("open")).toBe(false);
+    expect(row?.querySelector('form[data-inline-review]')).not.toBeNull();
+    expect(row?.querySelector('button[value="reject"]')).not.toBeNull();
+  });
 
-    const scheduleCard = document.querySelector<HTMLButtonElement>('[data-schedule-id="res-pending-1"]');
-    expect(scheduleCard).not.toBeNull();
+  it("keeps rejected requests visible beside a pending request in the same time slot", () => {
+    const row = document.querySelector('[data-request-id="res-rejected-1"]');
+    expect(row?.textContent).toContain("Recusado");
+    expect(row?.querySelector('[data-quick-action="approve"]')).toBeNull();
+    expect(document.querySelector('[data-request-id="res-pending-1"]')).not.toBeNull();
+  });
 
-    scheduleCard?.click();
+  it("submits rejection and the review note directly from the inline form", async () => {
+    const form = document.querySelector<HTMLFormElement>('[data-inline-review="res-pending-1"]')!;
+    const note = form.querySelector<HTMLTextAreaElement>('[name="note"]')!;
+    note.value = "Horário solicitado indisponível.";
+    const button = form.querySelector<HTMLButtonElement>('[value="reject"]')!;
+    form.dispatchEvent(new SubmitEvent("submit", { bubbles: true, cancelable: true, submitter: button }));
+    await vi.waitFor(() => expect((window as any).FecartApi.admin).toHaveBeenCalledWith(
+      "/api/admin/reservations/res-pending-1/reject",
+      expect.objectContaining({ method: "POST", body: JSON.stringify({ note: "Horário solicitado indisponível." }) }),
+    ));
+    expect(document.getElementById("review-modal")?.hasAttribute("open")).toBe(false);
+  });
 
-    expect(reviewModal.hasAttribute("open")).toBe(true);
+  it("shows seven capacity selectors and focuses the selected day", () => {
+    const days = document.querySelectorAll<HTMLButtonElement>(".planner-day");
+    expect(days.length).toBe(7);
+    expect(days[0].querySelectorAll(".planner-capacity i").length).toBe(4);
+    days[0].click();
+    expect(document.querySelector('.planner-day[aria-pressed="true"]')).not.toBeNull();
+    expect(document.querySelector('.planner-free')?.textContent).toContain("Horários disponíveis");
   });
   it("switches task views while keeping policies out of the overview", () => {
     const policies = document.querySelector<HTMLElement>('[data-view-panel="policies"]')!;

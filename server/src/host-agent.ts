@@ -22,6 +22,7 @@ import {
   type AccountRecord,
 } from "./account-store.js";
 import { AccountWorker } from "./account-worker.js";
+import { resolveCodexBinary } from "./codex-bin.js";
 import { OAuthResponsesBroker } from "./oauth-responses-broker.js";
 import {
   decodeMessage,
@@ -330,7 +331,7 @@ export function hostConfigFromEnvironment(env: NodeJS.ProcessEnv = process.env):
     relayUrl: tunnelUrl(relayUrl),
     relayAgentToken,
     hostId: env.RELAY_HOST_ID?.trim() || "central-main",
-    codexBin: env.CODEX_BIN?.trim() || "codex",
+    codexBin: resolveCodexBinary(env.CODEX_BIN?.trim()),
     appServerPort,
     appServerTokenFile: path.resolve(appServerTokenFile),
     appServerStartTimeoutMs: positiveNumber(env.APP_SERVER_START_TIMEOUT_MS, 30_000),
