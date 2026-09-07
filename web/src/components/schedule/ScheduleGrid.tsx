@@ -50,6 +50,6 @@ export function ScheduleGrid({ accounts, selectedAccountId, onSelectAccount, wee
       {day.slots.map(slot => <ScheduleSlot key={slot.start.toISOString()} {...slot} onClick={() => onSelectSlot(day, slot)} />)}
     </div>)}</div>
     {!activeDay && <p className="schedule-empty">Nenhum horário disponível para esta semana.</p>}
-    <footer className="schedule-footer"><span><i className="ph ph-info" aria-hidden="true" /> Os horários das 08h e 09h se sobrepõem. A disponibilidade é atualizada após cada reserva.</span><button type="button" className="btn btn-secondary" onClick={onRefresh} disabled={isRefreshing}><i className={`ph ph-arrows-clockwise ${isRefreshing ? "icon-spinning" : ""}`} />{isRefreshing ? "Atualizando…" : "Atualizar agenda"}</button></footer>
+    <footer className="schedule-footer"><span><i className="ph ph-info" aria-hidden="true" /> Quatro horários fixos, sem sobreposição. Cada sessão termina no horário indicado.</span><button type="button" className="btn btn-secondary" onClick={onRefresh} disabled={isRefreshing}><i className={`ph ph-arrows-clockwise ${isRefreshing ? "icon-spinning" : ""}`} />{isRefreshing ? "Atualizando…" : "Atualizar agenda"}</button></footer>
   </section>;
 }

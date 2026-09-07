@@ -1,3 +1,4 @@
+import type { SessionStartJob } from "./session-start.js";
 import type { AccountSnapshot, RelayDevice } from "./protocol.js";
 import { loginEmailForUsername } from "./user-identity.js";
 
@@ -555,6 +556,14 @@ export class SupabaseServiceClient {
       body: rows,
       headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
     });
+  }
+
+  public async claimSessionStarts(): Promise<SessionStartJob[]> {
+    return await this.request("/rest/v1/rpc/codex_claim_session_starts", { method: "POST", body: {} }) as SessionStartJob[];
+  }
+
+  public async updateSessionStart(id: string, token: string, status: string, detail: string | null): Promise<boolean> {
+    return await this.request("/rest/v1/rpc/codex_update_session_start", { method: "POST", body: { p_id: id, p_token: token, p_status: status, p_detail: detail } }) === true;
   }
 
   public async rest(table: string, query: Record<string, string> = {}, options: SupabaseRequestOptions = {}): Promise<{ ok: boolean; status: number; data: unknown }> {

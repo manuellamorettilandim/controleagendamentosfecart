@@ -311,7 +311,7 @@
   }
 
   const FIXED_DAILY_SLOTS = [
-    { id: 0, startHour: 8, endHour: 13, timeLabel: "08:00 – 13:00", durationHours: 5 },
+    { id: 0, startHour: 4, endHour: 9, timeLabel: "04:00 – 09:00", durationHours: 5 },
     { id: 1, startHour: 9, endHour: 14, timeLabel: "09:00 – 14:00", durationHours: 5 },
     { id: 2, startHour: 14, endHour: 19, timeLabel: "14:00 – 19:00", durationHours: 5 },
     { id: 3, startHour: 19, endHour: 24, timeLabel: "19:00 – 00:00", durationHours: 5 },
@@ -1195,9 +1195,6 @@
         const time = scheduleTimeRange(schedule);
         let startsAt = time.startDate;
         let endsAt = time.endDate;
-        if (startsAt.getTime() < Date.now()) {
-          startsAt = new Date();
-        }
         if (endsAt <= startsAt) {
           if (triggerButton) triggerButton.disabled = false;
           showToast("Este horário já terminou. Atualize a agenda.", "error");

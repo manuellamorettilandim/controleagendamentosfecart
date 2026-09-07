@@ -10,7 +10,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json && npm run build:web",
     "build:web": "tsc -p tsconfig.web.json --noEmit && vite build",
-    "test": "npm run build && node --test dist/test/access-store.test.js dist/test/account-store.test.js dist/test/rate-limiter.test.js dist/test/quota-window.test.js dist/test/relay.test.js dist/test/host-agent.test.js dist/test/supabase.test.js dist/test/user-identity.test.js dist/test/report-aggregator.test.js dist/test/report-exporter.test.js dist/test/oauth-responses-broker.test.js dist/test/relay-responses.test.js dist/test/codex-child-env.test.js dist/test/codex-bin.test.js && npm run test:web",
+    "test": "npm run build && node --test dist/test/access-store.test.js dist/test/account-store.test.js dist/test/rate-limiter.test.js dist/test/quota-window.test.js dist/test/session-start.test.js dist/test/relay.test.js dist/test/host-agent.test.js dist/test/supabase.test.js dist/test/user-identity.test.js dist/test/report-aggregator.test.js dist/test/report-exporter.test.js dist/test/oauth-responses-broker.test.js dist/test/relay-responses.test.js dist/test/codex-child-env.test.js dist/test/codex-bin.test.js && npm run test:web",
     "relay": "node dist/src/relay-main.js",
     "host": "node --env-file=.env dist/src/host-agent.js",
     "local": "npm run build && node --env-file=.env scripts/run-local.mjs",
@@ -23,7 +23,10 @@
     "seed:dev": "npm run build && node --env-file=.env scripts/seed-dev-data.mjs",
     "test:web": "vitest run",
     "dev:host": "tsx server/src/host-agent.ts",
-    "dev": "vite"
+    "dev": "vite",
+    "test:database": "node scripts/database/verify-schema.mjs",
+    "db:audit": "node --env-file=.env scripts/database/audit-production.mjs",
+    "db:upgrade": "node --env-file=.env scripts/database/apply-latest-migrations.mjs"
   },
   "dependencies": {
     "@openai/codex": "^0.153.4",
@@ -41,6 +44,7 @@
     "uuid": "^11.1.1"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "0.5.8",
     "@types/node": "^22.15.0",
     "@types/pdfkit": "^0.17.6",
     "@types/pg": "8.15.5",

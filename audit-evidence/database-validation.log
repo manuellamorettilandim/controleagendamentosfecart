@@ -1,0 +1,37 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> remote-codex-app-server@0.1.0 test:database
+> node scripts/database/verify-schema.mjs
+
+APPLIED supabase/schema_full.sql
+APPLIED supabase/migrations/20260823184959_add_general_quota_settings.sql
+APPLIED supabase/migrations/20260823190154_add_enabled_models_policy.sql
+APPLIED supabase/migrations/20260901200000_session_weekly_quota_budget.sql
+APPLIED supabase/migrations/20260902150000_preserve_requested_window_on_approval.sql
+APPLIED supabase/migrations/20260905173000_use_fixed_site_sessions.sql
+APPLIED supabase/migrations/20260905190000_persist_session_quota_consumption.sql
+REPRODUCED: rejected booking still blocks replacement: 23P01
+APPLIED supabase/migrations/20260907120000_operational_fixed_slots.sql
+APPLIED supabase/migrations/20260907130000_session_start_jobs.sql
+PASS four adjacent bookings are accepted, including midnight
+PASS genuine duplicate remains blocked
+PASS seconds cannot masquerade as fixed boundaries
+PASS old 08–13 slot is rejected
+PASS approval uses configured weekly 10% budget
+PASS approval uses configured weekly 10% budget
+PASS approval uses configured weekly 10% budget
+PASS approval uses configured weekly 10% budget
+PASS weekly capacity ignores five-hour 90% usage
+PASS capacity retains persisted consumption of revoked credentials
+PASS due approved booking is claimed once
+PASS stale claim token cannot submit
+PASS startup persists submitting
+PASS startup persists submitted
+PASS startup persists completed
+PASS completed startup is never reclaimed
+PASS rejected reservation no longer occupies its slot
+PASS busy slots reconciled
+PASS nonadmin cannot change quota
+PASS authenticated database role cannot claim startup jobs
+PASS autoapproval fails safely without weekly telemetry
+SQL operational checks passed: 21

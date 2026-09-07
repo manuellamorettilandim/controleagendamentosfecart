@@ -260,12 +260,18 @@ export function useDashboardData() {
     return mergeSessionDevices(issued, snapshot);
   }, [activeReservationRecord, devices, issuedSessionDevice]);
 
+  const activeSessionAccount = useMemo(() => {
+    if (!activeReservationRecord) return null;
+    return accounts.find((account) => account.accountId === activeReservationRecord.account_id) || null;
+  }, [activeReservationRecord, accounts]);
+
   const activeSessionMetrics = useMemo(() => buildActiveSessionMetrics({
     reservation: activeReservationRecord as SessionDataRecord | null,
     device: activeSessionDevice,
+    account: activeSessionAccount as SessionDataRecord | null,
     usageEvents: usageEvents as SessionDataRecord[],
     hasToken: Boolean(activeSessionToken),
-  }), [activeReservationRecord, activeSessionDevice, activeSessionToken, usageEvents]);
+  }), [activeReservationRecord, activeSessionAccount, activeSessionDevice, activeSessionToken, usageEvents]);
 
   // Next upcoming reservation
   const nextReservation = useMemo(() => {
@@ -602,7 +608,7 @@ export function useDashboardData() {
 
   // Actions
   async function createReservation(accountId: string, startsAt: Date, durationHours?: number) {
-    const computedDuration = durationHours ?? (startsAt.getHours() === 8 ? 1 : 5);
+    const computedDuration = durationHours ?? 5;
     await apiClient.user("/api/user/reservations", {
       method: "POST",
       body: JSON.stringify({

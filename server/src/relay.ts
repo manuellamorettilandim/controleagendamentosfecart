@@ -1246,15 +1246,12 @@ export class RelayServer {
         const reviewNote = typeof body.note === "string" ? body.note.trim().slice(0, 500) : null;
         let adjustedStart = typeof body.startsAt === "string" ? new Date(body.startsAt) : null;
         const adjustedEnd = typeof body.endsAt === "string" ? new Date(body.endsAt) : null;
-        const approvedQuota = 100;
+        const approvedQuota = null; // Let the database apply the configured weekly budget.
         let durationMs = adjustedStart && adjustedEnd ? adjustedEnd.getTime() - adjustedStart.getTime() : Number.NaN;
         if (approvalStatus === "approved") {
           if (!adjustedStart || !adjustedEnd || adjustedEnd.getTime() <= Date.now()) {
             jsonResponse(response, 400, { error: "Não é possível aprovar uma solicitação cujo horário já terminou." });
             return;
-          }
-          if (adjustedStart.getTime() < Date.now()) {
-            adjustedStart = new Date();
           }
           durationMs = adjustedEnd.getTime() - adjustedStart.getTime();
           if (Number.isNaN(durationMs) || durationMs <= 0 || durationMs > SESSION_DURATION_MS) {
@@ -1281,7 +1278,7 @@ export class RelayServer {
           this.recordAdminAudit(identity.userId, "reservation.approve", "reservation", parts[3], {
             note: reviewNote || null,
             sessionHours: durationMs / 3_600_000,
-            quotaPercent: 100,
+            quotaPercent: reviewedReservation.quota_budget_percent,
           });
           jsonResponse(response, 200, { reservation: reviewedReservation });
           return;
@@ -1568,7 +1565,7 @@ export class RelayServer {
             : null;
 
         if (!requestedWindow) {
-          jsonResponse(response, 400, { error: "Escolha uma das 4 sessões fixas (08:00, 09:00, 14:00 ou 19:00) ou início imediato." });
+          jsonResponse(response, 400, { error: "Escolha uma das 4 sessões fixas (04:00, 09:00, 14:00 ou 19:00) ou início imediato." });
           return;
         }
 
@@ -1679,12 +1676,16 @@ export class RelayServer {
           jsonResponse(response, 503, { error: "Nenhum modelo permitido está disponível na API da conta." });
           return;
         }
+        if (!Number.isFinite(Number(reservation.quota_budget_percent)) || Number(reservation.quota_budget_percent) < 1) {
+          jsonResponse(response, 409, { error: "A reserva precisa de uma cota semanal aprovada antes de iniciar." });
+          return;
+        }
         const result = await this.sendControlRequest("session.issue", {
           accountId: String(reservation.account_id),
           userId: identity.userId,
           reservationId,
           expiresAt: new Date(endsAt).toISOString(),
-          quotaBudgetPercent: 100,
+          quotaBudgetPercent: Number(reservation.quota_budget_percent),
           allowedModels,
         }, identity.userId) as Record<string, unknown>;
         const device = result.device as Record<string, unknown> | undefined;

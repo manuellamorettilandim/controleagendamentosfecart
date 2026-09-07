@@ -54,7 +54,7 @@ describe("BookingModal", () => {
     expect(select).not.toBeNull();
     expect(select.options.length).toBe(4);
 
-    expect(select.options[0].textContent).toContain("08:00 (5 horas)");
+    expect(select.options[0].textContent).toContain("04:00 (5 horas)");
     expect(select.options[1].textContent).toContain("09:00 (5 horas)");
     expect(select.options[2].textContent).toContain("14:00 (5 horas)");
     expect(select.options[3].textContent).toContain("19:00 (5 horas)");

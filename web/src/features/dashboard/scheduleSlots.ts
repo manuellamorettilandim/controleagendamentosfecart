@@ -12,7 +12,7 @@ export interface FixedSlotDef {
 }
 
 export const FIXED_DAILY_SLOTS: FixedSlotDef[] = [
-  { startHour: 8, endHour: 13, durationHours: 5, timeLabel: "08:00 - 13:00", selectLabel: "08:00 (5 horas)", timeStr: "08:00" },
+  { startHour: 4, endHour: 9, durationHours: 5, timeLabel: "04:00 - 09:00", selectLabel: "04:00 (5 horas)", timeStr: "04:00" },
   { startHour: 9, endHour: 14, durationHours: 5, timeLabel: "09:00 - 14:00", selectLabel: "09:00 (5 horas)", timeStr: "09:00" },
   { startHour: 14, endHour: 19, durationHours: 5, timeLabel: "14:00 - 19:00", selectLabel: "14:00 (5 horas)", timeStr: "14:00" },
   { startHour: 19, endHour: 24, durationHours: 5, timeLabel: "19:00 - 00:00", selectLabel: "19:00 (5 horas)", timeStr: "19:00" },
@@ -85,7 +85,7 @@ function hasSlotOverlap(
 
 /**
  * Generates the 4 fixed daily sessions defined for the product:
- * 1. 08:00 - 13:00 (5h)
+ * 1. 04:00 - 09:00 (5h)
  * 2. 09:00 - 14:00 (5h)
  * 3. 14:00 - 19:00 (5h)
  * 4. 19:00 - 00:00 (5h)

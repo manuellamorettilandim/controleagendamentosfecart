@@ -946,6 +946,15 @@ async function main() {
     );
   }
 
+  // Bring imported data forward without silently changing any booking window.
+  await dbClient.query("begin");
+  try {
+    for (const name of ["20260901200000_session_weekly_quota_budget.sql", "20260902150000_preserve_requested_window_on_approval.sql", "20260905173000_use_fixed_site_sessions.sql", "20260905190000_persist_session_quota_consumption.sql", "20260907120000_operational_fixed_slots.sql", "20260907130000_session_start_jobs.sql"]) {
+      await dbClient.query(await readFile(new URL(`../../supabase/migrations/${name}`, import.meta.url), "utf8"));
+    }
+    await dbClient.query("commit");
+  } catch (error) { await dbClient.query("rollback"); throw error; }
+
   // 12. Validação e contagem final
   console.log("\n[migrate] Verificação final de integridade no banco 'fecart':");
   const tables = [

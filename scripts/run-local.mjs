@@ -17,8 +17,26 @@ if (!Number.isInteger(port) || port < 1 || port > 65_535) {
 if (!agentToken) {
   throw new Error("Configure RELAY_AGENT_TOKEN no .env antes de executar npm run local.");
 }
+let stopping = false;
+let localPostgres = null;
+let processes = [];
 
-const localPostgres = await ensureLocalPostgres(projectRoot);
+async function stop(exitCode = 0) {
+  if (stopping) return;
+  stopping = true;
+  for (const item of processes) {
+    if (item?.child && !item.child.killed) item.child.kill();
+  }
+  if (localPostgres) {
+    await stopLocalPostgres(localPostgres);
+  }
+  setTimeout(() => process.exit(exitCode), 250);
+}
+
+process.once("SIGINT", () => void stop(0));
+process.once("SIGTERM", () => void stop(0));
+
+localPostgres = await ensureLocalPostgres(projectRoot);
 await ensureLocalPostgresSchema();
 
 const sharedEnvironment = {
@@ -45,8 +63,7 @@ const hostEnvironment = {
   RELAY_URL: `ws://127.0.0.1:${port}/tunnel`,
 };
 
-let stopping = false;
-const processes = [
+processes = [
   ["relay", path.join(projectRoot, "dist", "src", "relay-main.js")],
   ["host", path.join(projectRoot, "dist", "src", "host-agent.js")],
 ].map(([name, entrypoint]) => {
@@ -68,19 +85,6 @@ const processes = [
   });
   return { name, child };
 });
-
-async function stop(exitCode = 0) {
-  if (stopping) return;
-  stopping = true;
-  for (const { child } of processes) {
-    if (!child.killed) child.kill();
-  }
-  await stopLocalPostgres(localPostgres);
-  setTimeout(() => process.exit(exitCode), 250);
-}
-
-process.once("SIGINT", () => void stop(0));
-process.once("SIGTERM", () => void stop(0));
 
 console.log(`[local] Site e relay: http://${host}:${port}/`);
 console.log(`[local] Host-agent conectado ao relay local em ${hostEnvironment.RELAY_URL}.`);
@@ -108,6 +112,7 @@ async function ensureLocalPostgres(root) {
   await removeStalePostmasterPid(dataDir);
   const postgresBin = await findPostgresBinary();
   const pgCtlBin = await findPgCtlBinary(postgresBin);
+  const pgIsReadyBin = await findPgIsReadyBinary(postgresBin);
   console.log(`[local-db] Iniciando PostgreSQL em ${target.host}:${target.port}...`);
 
   const child = spawn(postgresBin, ["-D", dataDir, "-p", String(target.port)], {
@@ -122,7 +127,13 @@ async function ensureLocalPostgres(root) {
     output = `${output}${chunk}`.slice(-8_000);
     const lines = String(chunk).split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
     for (const line of lines) {
-      if (/\b(FATAL|PANIC|ERROR)\b/i.test(line)) console.error(`[local-db] ${line}`);
+      if (/\b(FATAL|PANIC|ERROR)\b/i.test(line)) {
+        if (/the database system is (starting up|not yet accepting connections|shutting down|in recovery)/i.test(line) ||
+            /role ".*" does not exist/i.test(line)) {
+          continue;
+        }
+        console.error(`[local-db] ${line}`);
+      }
     }
   };
   child.stdout?.setEncoding("utf8");
@@ -137,7 +148,14 @@ async function ensureLocalPostgres(root) {
 
   const deadline = Date.now() + 30_000;
   while (Date.now() < deadline) {
-    if (await canConnect(target.host, target.port) && await canQueryDatabase(process.env.DATABASE_URL)) {
+    let ready = false;
+    if (pgIsReadyBin) {
+      ready = await runCommand(pgIsReadyBin, ["-h", target.host, "-p", String(target.port), "-U", target.user || "postgres"], 1_000);
+    } else {
+      ready = await canConnect(target.host, target.port);
+    }
+
+    if (ready && await canQueryDatabase(process.env.DATABASE_URL)) {
       console.log(`[local-db] PostgreSQL pronto em ${target.host}:${target.port}.`);
       child.once("exit", (code, signal) => {
         if (!stopping) {
@@ -172,6 +190,20 @@ async function ensureLocalPostgresSchema() {
     try {
       await client.connect();
       await client.query(`
+        do $$
+        begin
+          if not exists (select 1 from pg_roles where rolname = 'anon') then
+            create role anon;
+          end if;
+          if not exists (select 1 from pg_roles where rolname = 'authenticated') then
+            create role authenticated;
+          end if;
+          if not exists (select 1 from pg_roles where rolname = 'service_role') then
+            create role service_role bypassrls;
+          end if;
+        end
+        $$;
+
         alter table public.codex_device_snapshots
           add column if not exists quota_consumed_percent numeric not null default 0;
 
@@ -182,7 +214,13 @@ async function ensureLocalPostgresSchema() {
           add constraint codex_device_snapshots_quota_consumed_percent_check
           check (quota_consumed_percent >= 0);
       `);
-      console.log("[local-db] Schema local verificado (quota_consumed_percent disponível).");
+
+      const upgradeScript = path.join(projectRoot, "scripts", "database", "apply-latest-migrations.mjs");
+      if (await exists(upgradeScript)) {
+        await runCommand(process.execPath, [upgradeScript], 15_000);
+      }
+
+      console.log("[local-db] Schema local verificado (quota_consumed_percent, roles e migrações disponíveis).");
       return;
     } catch (error) {
       if (error && typeof error === "object" && (error.code === "57P03" || error.code === "ECONNREFUSED")) {
@@ -213,7 +251,8 @@ function parseDatabaseTarget(rawUrl) {
     if (!url.hostname) return null;
     const port = Number(url.port || 5_432);
     if (!Number.isInteger(port) || port < 1 || port > 65_535) return null;
-    return { host: url.hostname.replace(/^\[|\]$/g, ""), port };
+    const user = decodeURIComponent(url.username || "postgres");
+    return { host: url.hostname.replace(/^\[|\]$/g, ""), port, user };
   } catch {
     return null;
   }
@@ -311,6 +350,14 @@ async function findPgCtlBinary(postgresBin) {
     if (await exists(sibling)) return sibling;
   }
   return process.platform === "win32" ? "pg_ctl.exe" : "pg_ctl";
+}
+
+async function findPgIsReadyBinary(postgresBin) {
+  if (process.platform === "win32" && path.isAbsolute(postgresBin)) {
+    const sibling = path.join(path.dirname(postgresBin), "pg_isready.exe");
+    if (await exists(sibling)) return sibling;
+  }
+  return process.platform === "win32" ? "pg_isready.exe" : "pg_isready";
 }
 
 async function exists(filename) {

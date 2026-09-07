@@ -1,3 +1,4 @@
+import { SessionStarter } from "./session-start.js";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -41,7 +42,7 @@ import {
 } from "./protocol.js";
 import { SupabaseServiceClient, type SupabaseAdminKeyType } from "./supabase.js";
 import { PostgresServiceClient } from "./postgres.js";
-import { fiveHourRateLimit, weeklyRateLimit } from "./quota-window.js";
+import { weeklyRateLimit } from "./quota-window.js";
 
 const DEFAULT_RELAY_HEARTBEAT_INTERVAL_MS = 5_000;
 const DEFAULT_ACCESS_SYNC_INTERVAL_MS = 1_000;
@@ -374,6 +375,7 @@ export class HostAgent {
   private tunnel: WebSocket | null = null;
   private reconnectTimer: NodeJS.Timeout | null = null;
   private accessTimer: NodeJS.Timeout | null = null;
+  private startupTimer: NodeJS.Timeout | null = null;
   private accountTimer: NodeJS.Timeout | null = null;
   private heartbeatTimer: NodeJS.Timeout | null = null;
   private reconnectDelayMs: number;
@@ -412,6 +414,13 @@ export class HostAgent {
       });
     }
     await this.startWorkers();
+    if (this.supabase) {
+      const starter = new SessionStarter(this.supabase, id => this.workerFor(id), (message, error) => this.logError(message, error));
+      const tick = () => { void starter.tick().catch(error => this.logError("session.start.queue", error)); };
+      this.startupTimer = setInterval(tick, 10_000);
+      this.startupTimer.unref();
+      tick();
+    }
 
     this.accessTimer = setInterval(() => {
       void this.syncAccess().catch((error: unknown) => this.logError("access.sync", error));
@@ -436,6 +445,7 @@ export class HostAgent {
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     if (this.accessTimer) clearInterval(this.accessTimer);
     if (this.accountTimer) clearInterval(this.accountTimer);
+    if (this.startupTimer) clearInterval(this.startupTimer);
     if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
     this.reconnectTimer = null;
     this.accessTimer = null;
@@ -535,7 +545,7 @@ export class HostAgent {
   private async syncAccess(): Promise<void> {
     if (!this.tunnel || this.tunnel.readyState !== WebSocket.OPEN) return;
     for (const worker of this.workers.values()) {
-      const sessionWindow = fiveHourRateLimit(worker.snapshot);
+      const sessionWindow = weeklyRateLimit(worker.snapshot);
       await this.accessStore.updateAccountLimit(
         worker.account.accountId,
         sessionWindow?.usedPercent ?? null,
@@ -793,9 +803,7 @@ export class HostAgent {
         },
         onEnd: async (usage) => {
           const durationMs = Date.now() - startTime;
-          const window = device.reservationId
-            ? (fiveHourRateLimit(worker.snapshot) ?? weeklyRateLimit(worker.snapshot))
-            : (weeklyRateLimit(worker.snapshot) ?? fiveHourRateLimit(worker.snapshot));
+          const window = weeklyRateLimit(worker.snapshot);
           const modelUsed = usage?.model ?? requestedModel ?? "gpt-5.6-sol";
           if (usage) {
             const observation: UsageObservation = {
@@ -959,7 +967,7 @@ export class HostAgent {
     const observed = usageObservationFromFrame(raw, isBinary);
     if (!observed) return;
     const snapshot = this.workers.get(stream.accountId)?.snapshot;
-    const window = stream.reservationId ? fiveHourRateLimit(snapshot) : weeklyRateLimit(snapshot);
+    const window = weeklyRateLimit(snapshot);
     const observation: UsageObservation = {
       ...observed,
       accountUsedPercent: window?.usedPercent ?? null,
@@ -1040,7 +1048,7 @@ export class HostAgent {
         const reservationId = requestString(payload, "reservationId");
         const expiresAt = requestString(payload, "expiresAt");
         const quotaBudgetPercent = typeof payload.quotaBudgetPercent === "number" && Number.isFinite(payload.quotaBudgetPercent) && payload.quotaBudgetPercent > 0
-          ? Math.max(1, Math.min(100, Math.round(payload.quotaBudgetPercent)))
+          ? Math.max(1, Math.min(100, payload.quotaBudgetPercent))
           : 10;
         const worker = await this.workerFor(accountId);
         if (!worker.ready || worker.snapshot.status !== "ready") {
@@ -1049,9 +1057,12 @@ export class HostAgent {
         // The reservation expiry is the site's fixed-session boundary. The
         // provider reset is retained for telemetry, but never gates issuing
         // access because the provider window slides independently.
-        const accountWindow = fiveHourRateLimit(worker.snapshot);
-        const weeklyWindow = weeklyRateLimit(worker.snapshot);
-        const baseUsedPercent = accountWindow?.usedPercent ?? weeklyWindow?.usedPercent ?? 0;
+        const accountWindow = weeklyRateLimit(worker.snapshot);
+        const weeklyWindow = accountWindow;
+        if (!weeklyWindow || !Number.isFinite(weeklyWindow.usedPercent)) {
+          throw new Error("A telemetria semanal da conta está indisponível. Tente novamente após a atualização.");
+        }
+        const baseUsedPercent = weeklyWindow.usedPercent;
         const issued = await this.accessStore.issue(
           `Sessão ${reservationId.slice(0, 8)}`,
           Math.max(1_000, Date.parse(expiresAt) - Date.now()),

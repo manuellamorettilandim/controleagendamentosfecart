@@ -39,7 +39,7 @@ export function fixedDailySlotForStart(
     if (part.type === "hour") hour = Number.parseInt(part.value, 10);
   }
 
-  if (hour === 8) return { startHour: 8, endHour: 13, durationHours: 5 };
+  if (hour >= 4 && hour < 9) return { startHour: 4, endHour: 9, durationHours: 5 };
   if (hour >= 9 && hour < 14) return { startHour: 9, endHour: 14, durationHours: 5 };
   if (hour >= 14 && hour < 19) return { startHour: 14, endHour: 19, durationHours: 5 };
   if (hour >= 19 && hour < 24) return { startHour: 19, endHour: 24, durationHours: 5 };
@@ -149,9 +149,9 @@ export function isFixedDailySlot(
     if (part.type === "minute") minute = Number.parseInt(part.value, 10);
   }
 
-  if (minute !== 0) return false;
+  if (minute !== 0 || date.getSeconds() !== 0 || date.getMilliseconds() !== 0) return false;
 
-  if (hour === 8) return durationHours === undefined || durationHours === 5;
+  if (hour === 4) return durationHours === undefined || durationHours === 5;
   if (hour === 9 || hour === 14 || hour === 19) {
     return durationHours === undefined || durationHours === 5;
   }

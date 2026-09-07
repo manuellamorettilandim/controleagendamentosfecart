@@ -1,3 +1,6 @@
+-- Historical base snapshot. After loading into an empty prepared database,
+-- run scripts/database/apply-latest-migrations.mjs before starting the application.
+-- Never reload this snapshot over an upgraded production installation.
 -- ==============================================================================
 -- FECART AI SHARE - SCHEMA COMPLETO ATUALIZADO (PRODUÇÃO / TESTE)
 -- ==============================================================================
@@ -220,7 +223,7 @@ declare
   offset_seconds numeric;
 begin
   if reset_at is null or p_starts_at is null then return false; end if;
-  offset_seconds := pg_catalog.extract(epoch from (p_starts_at - reset_at));
+  offset_seconds := extract(epoch from (p_starts_at - reset_at));
   return pg_catalog.abs(offset_seconds - pg_catalog.round(offset_seconds / 18000) * 18000) <= 60;
 end;
 $$;

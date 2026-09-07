@@ -1,3 +1,4 @@
+import type { SessionStartJob } from "./session-start.js";
 import crypto from "node:crypto";
 import bcrypt from "bcryptjs";
 import { Pool, type PoolClient, type QueryResultRow } from "pg";
@@ -348,6 +349,14 @@ export class PostgresServiceClient {
 
   public constructor(databaseUrl: string) {
     this.auth = new PostgresAuthClient(databaseUrl);
+  }
+
+  public async claimSessionStarts(): Promise<SessionStartJob[]> {
+    return (await this.auth.pool.query<SessionStartJob>("select * from public.codex_claim_session_starts()")).rows;
+  }
+
+  public async updateSessionStart(id: string, token: string, status: string, detail: string | null): Promise<boolean> {
+    return (await this.auth.pool.query<{ updated: boolean }>("select public.codex_update_session_start($1,$2,$3,$4) as updated", [id, token, status, detail])).rows[0]?.updated === true;
   }
 
   public async close(): Promise<void> {

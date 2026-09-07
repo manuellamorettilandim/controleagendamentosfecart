@@ -32,7 +32,7 @@ describe("scheduleSlots", () => {
 
   it("defines the exact 4 fixed daily slots", () => {
     expect(FIXED_DAILY_SLOTS).toHaveLength(4);
-    expect(FIXED_DAILY_SLOTS[0]).toMatchObject({ startHour: 8, endHour: 13, durationHours: 5, timeLabel: "08:00 - 13:00" });
+    expect(FIXED_DAILY_SLOTS[0]).toMatchObject({ startHour: 4, endHour: 9, durationHours: 5, timeLabel: "04:00 - 09:00" });
     expect(FIXED_DAILY_SLOTS[1]).toMatchObject({ startHour: 9, endHour: 14, durationHours: 5, timeLabel: "09:00 - 14:00" });
     expect(FIXED_DAILY_SLOTS[2]).toMatchObject({ startHour: 14, endHour: 19, durationHours: 5, timeLabel: "14:00 - 19:00" });
     expect(FIXED_DAILY_SLOTS[3]).toMatchObject({ startHour: 19, endHour: 24, durationHours: 5, timeLabel: "19:00 - 00:00" });
@@ -61,7 +61,7 @@ describe("scheduleSlots", () => {
     const slots = generateSlotsForDate(targetDate, sampleAccount, [], [], Date.parse("2026-09-05T19:00:00Z"));
 
     expect(slots).toHaveLength(4);
-    expect(slots[0].timeLabel).toBe("08:00 - 13:00");
+    expect(slots[0].timeLabel).toBe("04:00 - 09:00");
     expect(slots[0].durationHours).toBe(5);
     expect(slots[0].isPartial).toBe(false);
 

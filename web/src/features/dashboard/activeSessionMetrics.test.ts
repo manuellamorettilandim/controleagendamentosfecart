@@ -96,6 +96,43 @@ describe("active session metrics", () => {
     expect(merged?.usage).toMatchObject({ observedTokens: 900, quotaConsumedPercent: 12, accountUsedPercent: 30 });
   });
 
+  it("does not let a stale zero consumption freeze the weekly allowance at 100%", () => {
+    const result = buildActiveSessionMetrics({
+      reservation: { id: "reservation-1", quota_base_used_percent: 40, quota_budget_percent: 10 },
+      device: {
+        reservation_id: "reservation-1",
+        account_used_percent: 42,
+        quota_consumed_percent: 0,
+      },
+      hasToken: true,
+      usageEvents: [],
+    });
+
+    expect(result.quotaRemainingPercent).toBe(80);
+  });
+
+  it("shows the most restrictive normalized balance across five-hour and weekly quotas", () => {
+    const result = buildActiveSessionMetrics({
+      reservation: { id: "reservation-1", quota_base_used_percent: 40, quota_budget_percent: 10 },
+      device: {
+        reservation_id: "reservation-1",
+        quota_consumed_percent: 1,
+      },
+      account: {
+        rate_limits: {
+          codex: {
+            primary: { usedPercent: 30, windowDurationMins: 300 },
+            secondary: null,
+          },
+        },
+      },
+      hasToken: true,
+      usageEvents: [],
+    });
+
+    expect(result.quotaRemainingPercent).toBe(70);
+  });
+
   it("uses device-linked telemetry when an event has no reservation id", () => {
     const result = buildActiveSessionMetrics({
       reservation: { id: "reservation-1" },

@@ -117,7 +117,7 @@ test("AccessStore enforces the session weekly quota budget", async () => {
       quotaBudgetPercent: 10,
       weeklyLimitPercent: 10,
     });
-    await store.updateAccountLimit("primary", 29.5, 10_080, 1_800_000_000);
+    await store.updateAccountLimit("primary", 29.5, 10_080, 1_800_000_000, new Date("2026-08-13T12:10:00.000Z"));
     assert.equal((await store.list()).find((device) => device.deviceId === issued.device.deviceId)?.usage.usageLimitReachedAt, null);
     await store.updateAccountLimit("primary", 30.0, 10_080, 1_800_000_000, new Date("2026-08-13T12:20:00.000Z"));
     assert.equal((await store.list()).find((device) => device.deviceId === issued.device.deviceId)?.usage.usageLimitReachedAt, "2026-08-13T12:20:00.000Z");
@@ -151,6 +151,33 @@ test("parseTtl accepts supported units and rejects unsafe ranges", () => {
   assert.throws(() => parseTtl("0d"));
   assert.throws(() => parseTtl("400d"));
   assert.throws(() => parseTtl("30 months"));
+});
+
+test("reservation quota survives token replacement, weekly reset, and expiry", async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "fecart-quota-reset-"));
+  try {
+    const store = new AccessStore(path.join(directory, "access.json"));
+    const start = new Date("2026-09-07T12:00:00Z");
+    const reset = Date.parse("2026-09-07T12:30:00Z") / 1000;
+    const options = { accountId: "a", reservationId: "r", quotaBaseUsedPercent: 1, quotaBudgetPercent: 10 };
+    const first = await store.issue("first", 3_600_000, start, options);
+    await store.updateAccountLimit("a", 2, 10080, reset, new Date("2026-09-07T12:10:00Z"));
+    // A harmless reset timestamp correction must not charge the whole window again.
+    await store.updateAccountLimit("a", 2, 10080, reset + 1, new Date("2026-09-07T12:11:00Z"));
+    assert.equal((await store.list())[0].usage.quotaConsumedPercent, 1);
+    // After a real reset, 5% counts in full, even though it exceeds the old 2%.
+    await store.updateAccountLimit("a", 5, 10080, reset + 604800, new Date("2026-09-07T12:35:00Z"));
+    await store.revoke(first.device.deviceId, new Date("2026-09-07T12:36:00Z"));
+    const replacement = await store.issue("replacement", 1_000_000, new Date("2026-09-07T12:37:00Z"), { ...options, quotaBaseUsedPercent: 5, expiresAt: "2026-09-07T13:00:00Z" });
+    assert.equal(replacement.device.usage.quotaConsumedPercent, 6);
+    await store.updateAccountLimit("a", 9, 10080, reset + 604800, new Date("2026-09-07T12:45:00Z"));
+    let device = (await store.list()).find(d => d.deviceId === replacement.device.deviceId)!;
+    assert.equal(device.usage.quotaConsumedPercent, 10);
+    assert.ok(device.usage.usageLimitReachedAt);
+    await store.updateAccountLimit("a", 40, 10080, reset + 604800, new Date("2026-09-07T13:01:00Z"));
+    device = (await store.list()).find(d => d.deviceId === replacement.device.deviceId)!;
+    assert.equal(device.usage.quotaConsumedPercent, 10);
+  } finally { await fs.rm(directory, { recursive: true, force: true }); }
 });
 
 test("AccessStore binds one token per account, records observed usage, and keeps revocations", async () => {

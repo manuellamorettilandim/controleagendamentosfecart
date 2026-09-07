@@ -1,0 +1,139 @@
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> remote-codex-app-server@0.1.0 test
+> npm run build && node --test dist/test/access-store.test.js dist/test/account-store.test.js dist/test/rate-limiter.test.js dist/test/quota-window.test.js dist/test/session-start.test.js dist/test/relay.test.js dist/test/host-agent.test.js dist/test/supabase.test.js dist/test/user-identity.test.js dist/test/report-aggregator.test.js dist/test/report-exporter.test.js dist/test/oauth-responses-broker.test.js dist/test/relay-responses.test.js dist/test/codex-child-env.test.js dist/test/codex-bin.test.js && npm run test:web
+
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> remote-codex-app-server@0.1.0 build
+> tsc -p tsconfig.json && npm run build:web
+
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> remote-codex-app-server@0.1.0 build:web
+> tsc -p tsconfig.web.json --noEmit && vite build
+
+vite v8.2.1 building client environment for production...
+[2Ktransforming...✓ 81 modules transformed.
+rendering chunks...
+computing gzip size...
+site/login.html                               0.81 kB │ gzip:   0.39 kB
+site/admin.html                               0.89 kB │ gzip:   0.43 kB
+site/groups.html                              0.94 kB │ gzip:   0.44 kB
+site/telemetry.html                           0.98 kB │ gzip:   0.44 kB
+site/dashboard.html                           1.22 kB │ gzip:   0.53 kB
+site/.vite/manifest.json                      4.99 kB │ gzip:   0.84 kB
+site/assets/Phosphor-DtdjzkpE.woff2         147.38 kB
+site/assets/Phosphor-CDxgqcPu.ttf           488.63 kB
+site/assets/Phosphor-BdqudwT5.woff          488.71 kB
+site/assets/Phosphor-BXRFlF4V.svg         2,996.37 kB │ gzip: 832.83 kB
+site/assets/login-ssLcpTJE.css               11.31 kB │ gzip:   3.22 kB
+site/assets/telemetry-DvxxUNDm.css           12.71 kB │ gzip:   2.78 kB
+site/assets/groups-CM7lRxN2.css              22.56 kB │ gzip:   4.43 kB
+site/assets/dashboard-2K8Mcwuv.css           35.09 kB │ gzip:   7.09 kB
+site/assets/style-sLy6fTTc.css               62.33 kB │ gzip:  11.86 kB
+site/assets/admin-workspace-CfvMnniZ.css     79.36 kB │ gzip:  14.08 kB
+site/assets/auth-BIfDXc1p.js                  0.10 kB │ gzip:   0.12 kB │ map:   0.26 kB
+site/assets/client-rHZtDgZd.js                1.34 kB │ gzip:   0.74 kB │ map:   4.84 kB
+site/assets/loadAuth-BQRwkknJ.js              1.86 kB │ gzip:   1.04 kB │ map:   1.51 kB
+site/assets/components-BK0UD9iw.js            2.39 kB │ gzip:   1.06 kB │ map:   7.23 kB
+site/assets/admin-shell-Dt7DzeFJ.js           3.18 kB │ gzip:   1.37 kB │ map:   6.37 kB
+site/assets/auth-BHjgbkn0.js                  3.33 kB │ gzip:   1.18 kB │ map:  10.39 kB
+site/assets/login-BdypijXr.js                 4.36 kB │ gzip:   1.39 kB │ map:   0.90 kB
+site/assets/login-B0kvnvUj.js                 5.80 kB │ gzip:   2.32 kB │ map:  15.73 kB
+site/assets/telemetry-CVBkcrtG.js            12.46 kB │ gzip:   3.34 kB │ map:   1.45 kB
+site/assets/groups-DDNh-nnP.js               12.47 kB │ gzip:   2.92 kB │ map:   1.49 kB
+site/assets/groups-ckSgrECu.js               18.80 kB │ gzip:   6.18 kB │ map:  53.91 kB
+site/assets/telemetry-85cKi35I.js            19.09 kB │ gzip:   5.98 kB │ map:  46.75 kB
+site/assets/admin-CvHBW0CR.js                24.36 kB │ gzip:   5.42 kB │ map:   1.51 kB
+site/assets/admin-CE2NqrSl.js                41.34 kB │ gzip:  12.66 kB │ map: 109.86 kB
+site/assets/dashboard-CZdkrXl2.js           128.77 kB │ gzip:  28.37 kB │ map: 348.23 kB
+site/assets/style-Cnu80RNz.js               190.95 kB │ gzip:  60.23 kB │ map: 841.27 kB
+
+✓ built in 529ms
+✔ AccessStore issues concurrent device tokens and persists only hashes (63.756221ms)
+✔ AccessStore persists sanitized reservation ownership metadata (23.266003ms)
+✔ AccessStore allows multiple device credentials for the same group reservation (12.819598ms)
+✔ AccessStore enforces the session weekly quota budget (21.585627ms)
+✔ AccessStore keeps group sessions unlimited when no quota budget is assigned (11.090104ms)
+✔ parseTtl accepts supported units and rejects unsafe ranges (0.415178ms)
+✔ AccessStore binds one token per account, records observed usage, and keeps revocations (29.644669ms)
+✔ AccessStore isolates 5-hour session progress from weekly window switches (14.510644ms)
+✔ reservation quota survives token replacement, weekly reset, and expiry (26.680238ms)
+✔ AccountStore keeps separate CODEX_HOME paths and switches only the default (26.676322ms)
+✔ AccountStore removes only the placeholder and promotes a real enabled account (13.139472ms)
+✔ resolveCodexSpawn returns a valid command and boolean useShell (1.462251ms)
+✔ resolveCodexSpawn handles custom binary arguments (8.041044ms)
+✔ Codex subprocess environments exclude host credentials (1.091691ms)
+✔ relay environment rejects privileged Supabase keys (0.684194ms)
+[host] Host central conectado ao relay.
+✔ host agent connects the relay to a local app-server without exposing the local token (243.042202ms)
+✔ parseAuthFile extracts tokens safely and throws on corrupt JSON (1.678436ms)
+✔ SseUsageParser and extractUsageFromSsePayload parse Responses token usage and deduplicate (0.687789ms)
+✔ resolveUpstreamUrl resolves endpoints and validates protocol (0.393455ms)
+✔ OAuthResponsesBroker dispatches to upstream, sets OAuth headers, and streams SSE response (60.439859ms)
+✔ OAuthResponsesBroker retries once on 401 after calling worker.refreshOAuthToken (21.221878ms)
+✔ selects the five-hour and weekly windows independently (0.911878ms)
+✔ aligns sessions to the next reset-derived five-hour boundary (0.302517ms)
+✔ allows an immediate session to use only the remainder of the current window when active (0.817646ms)
+✔ grants a full 5-hour session on immediate start when account is idle (0.282327ms)
+✔ validates fixed daily slots for America/Sao_Paulo (19.531283ms)
+✔ maps every instant to the product fixed slot independently of provider reset data (0.954403ms)
+✔ rejects sub-minute fixed starts and obsolete overlapping slot (0.503932ms)
+✔ SlidingWindowRateLimiter limits requests within a sliding window (1.144661ms)
+✔ SlidingWindowRateLimiter quarantines IPs after repeated authentication failures (0.310189ms)
+✔ extractClientIp extracts IP safely and handles spoofing attempts (5.092267ms)
+✔ applySecurityHeaders and applyRateLimitHeaders set expected headers (0.310289ms)
+[host] Host central conectado ao relay.
+✔ Relay routes POST /api/codex/v1/responses to HostAgent and streams SSE back (225.176478ms)
+[host] access.seen: ENOENT: no such file or directory, rename '/tmp/remote-codex-responses-IOuSbv/codex-home/.remote-access.json.187.f90b188f-1111-4417-9d68-d40cd9bcc86c.tmp' -> '/tmp/remote-codex-responses-IOuSbv/codex-home/remote-access.json'
+✔ user account snapshots expose only the five-hour quota and redact it while another session is active (0.902624ms)
+✔ model catalog is populated from the account API and excludes hidden entries (0.687859ms)
+✔ model policy injects an allowed default, rejects disabled models, and filters model/list (0.488018ms)
+✔ relay forwards opaque frames, rejects invalid access, and closes a revoked device (51.398621ms)
+✔ relay fails closed when the central tunnel disappears and enforces expiry (1039.841054ms)
+✔ relay allows the host time to finish its initial synchronization (1124.566427ms)
+✔ relay routes a device to its bound account and enforces its observed weekly ceiling (44.496029ms)
+✔ health and readiness endpoints expose no secret material (33.022355ms)
+✔ admin API validates Supabase identity before exposing account snapshots (46.232793ms)
+✔ relay enforces HTTP rate limiting and applies unified security headers (9.311444ms)
+✔ relay enforces WebSocket upgrade rate limits and max concurrent streams per IP (26.108514ms)
+✔ protocol decodes stream.open with or without reservationId for backward compatibility (0.388257ms)
+✔ aggregateUsageReport consolidates group usage within a specified date window (9.699582ms)
+✔ aggregateUsageReport throws on invalid date range (0.340325ms)
+✔ aggregateUsageReport accumulates weekly quota windows, real turn hours and model usage (0.927041ms)
+✔ sanitizeFormula disarms potential formula injection strings (0.829784ms)
+✔ buildReportFilename produces expected pattern with timezone awareness (12.620196ms)
+✔ exportReportToCsv exports UTF-8 with BOM, semicolons and sanitized formulas (6.785347ms)
+[pdf] Total de páginas geradas no relatório PDF: 5
+✔ exportReportToXlsx exports workbook with all sheets, data and formula sanitization (71.826009ms)
+✔ exportReportToPdf generates a valid multi-page PDF buffer (37.303617ms)
+✔ startup sends one small message without a browser and verifies completion (8.06452ms)
+✔ ambiguous startup is recorded and never blindly retried (3.356373ms)
+✔ startup does not send a message after the booking ends (0.442459ms)
+✔ Supabase secret keys use only the apikey header, while legacy keys keep compatibility (46.598882ms)
+✔ Supabase service requests retry a transient future-issued JWT rejection (2014.438368ms)
+✔ listAdmins enriches privileged users with secure login and last access metadata (6.195064ms)
+✔ device snapshot sync isolates orphaned foreign keys without blocking valid devices (10.231435ms)
+✔ legacy usernames map deterministically to non-disclosing auth emails (1.029826ms)
+ℹ tests 61
+ℹ suites 0
+ℹ pass 61
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2888.43116
+npm warn Unknown env config "http-proxy". This will stop working in the next major version of npm.
+
+> remote-codex-app-server@0.1.0 test:web
+> vitest run
+
+
+ RUN  v4.1.10 /workspace/scratch/9383e54120fb/app
+
+
+ Test Files  14 passed (14)
+      Tests  49 passed (49)
+   Start at  10:06:11
+   Duration  2.90s (transform 1.52s, setup 139ms, import 2.11s, tests 2.18s, environment 9.98s)

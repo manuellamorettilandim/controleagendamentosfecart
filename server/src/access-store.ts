@@ -270,16 +270,19 @@ function updateQuotaProgress(
   accountUsedPercent: number | null,
   resetIso: string | null,
   windowDurationMins?: number | null,
+  nowMs = Date.now(),
 ): void {
   if (accountUsedPercent === null) return;
   const current = Math.max(0, Math.min(100, accountUsedPercent));
   const previous = usage.lastAccountUsedPercent ?? usage.accountUsedPercent ?? device.quotaBaseUsedPercent;
   const sameWindow = !windowDurationMins || !usage.accountWindowDurationMins || windowDurationMins === usage.accountWindowDurationMins;
-  const windowChanged = Boolean(sameWindow && resetIso && usage.windowResetsAt && resetIso !== usage.windowResetsAt);
+  const windowChanged = Boolean(sameWindow && resetIso && usage.windowResetsAt
+    && Date.parse(resetIso) - Date.parse(usage.windowResetsAt) > 60_000
+    && Date.parse(usage.windowResetsAt) <= nowMs);
 
   let delta = 0;
-  if (windowChanged && previous !== null && current < previous) {
-    // A true window reset occurred (the reported percentage dropped and reset timestamp changed).
+  if (windowChanged && previous !== null) {
+    // A new provider window must count all its usage, even when it exceeds the previous reading.
     // Usage observed in the new window is added to the prior window's consumption.
     delta = current;
   } else if (sameWindow && previous !== null && current >= previous) {
@@ -289,7 +292,7 @@ function updateQuotaProgress(
   }
 
   usage.quotaConsumedPercent = Math.min(10_000, Math.round((usage.quotaConsumedPercent + delta) * 10_000) / 10_000);
-  usage.lastAccountUsedPercent = current;
+  usage.lastAccountUsedPercent = sameWindow && !windowChanged && previous !== null ? Math.max(previous, current) : current;
 }
 
 function addSafe(left: number, right: number): number {
@@ -503,6 +506,22 @@ export class AccessStore {
         usage: emptyUsage(),
       };
 
+      // Reissuing a token must not reset the reservation's shared quota ledger.
+      const previousSession = reservationId ? registry.devices
+        .filter((item) => item.reservationId === reservationId && item.accountId === accountId)
+        .sort((a, b) => b.usage.quotaConsumedPercent - a.usage.quotaConsumedPercent)[0] : undefined;
+      if (previousSession) {
+        device.quotaBaseUsedPercent = previousSession.quotaBaseUsedPercent;
+        device.usage = { ...device.usage,
+          quotaConsumedPercent: previousSession.usage.quotaConsumedPercent,
+          lastAccountUsedPercent: previousSession.usage.lastAccountUsedPercent,
+          accountUsedPercent: previousSession.usage.accountUsedPercent,
+          accountWindowDurationMins: previousSession.usage.accountWindowDurationMins,
+          accountResetsAt: previousSession.usage.accountResetsAt,
+          windowResetsAt: previousSession.usage.windowResetsAt,
+          usageLimitReachedAt: previousSession.usage.usageLimitReachedAt,
+        };
+      }
       registry.devices.push(device);
       await this.write(registry);
       return { device, token, sshPrivateKey: sshKey.privateKey };
@@ -702,7 +721,7 @@ export class AccessStore {
 
       const usage = device.usage ?? emptyUsage();
       const resetIso = resetIsoFromUnixSeconds(observation.accountResetsAt);
-      updateQuotaProgress(device, usage, observation.accountUsedPercent, resetIso, observation.accountWindowDurationMins);
+      updateQuotaProgress(device, usage, observation.accountUsedPercent, resetIso, observation.accountWindowDurationMins, now.getTime());
       if (resetIso) usage.windowResetsAt = resetIso;
 
       const previousTotal = usage.threadTotals[observation.threadId];
@@ -752,6 +771,16 @@ export class AccessStore {
         usage.usageLimitReachedAt = null;
       }
       device.usage = usage;
+      if (device.reservationId) {
+        for (const peer of registry.devices) {
+          if (peer.deviceId === device.deviceId || peer.reservationId !== device.reservationId || peer.accountId !== device.accountId) continue;
+          if (peer.usage.quotaConsumedPercent > usage.quotaConsumedPercent) continue;
+          peer.usage = { ...peer.usage, quotaConsumedPercent: usage.quotaConsumedPercent,
+            lastAccountUsedPercent: usage.lastAccountUsedPercent, accountUsedPercent: usage.accountUsedPercent,
+            accountWindowDurationMins: usage.accountWindowDurationMins, accountResetsAt: usage.accountResetsAt,
+            windowResetsAt: usage.windowResetsAt, usageLimitReachedAt: usage.usageLimitReachedAt };
+        }
+      }
       await this.write(registry);
       return device;
     });
@@ -770,12 +799,12 @@ export class AccessStore {
       let changed = false;
       const resetIso = resetIsoFromUnixSeconds(accountResetsAt);
       for (const device of registry.devices) {
-        if (device.accountId !== accountId || device.revokedAt !== null || device.disabledAt !== null) continue;
+        if (device.accountId !== accountId || device.revokedAt !== null || device.disabledAt !== null || Date.parse(device.expiresAt) <= now.getTime()) continue;
         if (scope === "reservations" && !device.reservationId) continue;
         if (scope === "manual" && device.reservationId) continue;
         const usage = device.usage ?? emptyUsage();
         const before = JSON.stringify(usage);
-        updateQuotaProgress(device, usage, accountUsedPercent, resetIso, accountWindowDurationMins);
+        updateQuotaProgress(device, usage, accountUsedPercent, resetIso, accountWindowDurationMins, now.getTime());
         if (resetIso) usage.windowResetsAt = resetIso;
         usage.accountUsedPercent = accountUsedPercent;
         usage.accountWindowDurationMins = accountWindowDurationMins;

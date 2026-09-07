@@ -14,6 +14,7 @@ export interface ActiveSessionMetrics {
 interface ActiveSessionMetricsInput {
   reservation?: SessionDataRecord | null;
   device?: SessionDataRecord | null;
+  account?: SessionDataRecord | null;
   usageEvents: SessionDataRecord[];
   hasToken: boolean;
 }
@@ -103,6 +104,25 @@ function clampPercent(value: number): number {
   return Math.min(100, Math.max(0, Math.round(value)));
 }
 
+function fiveHourRemainingPercent(account: SessionDataRecord | null | undefined): number | null {
+  if (!account) return null;
+  const rateLimits = asRecord(account.rate_limits) ?? asRecord(account.rateLimits);
+  if (!rateLimits) return null;
+
+  for (const rawLimit of Object.values(rateLimits)) {
+    const limit = asRecord(rawLimit);
+    if (!limit) continue;
+    for (const rawWindow of [limit.primary, limit.secondary]) {
+      const window = asRecord(rawWindow);
+      if (!window || firstNumber([window.windowDurationMins, window.window_duration_mins]) !== 300) continue;
+      const usedPercent = firstNumber([window.usedPercent, window.used_percent]);
+      if (usedPercent !== null) return clampPercent(100 - usedPercent);
+    }
+  }
+
+  return null;
+}
+
 function modelIcon(modelId: string): string {
   if (modelId.includes("sol")) return "ph-sun";
   if (modelId.includes("terra")) return "ph-plant";
@@ -131,6 +151,7 @@ function statusLabel(device: SessionDataRecord | null | undefined, hasToken: boo
 function quotaRemainingPercent(
   reservation: SessionDataRecord | null | undefined,
   device: SessionDataRecord | null | undefined,
+  account: SessionDataRecord | null | undefined,
 ): number | null {
   const usage = asRecord(device?.usage);
   const directConsumed = firstNumber([
@@ -153,12 +174,18 @@ function quotaRemainingPercent(
     reservation?.quotaBudgetPercent,
   ]) ?? 100;
 
-  let consumed = directConsumed;
-  if (consumed === null && accountUsed !== null && quotaBase !== null) {
-    consumed = accountUsed >= quotaBase ? accountUsed - quotaBase : accountUsed;
-  }
-  if (consumed === null || quotaBudget <= 0) return null;
-  return clampPercent(((quotaBudget - Math.max(0, consumed)) / quotaBudget) * 100);
+  const derivedConsumed = accountUsed !== null && quotaBase !== null
+    ? (accountUsed >= quotaBase ? accountUsed - quotaBase : accountUsed)
+    : null;
+  const consumedValues = [directConsumed, derivedConsumed].filter((value): value is number => value !== null);
+  const weeklyRemaining = consumedValues.length > 0 && quotaBudget > 0
+    ? clampPercent(((quotaBudget - Math.max(0, ...consumedValues)) / quotaBudget) * 100)
+    : null;
+  const fiveHourRemaining = fiveHourRemainingPercent(account);
+
+  if (weeklyRemaining === null) return fiveHourRemaining;
+  if (fiveHourRemaining === null) return weeklyRemaining;
+  return Math.min(weeklyRemaining, fiveHourRemaining);
 }
 
 export function mergeSessionDevices(
@@ -207,7 +234,7 @@ export function mergeSessionDevices(
   return merged;
 }
 
-export function buildActiveSessionMetrics({ reservation, device, usageEvents, hasToken }: ActiveSessionMetricsInput): ActiveSessionMetrics {
+export function buildActiveSessionMetrics({ reservation, device, account, usageEvents, hasToken }: ActiveSessionMetricsInput): ActiveSessionMetrics {
   const reservationId = firstText([reservation?.id]);
   const deviceId = firstText([device?.device_id, device?.deviceId]);
   const events = reservationEvents(usageEvents, reservationId, deviceId);
@@ -255,7 +282,7 @@ export function buildActiveSessionMetrics({ reservation, device, usageEvents, ha
     modelsCount: modelStats.size,
     totalTokens: Math.max(0, deviceTokens ?? 0, eventTokens),
     commandsCount: commandEvents.length,
-    quotaRemainingPercent: quotaRemainingPercent(reservation, device),
+    quotaRemainingPercent: quotaRemainingPercent(reservation, device, account),
     statusLabel: statusLabel(device, hasToken),
   };
 }

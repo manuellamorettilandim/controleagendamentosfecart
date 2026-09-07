@@ -1,0 +1,11 @@
+{
+  "checkedAt": "2026-09-07T13:00:08.090Z",
+  "connected": false,
+  "checks": {},
+  "errors": [
+    {
+      "code": "ECONNREFUSED",
+      "message": "Configured database endpoint refused the connection."
+    }
+  ]
+}
