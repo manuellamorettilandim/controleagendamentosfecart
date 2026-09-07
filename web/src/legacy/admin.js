@@ -362,9 +362,75 @@
     return `${start.getDate()} de ${monthLabel(startMonth)} – ${end.getDate()} de ${monthLabel(endMonth)}, ${end.getFullYear()}`;
   }
 
+  function renderAdminSlotCard(slot, dayDate, schedules) {
+    const conflicts = overlappingSchedules(slot, dayDate, schedules);
+    const inPast = isSlotInPast(dayDate, slot);
+    const bookedConflicts = conflicts.filter((s) => ["active", "approved", "adjusted"].includes(s.status));
+    const pendingConflicts = conflicts.filter((s) => s.status === "pending");
+
+    let kind = "available";
+    let statusLabel = "Disponível";
+    let statusIcon = "ph-check";
+    let detailHtml = '<span class="slot-duration">5 horas de sessão</span>';
+    let scheduleId = null;
+    let ariaAction = "Disponível";
+    let isClickable = false;
+
+    if (bookedConflicts.length) {
+      const primary = bookedConflicts[0];
+      scheduleId = primary.id;
+      isClickable = true;
+      const isActive = bookedConflicts.some((s) => s.status === "active");
+      kind = isActive ? "active" : "occupied";
+      statusLabel = isActive ? "Sessão ativa" : "Reservado";
+      statusIcon = isActive ? "ph-broadcast" : "ph-lock-simple";
+      const names = [...new Set(bookedConflicts.map((s) => s.group))].filter(Boolean);
+      const nameStr = names.join(", ") || "Conta ocupada";
+      ariaAction = `Reservado por ${nameStr}`;
+
+      const pendingBadge = pendingConflicts.length
+        ? `<span class="slot-pending-chip" title="${pendingConflicts.length} solicitação pendente: ${escapeHtml(pendingConflicts.map((s) => s.group).join(", "))}"><i class="ph ph-clock-countdown" aria-hidden="true"></i>${pendingConflicts.length} pendente</span>`
+        : "";
+
+      detailHtml = `<span class="slot-who" title="Reservado por ${escapeHtml(nameStr)}"><i class="ph ph-user" aria-hidden="true"></i><strong>${escapeHtml(nameStr)}</strong></span>${pendingBadge}`;
+    } else if (pendingConflicts.length) {
+      const primary = pendingConflicts[0];
+      scheduleId = primary.id;
+      isClickable = true;
+      kind = "pending";
+      statusLabel = "Pendente";
+      statusIcon = "ph-clock-countdown";
+      const names = [...new Set(pendingConflicts.map((s) => s.group))].filter(Boolean);
+      const nameStr = names.join(", ") || "Solicitante";
+      ariaAction = `Pendente para ${nameStr}`;
+      detailHtml = `<span class="slot-who" title="Solicitado por ${escapeHtml(nameStr)}"><i class="ph ph-user" aria-hidden="true"></i><strong>${escapeHtml(nameStr)}</strong></span>`;
+    } else if (inPast) {
+      kind = "unavailable slot-past";
+      statusLabel = "Encerrado";
+      statusIcon = "ph-lock-simple";
+      ariaAction = "Encerrado";
+      detailHtml = '<span class="slot-duration">—</span>';
+    }
+
+    if (isClickable && scheduleId) {
+      return `<button type="button" class="schedule-slot-card slot-${kind}" data-manage-schedule="${escapeHtml(scheduleId)}" aria-label="${escapeHtml(slot.timeLabel + ", " + ariaAction)}">
+        <span class="slot-time">${escapeHtml(slot.timeLabel)}</span>
+        <span class="slot-label"><i class="ph ${statusIcon}" aria-hidden="true"></i>${escapeHtml(statusLabel)}</span>
+        ${detailHtml}
+      </button>`;
+    }
+
+    return `<div class="schedule-slot-card slot-${kind} is-readonly" aria-label="${escapeHtml(slot.timeLabel + ", " + ariaAction)}">
+      <span class="slot-time">${escapeHtml(slot.timeLabel)}</span>
+      <span class="slot-label"><i class="ph ${statusIcon}" aria-hidden="true"></i>${escapeHtml(statusLabel)}</span>
+      ${detailHtml}
+    </div>`;
+  }
+
   function overlappingSchedules(slotDef, dayDate, schedules) {
-    const start = new Date(dayDate); start.setHours(slotDef.startHour, 0, 0, 0);
-    const end = new Date(dayDate); end.setHours(slotDef.endHour, 0, 0, 0);
+    const start = new Date(dayDate.getFullYear(), dayDate.getMonth(), dayDate.getDate(), slotDef.startHour, 0, 0, 0);
+    const end = new Date(dayDate.getFullYear(), dayDate.getMonth(), dayDate.getDate(), slotDef.endHour === 24 ? 0 : slotDef.endHour, 0, 0, 0);
+    if (slotDef.endHour === 24) end.setDate(end.getDate() + 1);
     return schedules.filter(schedule => ["pending", "adjusted", "approved", "active"].includes(schedule.status)
       && scheduleStartDate(schedule) < end && scheduleEndDate(schedule) > start);
   }
@@ -374,15 +440,21 @@
       const rows = schedules.filter(schedule => scheduleDayIndex(schedule) === index);
       const pending = rows.filter(schedule => schedule.status === "pending").length;
       const free = FIXED_DAILY_SLOTS.filter(slot => !isSlotInPast(day.rawDate, slot) && !overlappingSchedules(slot, day.rawDate, schedules).length).length;
-      return `<button type="button" class="planner-day${state.view === "day" && index === state.focusedDayIndex ? " is-selected" : ""}" data-select-day="${index}" aria-pressed="${state.view === "day" && index === state.focusedDayIndex}">
-        <span>${day.short}${day.today ? '<small>Hoje</small>' : ''}</span><strong>${day.number}</strong>
-        <span class="planner-capacity" aria-label="${free} horários disponíveis">${FIXED_DAILY_SLOTS.map(slot => {
-          const conflicts = overlappingSchedules(slot, day.rawDate, schedules);
-          const kind = conflicts.some(item => item.status === 'pending') ? 'pending' : conflicts.length ? 'occupied' : isSlotInPast(day.rawDate, slot) ? 'past' : 'free';
-          return `<i class="${kind}" title="${slot.timeLabel}: ${{pending:'Pendente',occupied:'Ocupado',past:'Encerrado',free:'Disponível'}[kind]}"></i>`;
-        }).join('')}</span>
-        <small>${pending ? `${pending} pendente${pending > 1 ? 's' : ''}` : `${free} disponíveis`}</small>
-      </button>`;
+      const isDaySelected = state.view === "day" && index === state.focusedDayIndex;
+      return `<div class="planner-day-column${day.today ? " is-today" : ""}${isDaySelected ? " is-selected" : ""}">
+        <button type="button" class="planner-day${isDaySelected ? " is-selected" : ""}" data-select-day="${index}" aria-pressed="${isDaySelected}">
+          <span>${day.short}${day.today ? '<small>Hoje</small>' : ''}</span><strong>${day.number}</strong>
+          <span class="planner-capacity" aria-label="${free} horários disponíveis">${FIXED_DAILY_SLOTS.map(slot => {
+            const conflicts = overlappingSchedules(slot, day.rawDate, schedules);
+            const kind = conflicts.some(item => item.status === 'pending') ? 'pending' : conflicts.length ? 'occupied' : isSlotInPast(day.rawDate, slot) ? 'past' : 'free';
+            return `<i class="${kind}" title="${slot.timeLabel}: ${{pending:'Pendente',occupied:'Ocupado',past:'Encerrado',free:'Disponível'}[kind]}"></i>`;
+          }).join('')}</span>
+          <small>${pending ? `${pending} pendente${pending > 1 ? 's' : ''}` : `${free} disponíveis`}</small>
+        </button>
+        <div class="planner-day-slots">
+          ${FIXED_DAILY_SLOTS.map(slot => renderAdminSlotCard(slot, day.rawDate, schedules)).join('')}
+        </div>
+      </div>`;
     }).join('')}</div>`;
   }
 

@@ -39,12 +39,14 @@ describe("Admin Legacy Controller", () => {
           };
         }
         if (path === "/api/admin/users") {
-          return { users: [{ user_id: "user-1", username: "Equipe Alpha" }] };
+          return { users: [{ user_id: "user-1", username: "Equipe Alpha" }, { user_id: "user-2", username: "Beta Devs" }] };
         }
         if (path === "/api/admin/reservations") {
           const now = new Date();
           const startsAt = new Date(now.getTime() - 30 * 60_000);
           const endsAt = new Date(startsAt.getTime() + 5 * 60 * 60_000);
+          const tomorrowStart = new Date(now.getTime() + 24 * 3600_000);
+          const tomorrowEnd = new Date(tomorrowStart.getTime() + 5 * 3600_000);
           return {
             reservations: [
               {
@@ -60,6 +62,16 @@ describe("Admin Legacy Controller", () => {
               { id: "res-rejected-1", user_id: "user-1", account_id: "account-1",
                 starts_at: startsAt.toISOString(), ends_at: endsAt.toISOString(),
                 approval_status: "rejected", status: "cancelled", created_at: now.toISOString() },
+              {
+                id: "res-approved-1",
+                user_id: "user-2",
+                account_id: "account-1",
+                starts_at: tomorrowStart.toISOString(),
+                ends_at: tomorrowEnd.toISOString(),
+                approval_status: "approved",
+                status: "scheduled",
+                created_at: now.toISOString(),
+              },
             ],
           };
         }
@@ -186,4 +198,63 @@ describe("Admin Legacy Controller", () => {
     expect((document.getElementById('admin-report-submit') as HTMLButtonElement).disabled).toBe(false);
   });
 
+  it("renders four fixed daily time slots under each of the seven days", () => {
+    const columns = document.querySelectorAll(".planner-day-column");
+    expect(columns.length).toBe(7);
+
+    const allSlots = document.querySelectorAll(".planner-day-slots .schedule-slot-card");
+    expect(allSlots.length).toBe(28);
+
+    columns.forEach((column) => {
+      const slots = column.querySelectorAll(".planner-day-slots .schedule-slot-card");
+      expect(slots.length).toBe(4);
+      const timeTexts = Array.from(slots).map((s) => s.querySelector(".slot-time")?.textContent);
+      expect(timeTexts).toEqual(["04:00 – 09:00", "09:00 – 14:00", "14:00 – 19:00", "19:00 – 00:00"]);
+    });
+  });
+
+  it("displays pending slot with requester name and available slots as read-only", () => {
+    const pendingSlot = document.querySelector<HTMLButtonElement>('.planner-day-slots [data-manage-schedule="res-pending-1"]');
+    expect(pendingSlot).not.toBeNull();
+    expect(pendingSlot?.classList.contains("slot-pending")).toBe(true);
+    expect(pendingSlot?.textContent).toContain("Pendente");
+    expect(pendingSlot?.textContent).toContain("Equipe Alpha");
+
+    const availableSlots = document.querySelectorAll(".planner-day-slots .slot-available");
+    expect(availableSlots.length).toBeGreaterThan(0);
+    availableSlots.forEach((slot) => {
+      expect(slot.tagName.toLowerCase()).toBe("div");
+      expect(slot.classList.contains("is-readonly")).toBe(true);
+      expect(slot.textContent).toContain("Disponível");
+      expect(slot.textContent).toContain("5 horas de sessão");
+      expect(slot.querySelector("button")).toBeNull();
+    });
+  });
+
+  it("opens review dialog when clicking a pending slot in the admin calendar", () => {
+    const reviewModal = document.getElementById("review-modal") as HTMLDialogElement;
+    reviewModal.removeAttribute("open");
+
+    const pendingSlot = document.querySelector<HTMLButtonElement>('.planner-day-slots [data-manage-schedule="res-pending-1"]');
+    expect(pendingSlot).not.toBeNull();
+    pendingSlot?.click();
+
+    expect(reviewModal.hasAttribute("open")).toBe(true);
+    expect(document.getElementById("review-group")?.textContent).toBe("Equipe Alpha");
+  });
+
+  it("displays booked slot with group name and opens modal when clicked", () => {
+    const cancelModal = document.getElementById("cancel-modal") as HTMLDialogElement;
+    cancelModal.removeAttribute("open");
+
+    const bookedSlot = document.querySelector<HTMLButtonElement>('.planner-day-slots [data-manage-schedule="res-approved-1"]');
+    expect(bookedSlot).not.toBeNull();
+    expect(bookedSlot?.classList.contains("slot-occupied")).toBe(true);
+    expect(bookedSlot?.textContent).toContain("Reservado");
+    expect(bookedSlot?.textContent).toContain("Beta Devs");
+
+    bookedSlot?.click();
+    expect(cancelModal.hasAttribute("open")).toBe(true);
+    expect(document.getElementById("cancel-group")?.textContent).toBe("Beta Devs");
+  });
 });
